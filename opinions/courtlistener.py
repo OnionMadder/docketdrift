@@ -21,7 +21,7 @@ import requests
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://www.courtlistener.com/api/rest/v4/"
-DEFAULT_TIMEOUT = 30  # seconds
+DEFAULT_TIMEOUT = 60  # seconds (CL can be slow on FK-traversal filters)
 USER_AGENT = "DocketDrift/0.1 (+https://docketdrift.com)"
 DEFAULT_PAGE_SIZE = 50
 MAX_RETRIES_ON_429 = 3
@@ -30,6 +30,31 @@ RETRY_AFTER_FALLBACK = 60  # seconds when Retry-After header is missing
 
 class CourtListenerError(RuntimeError):
     """Raised when the API returns an error we can't recover from."""
+
+
+# /search/?type=o returns camelCase keys that differ from the /clusters/
+# endpoint's snake_case. Normalize so the ingest layer sees one shape
+# regardless of which endpoint we pull from. (Only the keys we actually
+# read are mapped; the rest pass through unchanged.)
+_SEARCH_KEY_MAP = {
+    "caseName": "case_name",
+    "caseNameFull": "case_name_full",
+    "caseNameShort": "case_name_short",
+    "dateFiled": "date_filed",
+    "dateArgued": "date_argued",
+    "docketNumber": "docket_number",
+    "cluster_id": "id",
+    "status": "precedential_status",
+}
+
+
+def _normalize_search_result(result: dict) -> dict:
+    """Translate /search/?type=o camelCase keys to /clusters/ snake_case."""
+    out = dict(result)
+    for camel, snake in _SEARCH_KEY_MAP.items():
+        if camel in out and snake not in out:
+            out[snake] = out[camel]
+    return out
 
 
 class CourtListenerClient:
@@ -124,14 +149,28 @@ class CourtListenerClient:
         concurrences + dissents). If ``since`` is provided (ISO 'YYYY-MM-DD')
         the result is filtered to ``date_filed__gte=since``.
         """
-        params = {"court": court_id, "order_by": "-date_filed"}
+        # CL v4's /clusters/ endpoint doesn't whitelist `court` OR
+        # `docket__court` as filter params (both return 400 "unknown_params").
+        # The /search/?type=o endpoint DOES accept `court=` directly and
+        # provides cluster-level metadata in a single response -- the only
+        # cost is that search returns camelCase keys, which `_paginate` runs
+        # through `_normalize_search_result` for us.
+        params = {"type": "o", "court": court_id, "order_by": "dateFiled desc"}
         if since:
-            params["date_filed__gte"] = since
-        yield from self._paginate("clusters/", params)
+            params["filed_after"] = since
+        for item in self._paginate("search/", params):
+            yield _normalize_search_result(item)
 
-    def fetch_opinions_for_cluster(self, cluster_id: str | int) -> Iterator[dict]:
-        """Yield individual opinions within a cluster (majority, dissent, ...)."""
-        yield from self._paginate("opinions/", {"cluster": str(cluster_id)})
+    def fetch_opinion(self, opinion_id: str | int) -> dict:
+        """Return a single opinion record by ID.
+
+        Used to pull ``plain_text`` for opinions whose IDs come embedded in
+        the ``opinions`` field of a ``/search/?type=o`` result. We prefer
+        direct ID fetches over the cluster-scoped filter
+        ``/opinions/?cluster=<id>`` because the latter is unreliably slow in
+        v4 (multi-minute reads even with bounded result sets).
+        """
+        return self._get(f"opinions/{opinion_id}/")
 
     def fetch_person(self, person_id: str | int) -> dict:
         """Return raw CourtListener person (judge) metadata."""

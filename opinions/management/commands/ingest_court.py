@@ -109,11 +109,19 @@ class Command(BaseCommand):
                 if absolute_url and not absolute_url.startswith("http"):
                     absolute_url = "https://www.courtlistener.com" + absolute_url
 
-                # Concatenate plain_text from each sub-opinion in the cluster
-                # (majority + any concurrences/dissents).
+                # Concatenate plain_text from each sub-opinion. /search/?type=o
+                # embeds opinion IDs under cluster["opinions"]; we fetch each
+                # one directly because /opinions/?cluster=<id> is unreliably
+                # slow in v4 (see CourtListenerClient.fetch_opinion docstring).
                 raw_texts = []
-                for opinion in client.fetch_opinions_for_cluster(cluster_id):
-                    plain = (opinion.get("plain_text") or "").strip()
+                for op_meta in cluster.get("opinions") or []:
+                    if not isinstance(op_meta, dict):
+                        continue
+                    op_id = op_meta.get("id")
+                    if op_id is None:
+                        continue
+                    op_data = client.fetch_opinion(op_id)
+                    plain = (op_data.get("plain_text") or "").strip()
                     if plain:
                         raw_texts.append(plain)
                 raw_text = "\n\n".join(raw_texts)
