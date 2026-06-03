@@ -9,8 +9,6 @@ This is the server-side equivalent of the JS hostname check on the placeholder.
 """
 from __future__ import annotations
 
-from django.utils.functional import SimpleLazyObject
-
 from opinions.models import State
 
 
@@ -44,6 +42,9 @@ class StateRouterMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        host = request.get_host()
-        request.state = SimpleLazyObject(lambda: _resolve_state(host))
+        # Resolve eagerly. The view always reads request.state, so SimpleLazy-
+        # Object would buy us nothing -- and worse, `request.state is None`
+        # would always be False for a wrapped object, sending the apex view
+        # into the wrong branch.
+        request.state = _resolve_state(request.get_host())
         return self.get_response(request)
