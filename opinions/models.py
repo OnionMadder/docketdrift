@@ -177,20 +177,38 @@ class Opinion(models.Model):
     def extract_text_from_pdf(self) -> str:
         """Return concatenated plain text from the attached PDF, or ''.
 
-        Defensive about pypdf failures (encrypted PDFs, malformed pages, etc.) --
-        callers (notably ``save``) treat a return of '' as "couldn't extract".
+        Reads the bytes into a ``BytesIO`` so we never close the underlying
+        UploadedFile handle -- if we did (e.g. via ``with self.pdf_file.open():``),
+        Django's subsequent ``FieldFile.save()`` inside ``pre_save`` would
+        ``seek(0)`` on a closed file and raise ``ValueError: I/O operation on
+        closed file``, blowing up the whole admin save. We rewind the source
+        handle afterward so storage.save() reads from byte zero. Defensive
+        about pypdf failures (encrypted PDFs, malformed pages, etc.) -- a
+        ``return ""`` is the caller's signal that extraction didn't work.
         """
         if not self.pdf_file:
             return ""
         try:
-            import pypdf  # local import keeps pypdf out of the import path for non-upload code paths
-            with self.pdf_file.open("rb") as fh:
-                reader = pypdf.PdfReader(fh)
-                chunks = []
-                for page in reader.pages:
-                    text = (page.extract_text() or "").strip()
-                    if text:
-                        chunks.append(text)
+            import pypdf  # local import keeps pypdf off the cold-start path
+            from io import BytesIO
+
+            f = self.pdf_file
+            try:
+                f.seek(0)
+            except Exception:
+                pass
+            data = f.read()
+            try:
+                f.seek(0)
+            except Exception:
+                pass
+
+            reader = pypdf.PdfReader(BytesIO(data))
+            chunks = []
+            for page in reader.pages:
+                text = (page.extract_text() or "").strip()
+                if text:
+                    chunks.append(text)
             return "\n\n".join(chunks)
         except Exception:
             return ""
