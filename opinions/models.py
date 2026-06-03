@@ -103,6 +103,28 @@ class Judge(models.Model):
         return f"{self.full_name} ({self.state_id})"
 
 
+def _opinion_pdf_upload_path(instance, filename):
+    """Where uploaded opinion PDFs live under MEDIA_ROOT.
+
+    Lays them out as ``opinions/<state>/<year>/<basename>`` so a glance at the
+    media tree mirrors the editorial taxonomy. ``instance.court`` may not yet
+    be saved when ``upload_to`` runs on a fresh row, so we guard fk access.
+    """
+    state_code = "unk"
+    year = "unsorted"
+    try:
+        if instance.court_id and instance.court.state_id:
+            state_code = (instance.court.state_id or "unk").lower()
+    except Exception:
+        pass
+    try:
+        if instance.release_date:
+            year = str(instance.release_date.year)
+    except Exception:
+        pass
+    return f"opinions/{state_code}/{year}/{filename}"
+
+
 class Opinion(models.Model):
     """A published appellate opinion."""
 
@@ -129,6 +151,16 @@ class Opinion(models.Model):
         default="",
         help_text="Hash of the raw text, for dedupe.",
     )
+    pdf_file = models.FileField(
+        upload_to=_opinion_pdf_upload_path,
+        blank=True,
+        null=True,
+        help_text=(
+            "Optional uploaded PDF. If provided and raw_text is empty, the "
+            "text is extracted on save (via pypdf) and the sha256 computed. "
+            "Re-uploading without clearing raw_text won't re-extract."
+        ),
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -141,6 +173,43 @@ class Opinion(models.Model):
 
     def __str__(self):
         return f"{self.case_number}: {self.title[:60]}"
+
+    def extract_text_from_pdf(self) -> str:
+        """Return concatenated plain text from the attached PDF, or ''.
+
+        Defensive about pypdf failures (encrypted PDFs, malformed pages, etc.) --
+        callers (notably ``save``) treat a return of '' as "couldn't extract".
+        """
+        if not self.pdf_file:
+            return ""
+        try:
+            import pypdf  # local import keeps pypdf out of the import path for non-upload code paths
+            with self.pdf_file.open("rb") as fh:
+                reader = pypdf.PdfReader(fh)
+                chunks = []
+                for page in reader.pages:
+                    text = (page.extract_text() or "").strip()
+                    if text:
+                        chunks.append(text)
+            return "\n\n".join(chunks)
+        except Exception:
+            return ""
+
+    def save(self, *args, **kwargs):
+        # Extract text from a freshly-uploaded PDF the first time we see one
+        # without an existing raw_text. Re-uploads don't re-extract unless the
+        # caller clears raw_text first -- that's the "trust the user" escape
+        # hatch if the first extraction came out garbled.
+        if self.pdf_file and not self.raw_text:
+            extracted = self.extract_text_from_pdf()
+            if extracted:
+                import hashlib
+                self.raw_text = extracted
+                if not self.sha256:
+                    self.sha256 = hashlib.sha256(
+                        extracted.encode("utf-8")
+                    ).hexdigest()
+        super().save(*args, **kwargs)
 
 
 class PanelVote(models.Model):

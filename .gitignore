@@ -19,6 +19,7 @@ db.sqlite3
 db.sqlite3-journal
 /staticfiles/
 /media/
+*.pdf
 
 # Env / secrets -- NEVER commit
 .env

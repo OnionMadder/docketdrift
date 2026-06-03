@@ -138,9 +138,17 @@ USE_I18N = True
 USE_TZ = True
 
 
-# --- Static ----------------------------------------------------------------
+# --- Static + Media --------------------------------------------------------
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# User uploads (manual opinion PDFs via Django admin) land here. On NFSN that
+# resolves to /home/private/docketdrift/media/ -- writable by the gunicorn
+# daemon user ('me') and NOT served by Apache. The MEDIA_URL is wired up in
+# docketdrift_site/urls.py to a Django view in DEBUG; in production we'll
+# decide per-file whether to expose downloads.
+MEDIA_URL = "media/"
+MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
