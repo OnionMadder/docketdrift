@@ -49,6 +49,23 @@ ALLOWED_HOSTS = _env_list(
     default=["localhost", "127.0.0.1", "docketdrift.com", ".docketdrift.com"],
 )
 
+# Behind NFSN's Apache+Proxy, Django sits behind a TLS-terminating reverse
+# proxy: gunicorn only sees plain HTTP from Apache, but the public URL is
+# HTTPS. Trust the X-Forwarded-Proto header so request.is_secure() returns
+# True and admin login / CSRF / secure cookies all behave.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# Django 4.0+ requires explicit Origin trust for state-changing requests
+# (including the admin login POST). Cover the apex + every state subdomain.
+CSRF_TRUSTED_ORIGINS = _env_list(
+    "DJANGO_CSRF_TRUSTED_ORIGINS",
+    default=["https://docketdrift.com", "https://*.docketdrift.com"],
+)
+
+# Only send session + CSRF cookies over HTTPS in production.
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
