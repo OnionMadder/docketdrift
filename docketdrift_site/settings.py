@@ -170,5 +170,45 @@ MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
+# --- Logging ---------------------------------------------------------------
+# Route everything through a console handler so it lands in stderr -- and
+# therefore in NFSN's daemon log via gunicorn. The default Django LOGGING
+# config silently drops request errors when ADMINS is unset; this overrides
+# that so unhandled exceptions always show up in /home/logs/daemon_<tag>.log.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "[{asctime}] {levelname} {name}: {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "django.request": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+        "opinions": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+}
+
+
 # --- App-specific ----------------------------------------------------------
 COURTLISTENER_TOKEN = os.environ.get("COURTLISTENER_TOKEN", "")
