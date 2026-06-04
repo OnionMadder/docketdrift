@@ -342,3 +342,93 @@
   padding: 0.22rem 0.6rem;
   letter-spacing: 0.08em;
 }
+
+/* ============================================================
+   Current Judges roster page
+   ============================================================
+   17 COA judges + 7 SCt justices in a single column is unscannable.
+   Redeclare the maddervramsey `cast-grid` + `cast-thumb` with
+   tighter sizing so the roster reads as a wall of portraits the
+   user can quickly scan, not a vertical scroll-of-doom.
+*/
+
+.cast-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1.25rem;
+  margin: 0 0 2rem;
+}
+
+.cast-grid .entity-tile {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cast-thumb {
+  width: 100%;
+  height: 220px;
+  object-fit: cover;
+  object-position: center top;
+  display: block;
+  border-radius: 4px;
+  margin: 0.5rem 0 0.85rem;
+  border: 1px solid rgba(169, 94, 255, 0.25);
+}
+
+.cast-grid .entity-tile .role-chip {
+  align-self: flex-start;
+  margin-bottom: 0.35rem;
+}
+
+.cast-grid .entity-tile h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.25;
+  letter-spacing: 0.02em;
+}
+
+.cast-grid .entity-tile h3 a {
+  color: var(--neon-cyan);
+  text-decoration: none;
+}
+
+.cast-grid .entity-tile h3 a:hover {
+  text-shadow: var(--shadow-glow-cyan);
+  border-bottom: none;
+}
+
+.cast-grid .entity-tile .affiliation {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin: 0.35rem 0 0;
+}
+
+.cast-grid .entity-tile .cast-summary {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-primary);
+  margin: 0.5rem 0 0.75rem;
+}
+
+.cast-grid .entity-tile .inspect-link {
+  margin-top: auto;
+  font-size: 0.72rem;
+}
+
+/* Section headers between Supreme Court and Court of Appeals groupings. */
+.cast-grid + .section-header {
+  margin-top: 2rem;
+}
+
+/* Narrower screens -- shrink the photo and let the grid collapse to 2 columns. */
+@media (max-width: 720px) {
+  .cast-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 0.85rem;
+  }
+  .cast-thumb {
+    height: 180px;
+  }
+}
