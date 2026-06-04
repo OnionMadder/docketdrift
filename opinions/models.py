@@ -136,6 +136,13 @@ class Opinion(models.Model):
     title = models.TextField(help_text="Case caption / title.")
     release_date = models.DateField(db_index=True)
     is_precedential = models.BooleanField(default=True)
+    disposition = models.CharField(
+        max_length=128,
+        blank=True,
+        default="",
+        help_text="Overall result for the case (e.g. 'Affirmed', 'Reversed and remanded'). "
+                  "Separate from per-holding direction on OpinionHolding.",
+    )
     raw_text = models.TextField(blank=True, default="")
     html_content = models.TextField(blank=True, default="")
     source_url = models.URLField(max_length=512, blank=True, default="")
@@ -229,6 +236,88 @@ class Opinion(models.Model):
                     ).hexdigest()
         super().save(*args, **kwargs)
 
+        # After the row has a pk, run the state's opinion parser. Fills empty
+        # Opinion fields and writes an audit row to ParseLog. The parser is
+        # idempotent: it skips if a ParseLog already exists with a matching
+        # raw_text_sha256, so re-saves and cron re-runs are no-ops.
+        if self.raw_text and self.court_id:
+            self._maybe_run_parser()
+
+    def _maybe_run_parser(self) -> None:
+        """Run the state parser, populate empty fields, write ParseLog.
+
+        Idempotent on ``raw_text_sha256``: skips when a ParseLog already
+        exists for this Opinion + state + text-hash. Wrapped in a broad
+        try/except so a parser regression never blocks an Opinion save --
+        the cron-ingested rows are the most important to protect, and
+        failures are routed to the ``opinions`` logger so they surface in
+        the daemon log instead of vanishing.
+        """
+        import hashlib
+        import logging
+        import time
+
+        try:
+            from opinions.parsing import REGISTRY, parse as parse_state
+
+            state_code = self.court.state_id  # State PK is the 2-letter code.
+            if not state_code:
+                return
+
+            text_hash = hashlib.sha256(self.raw_text.encode("utf-8")).hexdigest()
+            if ParseLog.objects.filter(
+                opinion=self,
+                parser_state=state_code,
+                raw_text_sha256=text_hash,
+            ).exists():
+                return
+
+            started = time.time()
+            result = parse_state(state_code, self.raw_text)
+            elapsed_ms = int((time.time() - started) * 1000)
+            if result is None:
+                return  # No parser registered for this state; don't log noise.
+
+            # Populate empty Opinion fields. Never overwrite human input.
+            changed = []
+            if result.case_number and not self.case_number:
+                self.case_number = result.case_number
+                changed.append("case_number")
+            if result.case_name and not self.title:
+                self.title = result.case_name
+                changed.append("title")
+            if result.release_date and not self.release_date:
+                self.release_date = result.release_date
+                changed.append("release_date")
+            if result.disposition and not self.disposition:
+                self.disposition = result.disposition
+                changed.append("disposition")
+            # is_precedential default is True; only the parser's explicit
+            # "False" finding (saw the nonprecedential footer) overrides.
+            if result.is_precedential is False and self.is_precedential is True:
+                self.is_precedential = False
+                changed.append("is_precedential")
+
+            if changed:
+                type(self).objects.filter(pk=self.pk).update(
+                    **{f: getattr(self, f) for f in changed}
+                )
+
+            parser = REGISTRY.get(state_code)
+            ParseLog.objects.create(
+                opinion=self,
+                parser_state=state_code,
+                parser_version=getattr(parser, "version", "v1"),
+                extracted=result.as_dict(),
+                missing_fields=result.missing_fields(),
+                raw_text_sha256=text_hash,
+                duration_ms=elapsed_ms,
+            )
+        except Exception:
+            logging.getLogger("opinions").exception(
+                "Parser run failed for Opinion id=%s", self.pk
+            )
+
 
 class PanelVote(models.Model):
     """How a single judge participated in a single opinion."""
@@ -306,3 +395,59 @@ class OpinionHolding(models.Model):
 
     def __str__(self):
         return f"Holding on opinion {self.opinion_id}: {self.holding_text[:60]}"
+
+
+class ParseLog(models.Model):
+    """Audit trail for opinion parser runs.
+
+    Records which parser version ran against which Opinion text, what it
+    extracted, and what fields it couldn't fill in. Lets us:
+    - Sort opinions by parse completeness (find rows needing human review).
+    - Catch quality regressions when we tweak parser rules between versions.
+    - Skip re-parsing unchanged text via the raw_text_sha256 cache key.
+    """
+
+    opinion = models.ForeignKey(
+        "Opinion",
+        on_delete=models.CASCADE,
+        related_name="parse_logs",
+    )
+    parser_state = models.CharField(
+        max_length=2,
+        help_text="State code (e.g. 'MN') of the parser that ran.",
+    )
+    parser_version = models.CharField(
+        max_length=16,
+        default="v1",
+        help_text="Bumped when parser rules change in a way that affects output.",
+    )
+    extracted = models.JSONField(
+        default=dict,
+        help_text="The full ParsedOpinion serialized as JSON (release_date is ISO).",
+    )
+    missing_fields = models.JSONField(
+        default=list,
+        help_text="Tracked top-level fields the parser couldn't fill in.",
+    )
+    raw_text_sha256 = models.CharField(
+        max_length=64,
+        help_text="SHA-256 of raw_text at parse time. Used to skip re-parses of unchanged text.",
+    )
+    duration_ms = models.IntegerField(
+        default=0,
+        help_text="Wall-clock parse time in milliseconds.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["parser_state", "-created_at"]),
+            models.Index(fields=["opinion", "-created_at"]),
+        ]
+
+    def __str__(self):
+        return (
+            f"ParseLog({self.parser_state}/{self.parser_version}) "
+            f"for opinion {self.opinion_id}"
+        )
