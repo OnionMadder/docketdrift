@@ -35,7 +35,7 @@
         <td class="doc-date-cell">{{ op.release_date|date:"Y-m-d" }}</td>
         <td>
           {% if op.disposition %}
-            <span class="case-status">{{ op.disposition }}</span>
+            <span class="case-status disposition-{{ op.disposition_class }}">{{ op.disposition }}</span>
           {% else %}
             <span class="doc-date-cell is-tbd">&mdash;</span>
           {% endif %}

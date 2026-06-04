@@ -253,6 +253,39 @@ class Opinion(models.Model):
     def __str__(self):
         return f"{self.case_number}: {self.title[:60]}"
 
+    @property
+    def disposition_class(self) -> str:
+        """CSS bucket slug for color-coding the disposition pill.
+
+        Returns one of: ``affirmed`` (cyan), ``reversed`` (pink), ``vacated``
+        (hazard red), ``remanded`` (amber), ``mixed`` (violet), ``modified``
+        (amber), ``dismissed`` (dim), ``granted`` (lime), ``denied`` (hazard
+        red), ``other`` (fallback), or empty string when there's no
+        disposition. Used by templates as ``disposition-{{ op.disposition_class }}``.
+        """
+        d = (self.disposition or "").lower().strip()
+        if not d:
+            return ""
+        if "in part" in d:
+            return "mixed"
+        if "vacated" in d:
+            return "vacated"
+        if "reversed" in d:
+            return "reversed"
+        if d.startswith("remanded"):
+            return "remanded"
+        if d.startswith("affirmed"):
+            return "affirmed"
+        if d.startswith("modified"):
+            return "modified"
+        if d.startswith("dismissed") or d.startswith("stayed") or d.startswith("reinstated"):
+            return "dismissed"
+        if d.startswith("granted"):
+            return "granted"
+        if d.startswith("denied"):
+            return "denied"
+        return "other"
+
     def extract_text_from_pdf(self) -> str:
         """Return concatenated plain text from the attached PDF, or ''.
 

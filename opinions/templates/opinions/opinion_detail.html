@@ -20,7 +20,7 @@
       <span class="role-chip institution">Nonprecedential</span>
     {% endif %}
     {% if opinion.disposition %}
-      <span class="case-status">{{ opinion.disposition }}</span>
+      <span class="case-status disposition-{{ opinion.disposition_class }}">{{ opinion.disposition }}</span>
     {% endif %}
   </div>
 
