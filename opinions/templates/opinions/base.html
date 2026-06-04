@@ -1,0 +1,77 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{% block title %}DocketDrift{% endblock %}</title>
+<meta name="description" content="{% block description %}Real-time tracking of state judicial trends.{% endblock %}">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="{% static 'opinions/css/core.css' %}">
+<link rel="stylesheet" href="{% static 'opinions/css/documents.css' %}">
+<link rel="stylesheet" href="{% static 'opinions/css/docketdrift.css' %}">
+</head>
+<body>
+<button class="nav-toggle" aria-label="Toggle navigation" aria-expanded="false">
+  <span class="bar"></span><span class="bar"></span><span class="bar"></span>
+</button>
+<div class="nav-backdrop"></div>
+
+<div class="wrapper">
+  <header class="site-header">
+    <div class="brand">
+      <a href="{% url 'opinions:home' %}">DocketDrift</a>
+      <p class="brand-subtitle">Real-time tracking of state judicial trends.</p>
+    </div>
+
+    <nav class="site-nav" aria-label="Primary">
+      <ul>
+        <li><a href="{% url 'opinions:home' %}"{% if active_nav == 'opinions' %} aria-current="page"{% endif %}>Opinions</a></li>
+        <li><a href="/admin/opinions/judge/"{% if active_nav == 'judges' %} aria-current="page"{% endif %}>Judges</a></li>
+        <li><a href="{% url 'opinions:about' %}"{% if active_nav == 'about' %} aria-current="page"{% endif %}>About</a></li>
+      </ul>
+    </nav>
+
+    <div class="search-module">
+      <form action="{% url 'opinions:home' %}" method="get" role="search">
+        <input type="text" name="q" placeholder="Search opinions…" value="{{ search_q|default:'' }}" aria-label="Search opinions">
+        <button type="submit" class="scan-button">Scan</button>
+      </form>
+    </div>
+
+    {% block sidebar_extra %}{% endblock %}
+
+    <div class="justice-banner">
+      Public record &middot; Human review &middot; No verdicts asserted
+    </div>
+  </header>
+
+  <main class="page-content">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+<script>
+(function () {
+  var toggle = document.querySelector('.nav-toggle');
+  var body = document.body;
+  if (!toggle) return;
+  toggle.addEventListener('click', function () {
+    var isOpen = body.getAttribute('data-nav-open') === 'true';
+    body.setAttribute('data-nav-open', String(!isOpen));
+    toggle.setAttribute('aria-expanded', String(!isOpen));
+  });
+  var backdrop = document.querySelector('.nav-backdrop');
+  if (backdrop) {
+    backdrop.addEventListener('click', function () {
+      body.setAttribute('data-nav-open', 'false');
+      toggle.setAttribute('aria-expanded', 'false');
+    });
+  }
+})();
+</script>
+</body>
+</html>

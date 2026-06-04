@@ -1,0 +1,39 @@
+{% extends "opinions/base.html" %}
+{% block title %}DocketDrift &middot; Real-time tracking of state judicial trends{% endblock %}
+
+{% block content %}
+<div class="glossy-frame apex-hero">
+  <h1>DocketDrift</h1>
+  <p class="lede">Real-time tracking of state judicial trends. Public records, organized for human review.</p>
+</div>
+
+<div class="glossy-frame">
+  <div class="section-header">
+    <h2>Live states</h2>
+    <span class="section-count">{{ states|length }} STATE{{ states|length|pluralize:",S" }}</span>
+  </div>
+  <hr class="section-divider">
+
+  {% if states %}
+    <div class="cast-grid">
+      {% for state in states %}
+        <article class="entity-tile judicial">
+          <span class="role-chip judicial">Appellate Courts</span>
+          <h3><a href="https://{{ state.slug }}.docketdrift.com/">{{ state.name }}</a></h3>
+          <p class="affiliation"><strong>{{ state.opinion_count }}</strong> opinion{{ state.opinion_count|pluralize }} indexed</p>
+          <a class="inspect-link" href="https://{{ state.slug }}.docketdrift.com/">Inspect &rarr;</a>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="glitch-line">No live states yet. Check back soon.</p>
+  {% endif %}
+</div>
+
+<div class="glossy-frame">
+  <h2>What this is</h2>
+  <p>DocketDrift collates published opinions from state appellate courts. The goal is to make patterns in published judicial decisions easier to read together &mdash; how a judge votes across related cases, how a court treats similar statutes over time. All source material is in the public record.</p>
+  <p>Our role is collation. We surface case pairs for human review; we don't assert verdicts about consistency or inconsistency.</p>
+  <p><a href="{% url 'opinions:about' %}">Read more about methodology &rarr;</a></p>
+</div>
+{% endblock %}

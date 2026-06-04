@@ -1,0 +1,270 @@
+/* ============================================================
+   Documents Index — table-driven listing of all PDFs
+   ============================================================ */
+
+.doc-intro {
+  max-width: 70ch;
+  margin: 0 0 1.5rem;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+
+.doc-intro strong { color: var(--text-primary); }
+
+/* ─── Featured key documents callout ─────────────────────── */
+
+.doc-featured {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1rem;
+  margin: 0;
+}
+
+.doc-featured a {
+  display: block;
+  padding: 0.85rem 1rem;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 43, 179, 0.05);
+  border-left: 3px solid var(--neon-pink);
+  text-decoration: none;
+  color: var(--text-primary);
+  transition: background var(--transition), transform var(--transition), box-shadow var(--transition);
+}
+
+.doc-featured a:hover {
+  background: rgba(255, 43, 179, 0.1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(255, 43, 179, 0.2);
+}
+
+.doc-featured .doc-feat-title {
+  display: block;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--neon-cyan);
+  margin-bottom: 0.25rem;
+  letter-spacing: 0.3px;
+}
+
+.doc-featured .doc-feat-meta {
+  display: block;
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+/* ─── Section group blurb ────────────────────────────────── */
+
+.doc-group-desc {
+  max-width: 80ch;
+  margin: 0 0 1.25rem;
+  font-size: 0.92rem;
+  color: var(--text-dim);
+  line-height: 1.55;
+}
+
+/* ─── Document table ─────────────────────────────────────── */
+
+.doc-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0 0;
+}
+
+.doc-table thead th {
+  text-align: left;
+  font-family: ui-monospace, "JetBrains Mono", "IBM Plex Mono", Consolas, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid rgba(169, 94, 255, 0.25);
+  background: rgba(20, 0, 30, 0.35);
+}
+
+.doc-table tbody td {
+  padding: 0.95rem 0.85rem;
+  vertical-align: top;
+  border-bottom: 1px solid rgba(169, 94, 255, 0.1);
+  font-size: 0.9rem;
+}
+
+.doc-table tbody tr:hover {
+  background: rgba(38, 255, 230, 0.03);
+}
+
+.doc-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.doc-title-cell strong {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  display: block;
+  margin-bottom: 0.15rem;
+}
+
+.doc-title-cell .doc-desc {
+  margin: 0.15rem 0 0;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  max-width: 60ch;
+}
+
+.doc-title-cell .doc-actors {
+  margin: 0.45rem 0 0;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  letter-spacing: 0.3px;
+}
+
+.doc-title-cell .doc-actors strong {
+  display: inline;
+  margin-right: 0.25rem;
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 700;
+}
+
+.doc-title-cell .doc-actors a {
+  color: var(--neon-cyan);
+  text-decoration: none;
+  margin: 0 0.15rem;
+}
+
+.doc-title-cell .doc-actors a:hover {
+  text-shadow: 0 0 6px rgba(38, 255, 230, 0.4);
+}
+
+.doc-date-cell {
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+  width: 100px;
+}
+
+.doc-date-cell.is-tbd {
+  color: var(--neon-amber);
+  font-style: italic;
+  opacity: 0.7;
+}
+
+/* Type chip — small, neutral, monospace */
+.doc-type {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 2px;
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  font-size: 0.68rem;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--text-primary);
+  background: rgba(169, 94, 255, 0.1);
+  border: 1px solid rgba(169, 94, 255, 0.3);
+  white-space: nowrap;
+}
+
+.doc-court-cell {
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.doc-links-cell {
+  white-space: nowrap;
+  width: 80px;
+  text-align: right;
+}
+
+.doc-links-cell a {
+  display: inline-block;
+  padding: 0.35rem 0.7rem;
+  background: rgba(255, 43, 179, 0.08);
+  border: 1px solid rgba(255, 43, 179, 0.35);
+  border-radius: 3px;
+  color: var(--neon-pink);
+  text-decoration: none;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  transition: background var(--transition), color var(--transition);
+}
+
+.doc-links-cell a:hover {
+  background: var(--neon-pink);
+  color: #000;
+  box-shadow: 0 0 10px rgba(255, 43, 179, 0.45);
+}
+
+/* ─── Cross-case row decoration ──────────────────────────── */
+/* Cross-case rows get a dashed amber left edge to signal
+   "this is from another lawsuit, used here as evidence". */
+
+.doc-table tbody tr.doc-cross-case td:first-child {
+  border-left: 3px dashed var(--neon-amber);
+}
+
+/* ─── Responsive — stack rows as cards on small screens ─── */
+
+@media (max-width: 760px) {
+  .doc-table thead { display: none; }
+
+  .doc-table,
+  .doc-table tbody,
+  .doc-table tr,
+  .doc-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .doc-table tbody tr {
+    background: rgba(20, 0, 30, 0.4);
+    border: 1px solid rgba(169, 94, 255, 0.15);
+    border-radius: 5px;
+    padding: 1rem 1.1rem;
+    margin-bottom: 0.85rem;
+  }
+
+  .doc-table tbody tr:hover {
+    background: rgba(20, 0, 30, 0.55);
+  }
+
+  .doc-table tbody td {
+    padding: 0;
+    border-bottom: none;
+  }
+
+  .doc-table tbody td + td {
+    margin-top: 0.4rem;
+  }
+
+  .doc-date-cell,
+  .doc-court-cell {
+    display: inline-block;
+    width: auto;
+    margin-right: 0.85rem;
+  }
+
+  .doc-links-cell {
+    width: auto;
+    text-align: left;
+    margin-top: 0.6rem;
+  }
+
+  .doc-table tbody tr.doc-cross-case {
+    border-left: 3px dashed var(--neon-amber);
+  }
+  .doc-table tbody tr.doc-cross-case td:first-child {
+    border-left: none;
+  }
+}

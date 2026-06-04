@@ -1,0 +1,58 @@
+{% extends "opinions/base.html" %}
+{% block title %}{{ state.name }} Appellate Opinions &middot; DocketDrift{% endblock %}
+
+{% block content %}
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+  <ol>
+    <li><a href="https://docketdrift.com/">DocketDrift</a></li>
+    <li aria-current="page">{{ state.name }}</li>
+  </ol>
+</nav>
+
+<div class="glossy-frame">
+  <h1>{{ state.name }} Appellate Opinions</h1>
+  <p class="subtle-lead">
+    Published opinions of the {{ state.name }} Supreme Court and Court of Appeals, collated from public records.
+    <strong>{{ total_count }}</strong> opinion{{ total_count|pluralize }}{% if search_q %} matched for &ldquo;{{ search_q }}&rdquo;{% else %} indexed{% endif %}; latest below.
+  </p>
+
+  {% if opinions %}
+  <table class="doc-table">
+    <thead>
+      <tr>
+        <th>Docket</th>
+        <th>Court</th>
+        <th>Filed</th>
+        <th>Disposition</th>
+        <th>Case</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for op in opinions %}
+      <tr>
+        <td class="case-number-cell"><span class="file-number">{{ op.case_number }}</span></td>
+        <td class="doc-court-cell">{{ op.court.name|truncatechars:32 }}</td>
+        <td class="doc-date-cell">{{ op.release_date|date:"Y-m-d" }}</td>
+        <td>
+          {% if op.disposition %}
+            <span class="case-status">{{ op.disposition }}</span>
+          {% else %}
+            <span class="doc-date-cell is-tbd">&mdash;</span>
+          {% endif %}
+        </td>
+        <td class="title-cell">
+          <a href="{% url 'opinions:detail' case_number=op.case_number %}">{{ op.title|truncatechars:90 }}</a>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    {% if search_q %}
+      <p class="glitch-line">No opinions matched &ldquo;{{ search_q }}&rdquo;.</p>
+    {% else %}
+      <p class="glitch-line">No opinions indexed yet.</p>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

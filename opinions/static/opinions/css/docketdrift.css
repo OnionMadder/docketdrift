@@ -1,0 +1,202 @@
+/* ============================================================
+   DocketDrift — overrides + additions on top of core + documents
+   ============================================================
+   The sidebar layout in core.css doesn't style a brand block; we add
+   it here. Also tweak the doc-table cell layout to match an opinion
+   row (case-number stamp + court + date + disposition pill + title),
+   and add detail-page chrome.
+   ============================================================ */
+
+/* ----------  Sidebar brand block  ---------- */
+
+.site-header .brand {
+  margin: 0 0 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: var(--border-soft);
+}
+
+.site-header .brand a {
+  display: block;
+  color: var(--neon-pink);
+  font-size: 1.4rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  text-decoration: none;
+  text-shadow: 0 0 10px rgba(255, 43, 179, 0.55);
+  margin-bottom: 0.5rem;
+  line-height: 1.1;
+  border-bottom: none;
+}
+
+.site-header .brand a:hover {
+  text-shadow: 0 0 18px rgba(255, 43, 179, 0.85);
+  border-bottom: none;
+}
+
+.site-header .brand-subtitle {
+  font-size: 0.74rem;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  margin: 0;
+  font-style: italic;
+  line-height: 1.45;
+  max-width: none;
+  border: none;
+  padding: 0;
+}
+
+.site-header .search-module {
+  margin: 0 0 1rem;
+}
+
+/* ----------  Apex (state picker)  ---------- */
+
+.apex-hero {
+  text-align: center;
+}
+
+.apex-hero h1 {
+  font-size: clamp(2rem, 5.5vw, 3.2rem);
+  letter-spacing: 3px;
+  margin: 0 0 1rem;
+}
+
+.apex-hero .lede {
+  text-align: center;
+  max-width: 52ch;
+  margin: 0 auto;
+  color: var(--text-dim);
+  font-size: 1.05rem;
+  line-height: 1.65;
+}
+
+/* ----------  Opinion list (doc-table tweaks)  ---------- */
+
+.doc-table .case-number-cell {
+  width: 120px;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+.doc-table .case-number-cell .file-number {
+  position: static;
+  display: inline-block;
+  background: rgba(20, 0, 30, 0.6);
+  color: var(--neon-pink);
+  border: 1px solid rgba(255, 43, 179, 0.4);
+  border-left: 2px solid rgba(255, 43, 179, 0.7);
+}
+
+.doc-table td.title-cell {
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.doc-table td.title-cell a {
+  color: var(--text-primary);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: color var(--transition), border-color var(--transition);
+}
+
+.doc-table td.title-cell a:hover {
+  color: var(--neon-cyan);
+  border-bottom-color: var(--neon-cyan);
+}
+
+.doc-table .case-status {
+  margin: 0;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+}
+
+/* ----------  Opinion detail page  ---------- */
+
+.opinion-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  align-items: center;
+  margin: 0 0 1.25rem;
+}
+
+.opinion-header .file-number {
+  position: static;
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+}
+
+.opinion-meta {
+  color: var(--text-dim);
+  font-size: 0.95rem;
+  letter-spacing: 0.3px;
+  margin: 0 0 1.25rem;
+  border-left: 2px solid rgba(169, 94, 255, 0.45);
+  padding-left: 0.85rem;
+  max-width: none;
+}
+
+.opinion-meta strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.opinion-actions {
+  margin: 0.5rem 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.opinion-actions a {
+  display: inline-block;
+  padding: 0.55rem 1rem;
+  border: 1px solid rgba(255, 43, 179, 0.45);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 43, 179, 0.08);
+  color: var(--neon-pink);
+  text-decoration: none;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: background var(--transition), color var(--transition), box-shadow var(--transition);
+}
+
+.opinion-actions a:hover {
+  background: var(--neon-pink);
+  color: #050505;
+  box-shadow: 0 0 12px rgba(255, 43, 179, 0.45);
+  border-bottom: none;
+}
+
+.opinion-body {
+  white-space: pre-wrap;
+  font-family: "JetBrains Mono", ui-monospace, "IBM Plex Mono", Consolas, monospace;
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: var(--text-primary);
+  max-height: 75vh;
+  overflow-y: auto;
+  padding: 1rem 1.1rem;
+  background: rgba(5, 5, 5, 0.45);
+  border: var(--border-soft);
+  border-radius: var(--radius-sm);
+  margin: 0;
+}
+
+.opinion-body::-webkit-scrollbar { width: 8px; }
+.opinion-body::-webkit-scrollbar-thumb {
+  background: rgba(169, 94, 255, 0.3);
+  border-radius: 4px;
+}
+
+/* ----------  Small-screen sidebar tweaks  ---------- */
+
+@media (max-width: 1024px) {
+  .site-header .brand {
+    margin-top: 0;
+  }
+}

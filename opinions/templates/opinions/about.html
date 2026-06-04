@@ -1,0 +1,33 @@
+{% extends "opinions/base.html" %}
+{% block title %}About &middot; DocketDrift{% endblock %}
+
+{% block content %}
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+  <ol>
+    <li><a href="{% url 'opinions:home' %}">Home</a></li>
+    <li aria-current="page">About</li>
+  </ol>
+</nav>
+
+<div class="glossy-frame">
+  <h1>About DocketDrift</h1>
+
+  <p>DocketDrift is a public-record analysis tool for state appellate courts. We collate published opinions from official sources, normalize them into a structured archive, and make patterns in judicial decisions easier to read together.</p>
+
+  <h2>Methodology</h2>
+  <p>All source material in DocketDrift comes from public records. Opinions are ingested from official court releases and the open Free Law Project / CourtListener archive. Where structured fields (case number, disposition, author) can be extracted reliably from the published text, they're populated automatically. Where they can't, they're left empty for human review.</p>
+  <p>Patterns and case-pairs that the system surfaces are <strong>tools for human review</strong>, never assertions of judicial inconsistency. Two cases citing the same statute with opposite outcomes are usually legitimately different &mdash; different facts, different procedural posture, different sub-issues. The "did this judge contradict themselves" question is a question for a human reader; we just make the pairs easier to find.</p>
+
+  <h2>Data sources</h2>
+  <ul>
+    <li><strong>CourtListener</strong> (Free Law Project) &mdash; backfill and historical archive. CourtListener lags real-time by roughly 30 days but covers Minnesota appellate opinions back to 1996.</li>
+    <li><strong>Direct upload</strong> &mdash; opinions are uploaded same-day on the Monday/Wednesday release schedules, ahead of CourtListener's ingestion.</li>
+  </ul>
+
+  <h2>Status</h2>
+  <p class="glitch-line">In development. Minnesota is the first covered state; the data model is built to expand state-by-state as parsers come online.</p>
+
+  <h2>Open source</h2>
+  <p>DocketDrift is open source on GitHub at <a href="https://github.com/OnionMadder/docketdrift" target="_blank" rel="noopener">OnionMadder/docketdrift</a>. The parser rules, ingestion logic, and infrastructure are all readable, auditable, and forkable.</p>
+</div>
+{% endblock %}

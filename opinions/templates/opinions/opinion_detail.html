@@ -1,0 +1,49 @@
+{% extends "opinions/base.html" %}
+{% block title %}{{ opinion.case_number }} &middot; {{ opinion.title|truncatechars:60 }} &middot; DocketDrift{% endblock %}
+{% block description %}{{ opinion.case_number }}: {{ opinion.title|truncatechars:150 }}{% endblock %}
+
+{% block content %}
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+  <ol>
+    <li><a href="https://docketdrift.com/">DocketDrift</a></li>
+    <li><a href="{% url 'opinions:home' %}">{{ opinion.court.state.name }}</a></li>
+    <li aria-current="page">{{ opinion.case_number }}</li>
+  </ol>
+</nav>
+
+<div class="glossy-frame">
+  <div class="opinion-header">
+    <span class="file-number">{{ opinion.case_number }}</span>
+    {% if opinion.is_precedential %}
+      <span class="role-chip judicial">Precedential</span>
+    {% else %}
+      <span class="role-chip institution">Nonprecedential</span>
+    {% endif %}
+    {% if opinion.disposition %}
+      <span class="case-status">{{ opinion.disposition }}</span>
+    {% endif %}
+  </div>
+
+  <h1>{{ opinion.title }}</h1>
+
+  <p class="opinion-meta">
+    <strong>{{ opinion.court.name }}</strong> &middot; Filed {{ opinion.release_date|date:"F j, Y" }}
+  </p>
+
+  {% if opinion.pdf_file or opinion.source_url %}
+    <div class="opinion-actions">
+      {% if opinion.pdf_file %}<a href="{{ opinion.pdf_file.url }}">Download PDF</a>{% endif %}
+      {% if opinion.source_url %}<a href="{{ opinion.source_url }}" target="_blank" rel="noopener">View on CourtListener</a>{% endif %}
+    </div>
+  {% endif %}
+</div>
+
+<div class="glossy-frame">
+  <h2>Opinion text</h2>
+  {% if opinion.raw_text %}
+    <pre class="opinion-body">{{ opinion.raw_text }}</pre>
+  {% else %}
+    <p class="glitch-line">No opinion text available.</p>
+  {% endif %}
+</div>
+{% endblock %}
