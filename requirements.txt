@@ -5,3 +5,4 @@ python-dotenv>=1.0
 gunicorn>=21.0
 whitenoise>=6.0
 pypdf>=4.0
+beautifulsoup4>=4.12
