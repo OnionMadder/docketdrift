@@ -53,19 +53,21 @@
 
     {% block sidebar_extra %}
       {% if request.state %}
-        <div class="sidebar-aside">
-          <h4 class="sidebar-aside-heading">Explore</h4>
-          <ul class="tag-cloud">
-            {% for tag in EXPLORE_TAGS %}
-              <li><a class="tag-chip" href="{% url 'opinions:home' %}?q={{ tag|urlencode }}">{{ tag }}</a></li>
-            {% endfor %}
-          </ul>
-        </div>
+        {% if EXPLORE_TAGS %}
+          <div class="sidebar-aside">
+            <h4 class="sidebar-aside-heading">Explore</h4>
+            <ul class="tag-cloud">
+              {% for tag, count, size in EXPLORE_TAGS %}
+                <li><a class="tag-chip tag-chip--{{ size }}" href="{% url 'opinions:home' %}?q={{ tag|urlencode }}" title="{{ count }} opinion{{ count|pluralize }}">{{ tag }}</a></li>
+              {% endfor %}
+            </ul>
+          </div>
+        {% endif %}
         <div class="sidebar-aside">
           <h4 class="sidebar-aside-heading">Outcomes</h4>
           <ul class="disposition-legend">
             {% for slug, label in DISPOSITION_BUCKETS %}
-              <li><span class="case-status disposition-{{ slug }}">{{ label }}</span></li>
+              <li><a class="case-status disposition-{{ slug }}{% if disp_filter == slug %} is-active-filter{% endif %}" href="{% url 'opinions:home' %}?disposition={{ slug }}{% if search_q %}&q={{ search_q|urlencode }}{% endif %}">{{ label }}</a></li>
             {% endfor %}
           </ul>
         </div>

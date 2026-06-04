@@ -69,6 +69,21 @@ class Court(models.Model):
     def __str__(self):
         return self.name
 
+    @property
+    def short_label(self) -> str:
+        """Compact label for the doc-table court pill (e.g. 'Minn. Ct. App.')."""
+        if self.state_id == "MN":
+            if self.level == self.Level.SUPREME:
+                return "Minn."
+            if self.level == self.Level.APPEALS:
+                return "Minn. Ct. App."
+        return self.name
+
+    @property
+    def level_slug(self) -> str:
+        """Lowercase level for use in CSS modifier classes (court-pill--supreme)."""
+        return (self.level or "").lower()
+
 
 class Judge(models.Model):
     """A judge -- scoped to a state, optionally bound to a specific court.
@@ -230,6 +245,14 @@ class Opinion(models.Model):
         default="",
         help_text="Hash of the raw text, for dedupe.",
     )
+    disposition_bucket = models.CharField(
+        max_length=24,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Auto-populated outcome bucket slug (affirmed / reversed / vacated / ...). "
+                  "Indexed for fast filtering from the sidebar Outcomes legend.",
+    )
     pdf_file = models.FileField(
         upload_to=_opinion_pdf_upload_path,
         blank=True,
@@ -257,34 +280,15 @@ class Opinion(models.Model):
     def disposition_class(self) -> str:
         """CSS bucket slug for color-coding the disposition pill.
 
-        Returns one of: ``affirmed`` (cyan), ``reversed`` (pink), ``vacated``
-        (hazard red), ``remanded`` (amber), ``mixed`` (violet), ``modified``
-        (amber), ``dismissed`` (dim), ``granted`` (lime), ``denied`` (hazard
-        red), ``other`` (fallback), or empty string when there's no
-        disposition. Used by templates as ``disposition-{{ op.disposition_class }}``.
+        Reads the stored ``disposition_bucket`` column (populated at save
+        time from ``compute_disposition_bucket``). Falls back to recomputing
+        when the column is empty -- helpful for the brief window before the
+        backfill data migration runs.
         """
-        d = (self.disposition or "").lower().strip()
-        if not d:
-            return ""
-        if "in part" in d:
-            return "mixed"
-        if "vacated" in d:
-            return "vacated"
-        if "reversed" in d:
-            return "reversed"
-        if d.startswith("remanded"):
-            return "remanded"
-        if d.startswith("affirmed"):
-            return "affirmed"
-        if d.startswith("modified"):
-            return "modified"
-        if d.startswith("dismissed") or d.startswith("stayed") or d.startswith("reinstated"):
-            return "dismissed"
-        if d.startswith("granted"):
-            return "granted"
-        if d.startswith("denied"):
-            return "denied"
-        return "other"
+        if self.disposition_bucket:
+            return self.disposition_bucket
+        from opinions.utils import compute_disposition_bucket
+        return compute_disposition_bucket(self.disposition)
 
     def extract_text_from_pdf(self) -> str:
         """Return concatenated plain text from the attached PDF, or ''.
@@ -339,6 +343,10 @@ class Opinion(models.Model):
                     self.sha256 = hashlib.sha256(
                         extracted.encode("utf-8")
                     ).hexdigest()
+        # Keep the indexed outcome bucket in sync with the free-form
+        # disposition string on every save.
+        from opinions.utils import compute_disposition_bucket
+        self.disposition_bucket = compute_disposition_bucket(self.disposition)
         super().save(*args, **kwargs)
 
         # After the row has a pk, run the state's opinion parser. Fills empty
@@ -397,6 +405,9 @@ class Opinion(models.Model):
             if result.disposition and not self.disposition:
                 self.disposition = result.disposition
                 changed.append("disposition")
+                from opinions.utils import compute_disposition_bucket
+                self.disposition_bucket = compute_disposition_bucket(self.disposition)
+                changed.append("disposition_bucket")
             # is_precedential default is True; only the parser's explicit
             # "False" finding (saw the nonprecedential footer) overrides.
             if result.is_precedential is False and self.is_precedential is True:

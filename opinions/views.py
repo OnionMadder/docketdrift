@@ -23,6 +23,7 @@ def home(request):
     """Apex state-picker when no subdomain matches; per-state landing otherwise."""
     state = getattr(request, "state", None)
     search_q = (request.GET.get("q") or "").strip()
+    disp_filter = (request.GET.get("disposition") or "").strip().lower()
 
     if state is None:
         live = list(State.objects.filter(is_live=True).order_by("name"))
@@ -44,14 +45,28 @@ def home(request):
             | Q(title__icontains=search_q)
             | Q(raw_text__icontains=search_q)
         )
+    if disp_filter:
+        qs = qs.filter(disposition_bucket=disp_filter)
     total_count = qs.count()
     opinions = list(qs.order_by("-release_date")[:100])
+
+    # Find the human-readable label of the active disposition filter for the banner.
+    disp_label = ""
+    if disp_filter:
+        from opinions.context_processors import DISPOSITION_BUCKETS
+        for slug, label in DISPOSITION_BUCKETS:
+            if slug == disp_filter:
+                disp_label = label
+                break
+
     return render(request, "opinions/state_home.html", {
         "state": state,
         "opinions": opinions,
         "total_count": total_count,
         "active_nav": "opinions",
         "search_q": search_q,
+        "disp_filter": disp_filter,
+        "disp_label": disp_label,
     })
 
 

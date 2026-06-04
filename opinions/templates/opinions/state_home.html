@@ -13,8 +13,21 @@
   <h1>{{ state.name }} Appellate Opinions</h1>
   <p class="subtle-lead">
     Published opinions of the {{ state.name }} Supreme Court and Court of Appeals, collated from public records.
-    <strong>{{ total_count }}</strong> opinion{{ total_count|pluralize }}{% if search_q %} matched for &ldquo;{{ search_q }}&rdquo;{% else %} indexed{% endif %}; latest below.
+    <strong>{{ total_count }}</strong> opinion{{ total_count|pluralize }}{% if disp_filter or search_q %} matched{% else %} indexed{% endif %}; latest below.
   </p>
+
+  {% if disp_filter or search_q %}
+    <div class="active-filters">
+      <span class="active-filters-label">Filtering by:</span>
+      {% if disp_filter %}
+        <span class="case-status disposition-{{ disp_filter }}">{{ disp_label }}</span>
+      {% endif %}
+      {% if search_q %}
+        <span class="active-filters-query">&ldquo;{{ search_q }}&rdquo;</span>
+      {% endif %}
+      <a class="active-filters-clear" href="{% url 'opinions:home' %}">Clear &times;</a>
+    </div>
+  {% endif %}
 
   {% if opinions %}
   <table class="doc-table">
@@ -31,7 +44,7 @@
     {% for op in opinions %}
       <tr>
         <td class="case-number-cell"><span class="file-number">{{ op.case_number }}</span></td>
-        <td class="doc-court-cell">{{ op.court.name|truncatechars:32 }}</td>
+        <td class="doc-court-cell"><span class="court-pill court-pill--{{ op.court.level_slug }}" title="{{ op.court.name }}">{{ op.court.short_label }}</span></td>
         <td class="doc-date-cell">{{ op.release_date|date:"Y-m-d" }}</td>
         <td>
           {% if op.disposition %}
@@ -48,7 +61,11 @@
     </tbody>
   </table>
   {% else %}
-    {% if search_q %}
+    {% if disp_filter and search_q %}
+      <p class="glitch-line">No opinions matched &ldquo;{{ search_q }}&rdquo; with outcome {{ disp_label }}.</p>
+    {% elif disp_filter %}
+      <p class="glitch-line">No opinions with outcome {{ disp_label }} indexed yet.</p>
+    {% elif search_q %}
       <p class="glitch-line">No opinions matched &ldquo;{{ search_q }}&rdquo;.</p>
     {% else %}
       <p class="glitch-line">No opinions indexed yet.</p>

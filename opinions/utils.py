@@ -24,6 +24,51 @@ _DOCKET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
 )
 
 
+def compute_disposition_bucket(disposition: str | None) -> str:
+    """Return the CSS / filter bucket slug for a free-form disposition string.
+
+    Used at ``Opinion.save()`` time to populate ``Opinion.disposition_bucket``
+    so the column is indexable + filterable. Also re-used in the data
+    migration that backfills existing rows.
+
+    Buckets and the precedence order (longer / more specific phrases first):
+
+    - ``mixed``     -- "Affirmed in part, reversed in part, ..."
+    - ``vacated``   -- contains "vacated"
+    - ``reversed``  -- contains "reversed" (incl. "reversed and remanded")
+    - ``remanded``  -- starts with "Remanded"
+    - ``affirmed``  -- starts with "Affirmed"
+    - ``modified``  -- starts with "Modified"
+    - ``dismissed`` -- starts with "Dismissed" / "Stayed" / "Reinstated"
+    - ``granted``   -- starts with "Granted"
+    - ``denied``    -- starts with "Denied"
+    - ``other``     -- something recognizable but not bucketed
+    - ``""``        -- no disposition at all
+    """
+    d = (disposition or "").lower().strip()
+    if not d:
+        return ""
+    if "in part" in d:
+        return "mixed"
+    if "vacated" in d:
+        return "vacated"
+    if "reversed" in d:
+        return "reversed"
+    if d.startswith("remanded"):
+        return "remanded"
+    if d.startswith("affirmed"):
+        return "affirmed"
+    if d.startswith("modified"):
+        return "modified"
+    if d.startswith("dismissed") or d.startswith("stayed") or d.startswith("reinstated"):
+        return "dismissed"
+    if d.startswith("granted"):
+        return "granted"
+    if d.startswith("denied"):
+        return "denied"
+    return "other"
+
+
 def normalize_docket_number(s: str | None) -> str:
     """Return the canonical dashed-uppercase form of an MN docket number.
 
