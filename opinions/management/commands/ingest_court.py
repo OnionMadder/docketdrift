@@ -25,6 +25,7 @@ from django.utils.dateparse import parse_date
 
 from opinions.courtlistener import CourtListenerClient, CourtListenerError
 from opinions.models import Court, Opinion
+from opinions.utils import normalize_docket_number
 
 
 logger = logging.getLogger(__name__)
@@ -132,9 +133,12 @@ class Command(BaseCommand):
                 )
 
                 # cluster has a docket URL we'd need to fetch for the real
-                # docket_number; for v0.1 we fall back to the cluster id when
-                # the cluster doesn't denormalize docket_number directly.
-                case_number = cluster.get("docket_number") or f"cl-{cluster_id}"
+                # docket_number; when the cluster doesn't denormalize it
+                # directly we fall back to the cluster id. Either way we
+                # canonicalize to the dashed-uppercase form (CL stores
+                # docket numbers undashed and occasionally lowercase).
+                raw_docket = cluster.get("docket_number") or f"cl-{cluster_id}"
+                case_number = normalize_docket_number(raw_docket)
 
                 self.stdout.write(
                     f"  [{clusters_seen}] {date_filed} {case_number} | "
