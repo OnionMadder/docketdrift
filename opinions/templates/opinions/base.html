@@ -30,7 +30,11 @@
     <nav class="site-nav" aria-label="Primary">
       <ul>
         <li><a href="{% url 'opinions:home' %}"{% if active_nav == 'opinions' %} aria-current="page"{% endif %}>Opinions</a></li>
-        <li><a href="/admin/opinions/judge/"{% if active_nav == 'judges' %} aria-current="page"{% endif %}>Judges</a></li>
+        {% if request.state %}
+          <li><a href="{% url 'opinions:current_judges' %}"{% if active_nav == 'judges' %} aria-current="page"{% endif %}>Judges</a></li>
+        {% else %}
+          <li><a href="/admin/opinions/judge/">Judges</a></li>
+        {% endif %}
         <li><a href="{% url 'opinions:about' %}"{% if active_nav == 'about' %} aria-current="page"{% endif %}>About</a></li>
       </ul>
     </nav>

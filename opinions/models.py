@@ -71,15 +71,43 @@ class Court(models.Model):
 
 
 class Judge(models.Model):
-    """A judge. Scoped to a state; appears on opinions from that state's courts."""
+    """A judge -- scoped to a state, optionally bound to a specific court.
+
+    One row per person. Sources combine into the same table:
+
+    - The MN judiciary site scraper sets the current roster (photo, bio,
+      appointment date, ``is_currently_seated=True``).
+    - The opinion parser learns historical judges from authored bylines
+      (``status=UNKNOWN`` until matched against CL).
+    - CourtListener ``/people/`` resolution backfills canonical ``full_name``
+      and ``courtlistener_id`` on matched rows.
+
+    The ``source_id`` field lets the scraper find its own rows again on
+    re-run (e.g. mncourts.gov slug) without duplicating.
+    """
 
     class Status(models.TextChoices):
         ACTIVE = "ACTIVE", "Active"
-        RETIRED = "RETIRED", "Retired"
         SENIOR = "SENIOR", "Senior"
+        RETIRED = "RETIRED", "Retired"
+        UNKNOWN = "UNKNOWN", "Unknown"
+
+    class Role(models.TextChoices):
+        CHIEF_JUSTICE = "CHIEF_JUSTICE", "Chief Justice"
+        ASSOCIATE_JUSTICE = "ASSOCIATE_JUSTICE", "Associate Justice"
+        CHIEF_JUDGE = "CHIEF_JUDGE", "Chief Judge"
+        JUDGE = "JUDGE", "Judge"
         UNKNOWN = "UNKNOWN", "Unknown"
 
     state = models.ForeignKey(State, on_delete=models.PROTECT, related_name="judges")
+    court = models.ForeignKey(
+        "Court",
+        on_delete=models.PROTECT,
+        related_name="judges",
+        null=True,
+        blank=True,
+        help_text="Primary court this judge sits on. Null for historical or unmapped rows.",
+    )
     full_name = models.CharField(max_length=128)
     slug = models.SlugField(max_length=128)
     status = models.CharField(
@@ -87,17 +115,61 @@ class Judge(models.Model):
         choices=Status.choices,
         default=Status.UNKNOWN,
     )
+    role = models.CharField(
+        max_length=24,
+        choices=Role.choices,
+        default=Role.UNKNOWN,
+        blank=True,
+    )
+    is_currently_seated = models.BooleanField(
+        default=False,
+        help_text="True if this judge appears on the current judicial roster.",
+    )
+    appointment_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="When this judge took the bench in their current role.",
+    )
+    bio_url = models.URLField(
+        max_length=512,
+        blank=True,
+        default="",
+        help_text="Link to the judge's official bio page (e.g. mncourts.gov/judges/...).",
+    )
+    bio_summary = models.TextField(
+        blank=True,
+        default="",
+        help_text="Short paragraph from the official bio. Plain text, no HTML.",
+    )
+    photo_url = models.URLField(
+        max_length=512,
+        blank=True,
+        default="",
+        help_text="External URL of the official portrait. Self-hosted later.",
+    )
     courtlistener_id = models.CharField(
         max_length=64,
         blank=True,
         default="",
+        db_index=True,
         help_text="CourtListener person identifier, when known.",
+    )
+    source_id = models.CharField(
+        max_length=128,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Stable ID from the source roster (e.g. mncourts.gov slug). For scraper idempotency.",
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         unique_together = [("state", "slug")]
         ordering = ["full_name"]
+        indexes = [
+            models.Index(fields=["state", "is_currently_seated"]),
+            models.Index(fields=["court", "is_currently_seated"]),
+        ]
 
     def __str__(self):
         return f"{self.full_name} ({self.state_id})"

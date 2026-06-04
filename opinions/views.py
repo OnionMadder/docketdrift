@@ -14,9 +14,9 @@ dark/neon design system loaded via the base template.
 """
 from django.db.models import Q
 from django.http import Http404
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 
-from opinions.models import Opinion, State
+from opinions.models import Judge, Opinion, State
 
 
 def home(request):
@@ -74,4 +74,46 @@ def opinion_detail(request, case_number):
 def about(request):
     return render(request, "opinions/about.html", {
         "active_nav": "about",
+    })
+
+
+def current_judges(request):
+    """Roster of currently-seated judges. State-scoped: redirects to apex
+    when accessed without a state subdomain (no roster to show without one)."""
+    state = getattr(request, "state", None)
+    if state is None:
+        return redirect("/")
+
+    judges = (
+        Judge.objects.filter(state=state, is_currently_seated=True)
+        .select_related("court")
+        .order_by("court__level", "role", "full_name")
+    )
+    # Group by court for display.
+    grouped = {}
+    for j in judges:
+        court_label = j.court.name if j.court else "Unassigned"
+        grouped.setdefault(court_label, []).append(j)
+    groups = list(grouped.items())
+    return render(request, "opinions/current_judges.html", {
+        "state": state,
+        "judge_groups": groups,
+        "total_count": judges.count(),
+        "active_nav": "judges",
+    })
+
+
+def judge_detail(request, slug):
+    """Per-judge dossier page. State-scoped to keep slugs unambiguous."""
+    state = getattr(request, "state", None)
+    qs = Judge.objects.select_related("state", "court")
+    if state is not None:
+        qs = qs.filter(state=state)
+    try:
+        judge = qs.get(slug=slug)
+    except Judge.DoesNotExist:
+        raise Http404("Judge not found")
+    return render(request, "opinions/judge_detail.html", {
+        "judge": judge,
+        "active_nav": "judges",
     })

@@ -1,0 +1,51 @@
+{% extends "opinions/base.html" %}
+{% block title %}{{ state.name }} Current Judges &middot; DocketDrift{% endblock %}
+
+{% block content %}
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+  <ol>
+    <li><a href="https://docketdrift.com/">DocketDrift</a></li>
+    <li><a href="{% url 'opinions:home' %}">{{ state.name }}</a></li>
+    <li aria-current="page">Current Judges</li>
+  </ol>
+</nav>
+
+<div class="glossy-frame">
+  <h1>{{ state.name }} Current Judges</h1>
+  <p class="subtle-lead">
+    Currently-seated judges of the {{ state.name }} Supreme Court and Court of Appeals. Roster sourced from the official judicial site. <strong>{{ total_count }}</strong> judge{{ total_count|pluralize }} on the bench.
+  </p>
+
+  {% if judge_groups %}
+    {% for court_label, judges in judge_groups %}
+      <div class="section-header">
+        <h2>{{ court_label }}</h2>
+        <span class="section-count">{{ judges|length }} JUDGE{{ judges|length|pluralize:",S" }}</span>
+      </div>
+      <hr class="section-divider">
+
+      <div class="cast-grid">
+        {% for judge in judges %}
+          <article class="entity-tile judicial">
+            <span class="role-chip judicial">{{ judge.get_role_display|default:"Judge" }}</span>
+            {% if judge.photo_url %}
+              <img src="{{ judge.photo_url }}" alt="Portrait of {{ judge.full_name }}" class="cast-thumb" loading="lazy">
+            {% endif %}
+            <h3><a href="{% url 'opinions:judge_detail' slug=judge.slug %}">{{ judge.full_name }}</a></h3>
+            {% if judge.appointment_date %}
+              <p class="affiliation"><strong>Seated:</strong> {{ judge.appointment_date|date:"Y" }}</p>
+            {% endif %}
+            {% if judge.bio_summary %}
+              <p class="cast-summary">{{ judge.bio_summary|truncatewords:30 }}</p>
+            {% endif %}
+            <a class="inspect-link" href="{% url 'opinions:judge_detail' slug=judge.slug %}">View dossier &rarr;</a>
+          </article>
+        {% endfor %}
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="glitch-line">Roster scraper coming in the next build push &mdash; the data model is ready, awaiting ingestion from mncourts.gov.</p>
+    <p>In the meantime, judges populated through opinion parsing (as the parser matches bylines against CourtListener's people index) will appear here automatically when their <code>is_currently_seated</code> flag is set.</p>
+  {% endif %}
+</div>
+{% endblock %}
