@@ -54,20 +54,88 @@ class ParseLogInline(admin.TabularInline):
     show_change_link = True
 
 
+@admin.action(description="Mark selected as human-reviewed")
+def mark_reviewed(modeladmin, request, queryset):
+    """Bulk-flip selected opinions to REVIEWED, stamping editor + timestamp.
+
+    Uses queryset.update() to skip Opinion.save() (and thus the parser
+    save-hook) -- intentional: we're only updating editorial metadata,
+    no need to re-run parse logic on every selected row.
+    """
+    from django.utils import timezone
+    n = queryset.update(
+        review_status=Opinion.ReviewStatus.REVIEWED,
+        reviewed_by=request.user.username,
+        reviewed_at=timezone.now(),
+    )
+    modeladmin.message_user(request, f"{n} opinion(s) marked as human-reviewed.")
+
+
+@admin.action(description="Flag selected for review")
+def mark_flagged(modeladmin, request, queryset):
+    n = queryset.update(review_status=Opinion.ReviewStatus.FLAGGED)
+    modeladmin.message_user(request, f"{n} opinion(s) flagged for review.")
+
+
+@admin.action(description="Revert selected to AI-processed only")
+def mark_ai_only(modeladmin, request, queryset):
+    n = queryset.update(
+        review_status=Opinion.ReviewStatus.AI_ONLY,
+        reviewed_by="",
+        reviewed_at=None,
+    )
+    modeladmin.message_user(request, f"{n} opinion(s) reverted to AI-processed.")
+
+
 @admin.register(Opinion)
 class OpinionAdmin(admin.ModelAdmin):
     list_display = (
         "case_number",
         "court",
         "release_date",
+        "review_status",
         "is_precedential",
         "disposition",
         "title_excerpt",
     )
-    list_filter = ("court__state", "court", "is_precedential", "release_date", "disposition")
+    list_filter = (
+        "review_status",
+        "court__state",
+        "court",
+        "is_precedential",
+        "release_date",
+        "disposition",
+    )
     search_fields = ("case_number", "title", "courtlistener_id", "disposition")
     date_hierarchy = "release_date"
+    readonly_fields = ("reviewed_at",)
     inlines = [PanelVoteInline, OpinionHoldingInline, ParseLogInline]
+    actions = [mark_reviewed, mark_flagged, mark_ai_only]
+
+    fieldsets = (
+        (None, {
+            "fields": (
+                "court",
+                "case_number",
+                "title",
+                "release_date",
+                "is_precedential",
+                "disposition",
+                "source_url",
+                "courtlistener_id",
+            ),
+        }),
+        ("Body", {
+            "fields": ("pdf_file", "raw_text", "html_content", "sha256"),
+        }),
+        ("Editorial review", {
+            "fields": ("review_status", "reviewed_by", "reviewed_at", "review_notes"),
+            "description": (
+                "Use the bulk actions on the changelist for fast review passes. "
+                "Editing review_status here will auto-stamp reviewed_at when saved."
+            ),
+        }),
+    )
 
     @admin.display(description="Title")
     def title_excerpt(self, obj):

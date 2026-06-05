@@ -253,6 +253,41 @@ class Opinion(models.Model):
         help_text="Auto-populated outcome bucket slug (affirmed / reversed / vacated / ...). "
                   "Indexed for fast filtering from the sidebar Outcomes legend.",
     )
+
+    class ReviewStatus(models.TextChoices):
+        AI_ONLY = "ai_only", "AI-processed only"
+        FLAGGED = "flagged", "Flagged for review"
+        REVIEWED = "reviewed", "Human-reviewed"
+
+    review_status = models.CharField(
+        max_length=16,
+        choices=ReviewStatus.choices,
+        default=ReviewStatus.AI_ONLY,
+        db_index=True,
+        help_text=(
+            "Editorial review state. Shown publicly so readers know whether a "
+            "human has read and curated this opinion vs. whether it has only "
+            "been machine-processed. Default for ingested opinions is "
+            "AI-processed; flip via admin action when reviewed."
+        ),
+    )
+    reviewed_by = models.CharField(
+        max_length=120,
+        blank=True,
+        default="",
+        help_text="Username of the editor who marked this opinion human-reviewed.",
+    )
+    reviewed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Auto-stamped when review_status flips to human-reviewed.",
+    )
+    review_notes = models.TextField(
+        blank=True,
+        default="",
+        help_text="Internal editor notes. Not shown publicly.",
+    )
+
     pdf_file = models.FileField(
         upload_to=_opinion_pdf_upload_path,
         blank=True,
@@ -347,6 +382,18 @@ class Opinion(models.Model):
         # disposition string on every save.
         from opinions.utils import compute_disposition_bucket
         self.disposition_bucket = compute_disposition_bucket(self.disposition)
+
+        # Auto-stamp reviewed_at on transition into the human-reviewed state
+        # via direct form edits. Admin bulk actions stamp explicitly, so this
+        # is the catch-all for one-off edits where the editor flips the
+        # dropdown but forgets to fill in the timestamp.
+        if (
+            self.review_status == self.ReviewStatus.REVIEWED
+            and self.reviewed_at is None
+        ):
+            from django.utils import timezone
+            self.reviewed_at = timezone.now()
+
         super().save(*args, **kwargs)
 
         # After the row has a pk, run the state's opinion parser. Fills empty

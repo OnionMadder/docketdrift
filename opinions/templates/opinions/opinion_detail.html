@@ -22,6 +22,12 @@
     {% if opinion.disposition %}
       <span class="case-status disposition-{{ opinion.disposition_class }}">{{ opinion.disposition }}</span>
     {% endif %}
+    <span class="review-pill review-pill--{{ opinion.review_status }}" title="{{ opinion.get_review_status_display }}">
+      {{ opinion.get_review_status_display }}
+      {% if opinion.review_status == 'reviewed' and opinion.reviewed_by %}
+        &middot; {{ opinion.reviewed_by }}{% if opinion.reviewed_at %} &middot; {{ opinion.reviewed_at|date:"Y-m-d" }}{% endif %}
+      {% endif %}
+    </span>
   </div>
 
   <h1>{{ opinion.title }}</h1>

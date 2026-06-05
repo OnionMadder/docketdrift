@@ -54,6 +54,7 @@
           {% endif %}
         </td>
         <td class="title-cell">
+          <span class="review-dot review-dot--{{ op.review_status }}" title="{{ op.get_review_status_display }}" aria-label="{{ op.get_review_status_display }}"></span>
           <a href="{% url 'opinions:detail' case_number=op.case_number %}">{{ op.title|truncatechars:90 }}</a>
         </td>
       </tr>

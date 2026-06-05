@@ -540,3 +540,70 @@
     height: 180px;
   }
 }
+
+/* ============================================================
+   Editorial review status
+   ============================================================
+   Surfaces whether an opinion has been human-reviewed vs. only
+   machine-processed. Detail-page chip + list-view colored dot.
+   ============================================================ */
+
+/* Detail-page chip (alongside Precedential / Disposition in the header) */
+.review-pill {
+  display: inline-block;
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 0.22rem 0.6rem;
+  border-radius: 3px;
+  border: 1px solid;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.review-pill--ai_only {
+  color: #ffbf3d;
+  border-color: rgba(255, 191, 61, 0.45);
+  background: rgba(255, 191, 61, 0.08);
+}
+
+.review-pill--flagged {
+  color: var(--hazard-red);
+  border-color: rgba(255, 64, 84, 0.45);
+  background: rgba(255, 64, 84, 0.08);
+}
+
+.review-pill--reviewed {
+  color: var(--neon-cyan);
+  border-color: rgba(38, 255, 230, 0.55);
+  background: rgba(38, 255, 230, 0.1);
+  box-shadow: 0 0 8px rgba(38, 255, 230, 0.2);
+}
+
+/* List-view dot (in the title cell, before the case link) */
+.review-dot {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  margin-right: 0.45rem;
+  vertical-align: middle;
+  flex-shrink: 0;
+  cursor: help;
+}
+
+.review-dot--ai_only {
+  background: #ffbf3d;
+  box-shadow: 0 0 5px rgba(255, 191, 61, 0.45);
+}
+
+.review-dot--flagged {
+  background: var(--hazard-red);
+  box-shadow: 0 0 5px rgba(255, 64, 84, 0.55);
+}
+
+.review-dot--reviewed {
+  background: var(--neon-cyan);
+  box-shadow: 0 0 6px rgba(38, 255, 230, 0.65);
+}
