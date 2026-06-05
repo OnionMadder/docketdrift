@@ -1,15 +1,26 @@
-"""Scrape the current MN judicial roster into Judge rows.
+"""Scrape a state's current judicial roster into Judge rows.
 
 Usage::
 
     python manage.py scrape_judges mn              # full ingest
     python manage.py scrape_judges mn --dry-run    # parse + print, no writes
+    python manage.py scrape_judges nh              # NH ingest (5 SCt justices)
 
-The scraper discovers each justice/judge's bio URL from mncourts.gov's
-sitemap (auto-updates when new bios are published) and visits each one.
-It marks any previously-seated Judge whose source_id is no longer in
-the sitemap as ``is_currently_seated=False`` so the roster page never
-shows former judges.
+Per-state scraper modules live in ``opinions/scrapers/``; this command
+dispatches to the right one via ``SCRAPER_REGISTRY``. Each scraper exposes
+the same ``ScrapedJudge`` dataclass + ``scrape_all()`` interface, so this
+command stays state-agnostic past the registry lookup.
+
+Persistence rules (same as the original MN command):
+
+- ``get_or_create`` on ``(state, source_id)``. New rows get scraper data
+  on every field. Existing rows have scraper-authoritative fields
+  resynced (court, full_name, slug, role, is_currently_seated, bio_url,
+  photo_url) but user-editable fields (bio_summary, appointment_date)
+  are NEVER overwritten -- the editor's hand-curated text wins.
+- Any previously-seated judge in this state whose source_id is no longer
+  present in today's scrape gets ``is_currently_seated=False`` so the
+  roster page stays current without losing the row.
 """
 from __future__ import annotations
 
@@ -19,18 +30,30 @@ from django.core.management.base import BaseCommand, CommandError
 
 from opinions.models import Court, Judge, State
 from opinions.scrapers.mn_judges import MNJudgeScraper
+from opinions.scrapers.nh_judges import NHJudgeScraper
 
 logger = logging.getLogger(__name__)
 
 
+# State code -> scraper class. New states slot in here once their
+# scraper module ships. Every scraper class implements:
+#   - ``scrape_all()`` -> list[ScrapedJudge]
+#   - ``django_slug_for(source_id)`` -> str
+#   - ``_sleep`` callable + ``SLEEP_BETWEEN_FETCHES``-like cadence
+SCRAPER_REGISTRY = {
+    "MN": MNJudgeScraper,
+    "NH": NHJudgeScraper,
+}
+
+
 class Command(BaseCommand):
-    help = "Scrape currently-seated MN appellate judges from mncourts.gov."
+    help = "Scrape currently-seated appellate judges from a state's judicial website."
 
     def add_arguments(self, parser):
         parser.add_argument(
             "state_code",
             type=str,
-            help="USPS 2-letter state code. Only 'mn' is supported in this version.",
+            help=f"USPS 2-letter state code. Supported: {sorted(SCRAPER_REGISTRY)}.",
         )
         parser.add_argument(
             "--dry-run",
@@ -46,9 +69,11 @@ class Command(BaseCommand):
 
     def handle(self, *args, state_code, dry_run, limit, **options):
         state_code = (state_code or "").upper()
-        if state_code != "MN":
+        scraper_cls = SCRAPER_REGISTRY.get(state_code)
+        if scraper_cls is None:
             raise CommandError(
-                f"Only MN is supported in this scraper version, got {state_code!r}."
+                f"No scraper registered for state {state_code!r}. "
+                f"Supported: {sorted(SCRAPER_REGISTRY)}."
             )
 
         try:
@@ -58,46 +83,35 @@ class Command(BaseCommand):
                 f"State {state_code} not found -- run migrations first."
             )
 
-        try:
-            sct_court = Court.objects.get(state=state, courtlistener_id="minn")
-            coa_court = Court.objects.get(state=state, courtlistener_id="minnctapp")
-        except Court.DoesNotExist as exc:
+        # Build court_by_kind dynamically from what exists in the DB for
+        # this state. MN has both SUPREME + APPEALS; NH has only SUPREME.
+        # Lets future states with different court structures slot in
+        # without touching this command.
+        courts_for_state = {c.level: c for c in Court.objects.filter(state=state)}
+        if not courts_for_state:
             raise CommandError(
-                f"Required court row missing: {exc}. "
+                f"No Court rows seeded for state {state_code}. "
                 "Run `manage.py migrate` to apply the seed migrations."
             )
-
-        court_by_kind = {"SUPREME": sct_court, "APPEALS": coa_court}
-
-        scraper = MNJudgeScraper()
-
-        self.stdout.write("Discovering roster from mncourts.gov sitemap...")
-        sct_urls, coa_urls = scraper.discover_bio_urls()
-        total = len(sct_urls) + len(coa_urls)
+        court_by_kind = {
+            "SUPREME": courts_for_state.get("SUPREME"),
+            "APPEALS": courts_for_state.get("APPEALS"),
+        }
         self.stdout.write(
-            f"  found {len(sct_urls)} Supreme Court + {len(coa_urls)} Court of Appeals = {total} bios"
+            f"Courts in scope for {state_code}: "
+            + ", ".join(
+                f"{k}={v.courtlistener_id}" for k, v in court_by_kind.items() if v
+            )
         )
 
-        # Fetch all bios. Sleep between requests so the cron is polite
-        # to upstream -- 26 fetches * 0.4s = ~10s of pure waiting, fine.
-        from opinions.scrapers.mn_judges import SLEEP_BETWEEN_FETCHES
+        scraper = scraper_cls()
+        self.stdout.write(f"Scraping {state_code} roster...")
+        scraped = scraper.scrape_all()
+        self.stdout.write(f"  scraped {len(scraped)} judge(s)")
 
-        scraped = []
-        all_urls = (
-            [(u, "SUPREME") for u in sct_urls]
-            + [(u, "APPEALS") for u in coa_urls]
-        )
-        for url, court_kind in all_urls:
-            tag = "SCt" if court_kind == "SUPREME" else "COA"
-            self.stdout.write(f"  [{tag}] {url.rsplit('/', 1)[-1]}")
-            row = scraper.fetch_bio(url, court_kind=court_kind)
-            if row is not None:
-                scraped.append(row)
-            if limit and len(scraped) >= limit:
-                break
-            scraper._sleep(SLEEP_BETWEEN_FETCHES)
+        if limit:
+            scraped = scraped[:limit]
 
-        # Persist.
         created = 0
         updated = 0
         current_source_ids: set[str] = set()
@@ -115,13 +129,8 @@ class Command(BaseCommand):
                 continue
 
             court = court_by_kind.get(row.court_kind)
-            slug = MNJudgeScraper.django_slug_for(row.source_id)
+            slug = scraper_cls.django_slug_for(row.source_id)
 
-            # Split fields by who owns them:
-            # - Scraper-authoritative -- always re-synced on each run because
-            #   they reflect the official upstream roster.
-            # - User-editable on first creation only -- the user has full
-            #   control via admin and the scraper never clobbers their work.
             obj, was_created = Judge.objects.get_or_create(
                 state=state,
                 source_id=row.source_id,
@@ -134,7 +143,8 @@ class Command(BaseCommand):
                     "is_currently_seated": True,
                     "bio_url": row.bio_url,
                     "photo_url": row.photo_url,
-                    # Seeded on first run; never touched again. User-editable.
+                    # User-editable; seeded on first run, then never
+                    # clobbered by subsequent scrapes.
                     "bio_summary": row.bio_summary,
                     "appointment_date": row.appointment_date,
                 },
@@ -142,9 +152,7 @@ class Command(BaseCommand):
             if was_created:
                 created += 1
             else:
-                # Resync only the scraper-authoritative fields. bio_summary
-                # and appointment_date stay whatever the user (or the first
-                # scrape) set them to.
+                # Resync only scraper-authoritative fields.
                 obj.court = court
                 obj.full_name = row.full_name
                 obj.slug = slug
@@ -158,9 +166,6 @@ class Command(BaseCommand):
                 ])
                 updated += 1
 
-        # Anyone we previously had as seated but who isn't in today's sitemap
-        # has left the bench (retired, elevated, etc). Mark them so the
-        # roster page stays current without dropping the historical row.
         stale_marked = 0
         if not dry_run and current_source_ids:
             stale_qs = Judge.objects.filter(
