@@ -71,12 +71,22 @@ class Court(models.Model):
 
     @property
     def short_label(self) -> str:
-        """Compact label for the doc-table court pill (e.g. 'Minn. Ct. App.')."""
+        """Compact label for the doc-table court pill (e.g. 'Minn. Ct. App.').
+
+        New states are added here when they go live -- the per-state map
+        beats trying to derive abbreviations algorithmically (Tex. vs Tx.,
+        Cal. vs Calif. -- legal Bluebook convention varies). Fall through
+        to ``self.name`` for any unmapped court so nothing breaks if a row
+        ships before its label is curated.
+        """
         if self.state_id == "MN":
             if self.level == self.Level.SUPREME:
                 return "Minn."
             if self.level == self.Level.APPEALS:
                 return "Minn. Ct. App."
+        if self.state_id == "NH":
+            if self.level == self.Level.SUPREME:
+                return "N.H."
         return self.name
 
     @property
