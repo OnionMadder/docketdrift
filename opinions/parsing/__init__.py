@@ -20,11 +20,9 @@ from __future__ import annotations
 
 from .base import ParsedOpinion, StateParser
 from .mn import MinnesotaParser
-from .nh import NewHampshireParser
 
 REGISTRY: dict[str, StateParser] = {
     "MN": MinnesotaParser(),
-    "NH": NewHampshireParser(),
 }
 
 
