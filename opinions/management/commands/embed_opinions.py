@@ -50,10 +50,21 @@ from django.db import connection
 
 # Voyage's "voyage-law-2" model -- 1024-dim, legal-domain-tuned, 16K context
 DEFAULT_MODEL = "voyage-law-2"
-# Voyage's embed endpoint accepts up to 128 documents per call (their max).
-# Bigger batch = fewer roundtrips, but each call's wall-clock grows with
-# embed inference time.
+# Voyage's embed endpoint accepts up to 128 documents per call (their max),
+# but ALSO caps total tokens per batch at 120K. Legal opinions average
+# ~5-10K tokens each, so 128-doc batches blow that token cap immediately.
+# We use --batch-size as a HARD CAP on rows fetched per iteration and let
+# --max-batch-tokens dynamically pack the batch under Voyage's limit.
 DEFAULT_BATCH = 128
+# Voyage's per-batch token cap is 120K; leave headroom for our rough
+# 4-char-per-token estimate going low (legal text actually trends higher).
+DEFAULT_MAX_BATCH_TOKENS = 100_000
+# voyage-law-2's context window. Anything longer gets truncation=true'd
+# away, so we cap our estimate here too.
+MODEL_CONTEXT_TOKENS = 16_000
+# Heuristic: legal English averages ~4 chars per token (between code-3
+# and prose-4.5). Generous enough to not under-estimate badly.
+EST_CHARS_PER_TOKEN = 4
 # Voyage free tier: 60 requests/minute. Paid tier: 600+. Adjust via --rpm.
 DEFAULT_RPM = 60
 # Voyage-law-2 list price per 1M tokens. Used only to estimate cumulative
@@ -65,10 +76,14 @@ MAX_RETRIES = 3
 RETRY_SLEEP_SECONDS = 30
 
 VOYAGE_EMBED_URL = "https://api.voyageai.com/v1/embeddings"
-# Per-request HTTP timeout. Embed inference on a 128-doc batch of legal
-# text can take 10-30s; pad generously so we don't error out on cold-
-# cache slowness.
+# Per-request HTTP timeout. Embed inference on a token-packed batch of
+# legal text can take 10-30s; pad generously.
 REQUEST_TIMEOUT_SECONDS = 180
+
+
+def _estimate_tokens(text: str) -> int:
+    """Rough token count for a single document, capped at the model context."""
+    return min(len(text) // EST_CHARS_PER_TOKEN, MODEL_CONTEXT_TOKENS)
 
 
 def _voyage_embed(texts: list[str], model: str, api_key: str) -> tuple[list[list[float]], int]:
@@ -119,7 +134,21 @@ class Command(BaseCommand):
             "--batch-size",
             type=int,
             default=DEFAULT_BATCH,
-            help=f"Documents per embed call (default {DEFAULT_BATCH}, Voyage max 128).",
+            help=(
+                f"Hard cap on rows fetched per iteration (default {DEFAULT_BATCH}, "
+                "Voyage's API max). The actual batch is dynamically packed under "
+                "--max-batch-tokens, so this just bounds the inner loop."
+            ),
+        )
+        parser.add_argument(
+            "--max-batch-tokens",
+            type=int,
+            default=DEFAULT_MAX_BATCH_TOKENS,
+            help=(
+                f"Per-request token cap (default {DEFAULT_MAX_BATCH_TOKENS:,}). "
+                "Voyage rejects batches over 120K tokens; we pack each batch "
+                "under this estimate to stay safe."
+            ),
         )
         parser.add_argument(
             "--rpm",
@@ -133,7 +162,7 @@ class Command(BaseCommand):
             help=f"Voyage model name (default {DEFAULT_MODEL}).",
         )
 
-    def handle(self, *args, limit, batch_size, rpm, model, **options):
+    def handle(self, *args, limit, batch_size, max_batch_tokens, rpm, model, **options):
         if connection.vendor != "mysql":
             raise CommandError(
                 f"Embedding requires MariaDB / MySQL (got {connection.vendor!r}). "
@@ -170,8 +199,8 @@ class Command(BaseCommand):
             f"Embedding {total_to_do:,} opinions via {model}."
         ))
         self.stdout.write(
-            f"  batch={batch_size}  target_rpm={rpm}  "
-            f"price=${PRICE_PER_M_TOKENS_USD:.2f}/M tokens\n"
+            f"  fetch_cap={batch_size}  max_tokens/batch={max_batch_tokens:,}  "
+            f"target_rpm={rpm}  price=${PRICE_PER_M_TOKENS_USD:.2f}/M tokens\n"
         )
 
         seconds_between_batches = 60.0 / rpm
@@ -185,13 +214,31 @@ class Command(BaseCommand):
                 cursor.execute(
                     "SELECT id, raw_text FROM opinions_opinion "
                     "WHERE embedding IS NULL AND raw_text != '' "
+                    "ORDER BY id "
                     "LIMIT %s",
                     [batch_size],
                 )
-                rows = cursor.fetchall()
+                fetched = cursor.fetchall()
 
-            if not rows:
+            if not fetched:
                 break  # All done
+
+            # Pack as many rows as we can under Voyage's per-request token
+            # cap. Single huge docs that alone exceed the budget still go
+            # solo (truncation=true clamps them to MODEL_CONTEXT_TOKENS,
+            # which fits even MODEL_CONTEXT < max_batch_tokens by design).
+            batch = []
+            batch_estimated_tokens = 0
+            for row in fetched:
+                et = _estimate_tokens(row[1])
+                if batch and batch_estimated_tokens + et > max_batch_tokens:
+                    break
+                batch.append(row)
+                batch_estimated_tokens += et
+            if not batch:  # safety net -- shouldn't happen but be defensive
+                batch = [fetched[0]]
+                batch_estimated_tokens = _estimate_tokens(fetched[0][1])
+            rows = batch  # name the inner loop expects
 
             # Rate limit -- wait between batches if we'd exceed RPM
             elapsed = time.time() - last_call_ts
