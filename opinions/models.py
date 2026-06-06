@@ -570,6 +570,52 @@ class OpinionHolding(models.Model):
         return f"Holding on opinion {self.opinion_id}: {self.holding_text[:60]}"
 
 
+class StateRequest(models.Model):
+    """A reader's request to add their state's appellate corpus.
+
+    Surfaced on the apex page so visitors who don't see their state get a
+    way to register interest without emailing the maintainer. The admin
+    list groups these so we can see which states have the most demand and
+    prioritize expansion accordingly.
+
+    No auth required to submit (public CTA), so we keep the surface area
+    small: state_name (free-text -- could be "California", "CA", "PR"),
+    optional email for follow-up, optional notes for context. ip_address
+    is admin-only and exists for anti-spam triage; never displayed.
+    """
+
+    state_name = models.CharField(
+        max_length=64,
+        help_text="What the user typed -- could be 'California', 'CA', 'Puerto Rico'.",
+    )
+    email = models.EmailField(
+        blank=True,
+        default="",
+        help_text="Optional. If provided, we'll email when their state goes live.",
+    )
+    notes = models.TextField(
+        blank=True,
+        default="",
+        help_text="Optional. Anything the requester wants to tell us.",
+    )
+    ip_address = models.GenericIPAddressField(
+        null=True,
+        blank=True,
+        help_text="For anti-spam triage. Admin-only; never shown publicly.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["state_name"]),
+            models.Index(fields=["-created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.state_name} requested {self.created_at:%Y-%m-%d}"
+
+
 class ParseLog(models.Model):
     """Audit trail for opinion parser runs.
 

@@ -9,6 +9,7 @@ from opinions.models import (
     PanelVote,
     ParseLog,
     State,
+    StateRequest,
 )
 
 
@@ -147,6 +148,26 @@ class OpinionHoldingAdmin(admin.ModelAdmin):
     list_display = ("opinion", "statute_cited", "holding_direction")
     list_filter = ("holding_direction",)
     search_fields = ("statute_cited", "holding_text")
+
+
+@admin.register(StateRequest)
+class StateRequestAdmin(admin.ModelAdmin):
+    """Reader requests for a state's appellate corpus.
+
+    Grouping by state_name in the changelist surfaces which states have
+    the most reader demand -- the queue this drives is "which state to
+    embed next".
+    """
+    list_display = ("state_name", "email_short", "created_at")
+    list_filter = ("created_at",)
+    search_fields = ("state_name", "email", "notes")
+    readonly_fields = ("created_at", "ip_address")
+    date_hierarchy = "created_at"
+    ordering = ("-created_at",)
+
+    @admin.display(description="Email")
+    def email_short(self, obj):
+        return obj.email or "—"
 
 
 @admin.register(ParseLog)

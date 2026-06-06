@@ -213,3 +213,9 @@ LOGGING = {
 
 # --- App-specific ----------------------------------------------------------
 COURTLISTENER_TOKEN = os.environ.get("COURTLISTENER_TOKEN", "")
+
+# Donation link surfaced on /support/. Leave empty to hide the donate
+# button (the page still renders the "where the money goes" explainer
+# and a tell-a-friend fallback). Set to a GitHub Sponsors / Ko-fi /
+# Stripe Payment Link URL when ready.
+DONATE_URL = os.environ.get("DONATE_URL", "")

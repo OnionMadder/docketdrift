@@ -542,6 +542,177 @@
 }
 
 /* ============================================================
+   CTA / Support frame (apex page + support page)
+   ============================================================
+   The "request your state" + "help fund the next embed" block
+   on the apex needs to read as friendly + funder-honest, not
+   pushy. Soft pink left-border accent matches the brand block.
+   ============================================================ */
+
+.cta-frame {
+  border-left: 3px solid var(--neon-pink);
+}
+
+.cta-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.cta-primary,
+.cta-secondary {
+  display: inline-block;
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-decoration: none;
+  padding: 0.55rem 1rem;
+  border-radius: 3px;
+  border: 1px solid;
+  transition: color var(--transition), border-color var(--transition), background var(--transition), text-shadow var(--transition);
+}
+
+.cta-primary {
+  color: var(--neon-cyan);
+  border-color: rgba(38, 255, 230, 0.55);
+  background: rgba(38, 255, 230, 0.08);
+  text-shadow: 0 0 6px rgba(38, 255, 230, 0.35);
+}
+
+.cta-primary:hover,
+.cta-primary:focus-visible {
+  color: var(--bg-deep);
+  background: var(--neon-cyan);
+  border-color: var(--neon-cyan);
+  text-shadow: none;
+}
+
+.cta-secondary {
+  color: var(--neon-pink);
+  border-color: rgba(255, 43, 179, 0.55);
+  background: rgba(255, 43, 179, 0.08);
+}
+
+.cta-secondary:hover,
+.cta-secondary:focus-visible {
+  color: var(--bg-deep);
+  background: var(--neon-pink);
+  border-color: var(--neon-pink);
+}
+
+button.cta-primary {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.cta-footnote {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: var(--border-soft);
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.subtle-note {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  margin-top: -0.5rem;
+}
+
+.cost-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.5rem;
+}
+
+.cost-list li {
+  padding: 0.85rem 0 0.85rem 1.25rem;
+  border-left: 2px solid rgba(38, 255, 230, 0.4);
+  margin-bottom: 0.6rem;
+  background: rgba(38, 255, 230, 0.04);
+  line-height: 1.55;
+}
+
+.cost-list strong {
+  color: var(--neon-cyan);
+  font-weight: 600;
+}
+
+/* ============================================================
+   Request-state form
+   ============================================================ */
+
+.cta-form {
+  margin: 1.5rem 0 0;
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1.1rem;
+}
+
+.form-row label {
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.form-row input[type="text"],
+.form-row input[type="email"],
+.form-row textarea {
+  font-family: inherit;
+  font-size: 1rem;
+  color: var(--text-bright, #f0e8f5);
+  background: rgba(15, 0, 25, 0.6);
+  border: 1px solid rgba(148, 140, 161, 0.4);
+  border-radius: 3px;
+  padding: 0.55rem 0.7rem;
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.form-row input[type="text"]:focus,
+.form-row input[type="email"]:focus,
+.form-row textarea:focus {
+  outline: none;
+  border-color: var(--neon-cyan);
+  background: rgba(15, 0, 25, 0.9);
+}
+
+.form-row textarea {
+  resize: vertical;
+  min-height: 4rem;
+  font-family: inherit;
+  line-height: 1.5;
+}
+
+.form-error {
+  color: var(--hazard-red);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.form-actions {
+  margin-top: 1rem;
+}
+
+/* Honeypot trap -- hidden from real users; bots fill it. */
+.hp-trap {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+/* ============================================================
    Editorial review status
    ============================================================
    Surfaces whether an opinion has been human-reviewed vs. only

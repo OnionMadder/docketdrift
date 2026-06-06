@@ -1,0 +1,61 @@
+{% extends "opinions/base.html" %}
+{% block title %}Request your state &middot; DocketDrift{% endblock %}
+
+{% block content %}
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+  <ol>
+    <li><a href="https://docketdrift.com/">DocketDrift</a></li>
+    <li aria-current="page">Request your state</li>
+  </ol>
+</nav>
+
+<div class="glossy-frame">
+  <h1>Request your state</h1>
+  <p class="subtle-lead">
+    DocketDrift expands one state at a time, based on demand and funding. Tell us yours and we&rsquo;ll add it to the queue.
+  </p>
+
+  <form method="post" class="cta-form">
+    {% csrf_token %}
+
+    {# Honeypot: humans don't see this, bots fill it. CSS hides it. #}
+    <div class="hp-trap" aria-hidden="true">
+      <label>Leave this field blank: {{ form.website }}</label>
+    </div>
+
+    <div class="form-row">
+      <label for="{{ form.state_name.id_for_label }}">{{ form.state_name.label }}</label>
+      {{ form.state_name }}
+      {% if form.state_name.errors %}
+        <p class="form-error">{{ form.state_name.errors|join:" " }}</p>
+      {% endif %}
+    </div>
+
+    <div class="form-row">
+      <label for="{{ form.email.id_for_label }}">{{ form.email.label }}</label>
+      {{ form.email }}
+      {% if form.email.errors %}
+        <p class="form-error">{{ form.email.errors|join:" " }}</p>
+      {% endif %}
+    </div>
+
+    <div class="form-row">
+      <label for="{{ form.notes.id_for_label }}">{{ form.notes.label }}</label>
+      {{ form.notes }}
+      {% if form.notes.errors %}
+        <p class="form-error">{{ form.notes.errors|join:" " }}</p>
+      {% endif %}
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="cta-primary">Submit request</button>
+    </div>
+  </form>
+</div>
+
+<div class="glossy-frame">
+  <h2>What happens next</h2>
+  <p>Your request goes into the maintainer&rsquo;s queue. There&rsquo;s no public voting yet &mdash; the queue is read directly. If you left an email, we&rsquo;ll send you one note when your state goes live (and never spam you for anything else).</p>
+  <p><a href="{% url 'opinions:support' %}">Read about why expanding a state costs money &rarr;</a></p>
+</div>
+{% endblock %}

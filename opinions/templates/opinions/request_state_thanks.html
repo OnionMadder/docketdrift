@@ -1,0 +1,20 @@
+{% extends "opinions/base.html" %}
+{% block title %}Thanks &middot; DocketDrift{% endblock %}
+
+{% block content %}
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+  <ol>
+    <li><a href="https://docketdrift.com/">DocketDrift</a></li>
+    <li aria-current="page">Thanks</li>
+  </ol>
+</nav>
+
+<div class="glossy-frame">
+  <h1>Thanks &mdash; noted.</h1>
+  <p class="subtle-lead">Your request is in the queue.</p>
+
+  <p>If you left an email, you&rsquo;ll get one note when your state goes live. Otherwise, just check back periodically &mdash; we update the <a href="https://docketdrift.com/">apex page</a> as new states roll out.</p>
+
+  <p>If you want to help bring your state online sooner, <a href="{% url 'opinions:support' %}">here&rsquo;s how the project is funded &rarr;</a></p>
+</div>
+{% endblock %}

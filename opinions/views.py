@@ -156,6 +156,58 @@ def about(request):
     })
 
 
+def support(request):
+    """Donate / why-this-costs-money explainer.
+
+    The donate URL itself is configured in settings (``DONATE_URL``) so
+    the maintainer can update it without a code change. Empty string ->
+    we hide the button and show the "tell a friend" fallback only.
+    """
+    from django.conf import settings
+    return render(request, "opinions/support.html", {
+        "donate_url": getattr(settings, "DONATE_URL", ""),
+        "active_nav": "about",
+    })
+
+
+def request_state(request):
+    """Public CTA: request that a state's appellate corpus be added.
+
+    Honeypot field on the form rejects bot submissions silently.
+    Successful POST redirects to a thanks page (POST-redirect-GET so a
+    reload doesn't double-submit).
+    """
+    from opinions.forms import StateRequestForm
+    from django.urls import reverse
+
+    if request.method == "POST":
+        form = StateRequestForm(request.POST)
+        # Honeypot: if `website` was filled, treat as a bot and silently
+        # redirect to thanks (don't tip the bot off).
+        if form.is_valid() and not form.cleaned_data.get("website"):
+            obj = form.save(commit=False)
+            # Best-effort IP capture for admin-side anti-spam triage.
+            xff = request.META.get("HTTP_X_FORWARDED_FOR", "")
+            ip = xff.split(",")[0].strip() if xff else request.META.get("REMOTE_ADDR")
+            obj.ip_address = ip or None
+            obj.save()
+        # Either valid+saved or honeypot-trapped: same thanks page so
+        # bots get no signal.
+        return redirect(reverse("opinions:request_state_thanks"))
+
+    form = StateRequestForm()
+    return render(request, "opinions/request_state.html", {
+        "form": form,
+        "active_nav": "about",
+    })
+
+
+def request_state_thanks(request):
+    return render(request, "opinions/request_state_thanks.html", {
+        "active_nav": "about",
+    })
+
+
 def current_judges(request):
     """Roster of currently-seated judges. State-scoped: redirects to apex
     when accessed without a state subdomain (no roster to show without one)."""

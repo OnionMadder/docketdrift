@@ -1,0 +1,55 @@
+{% extends "opinions/base.html" %}
+{% block title %}Support DocketDrift &middot; the costs &middot; how to help{% endblock %}
+
+{% block content %}
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+  <ol>
+    <li><a href="https://docketdrift.com/">DocketDrift</a></li>
+    <li aria-current="page">Support</li>
+  </ol>
+</nav>
+
+<div class="glossy-frame">
+  <h1>How DocketDrift is funded</h1>
+  <p class="subtle-lead">
+    Built and maintained by one person. No foundation, no grant, no company. Just a human and a hosting bill.
+  </p>
+
+  <h2>Where the money goes</h2>
+  <ul class="cost-list">
+    <li>
+      <strong>~$100 per state, one-time:</strong> embedding the full corpus through Voyage AI&rsquo;s legal model. Minnesota alone is ~60,000 opinions across nearly a century of decisions, totaling ~720 million tokens of legal text. The embeddings are what make semantic search work &mdash; not just "find this exact phrase," but "find opinions about this concept even when they use different words."
+    </li>
+    <li>
+      <strong>~$15 per month, ongoing:</strong> hosting at NearlyFreeSpeech.NET. Cheap, ad-free, the kind of host that lets a one-person operation breathe.
+    </li>
+    <li>
+      <strong>Per-query API costs, ongoing:</strong> every semantic search you run hits Voyage&rsquo;s API. Pennies per query, but they add up.
+    </li>
+    <li>
+      <strong>Time:</strong> evenings and weekends, building scrapers, parsers, refactors, and editorial review &mdash; one state, one judge dossier, one tag at a time.
+    </li>
+  </ul>
+
+  <h2>If you want to help fund the next state</h2>
+  {% if donate_url %}
+    <p>
+      <a class="cta-primary" href="{{ donate_url }}" target="_blank" rel="noopener noreferrer">Chip in &rarr;</a>
+    </p>
+    <p class="subtle-note">Any amount helps &mdash; the embedding bill is the same whether one person funds it or fifty.</p>
+  {% else %}
+    <p>Donation link coming soon. In the meantime, tell someone who&rsquo;d find DocketDrift useful &mdash; that helps too.</p>
+  {% endif %}
+
+  <h2>Other ways to help</h2>
+  <ul>
+    <li><a href="{% url 'opinions:request_state' %}">Request your state.</a> Demand drives the priority queue.</li>
+    <li>Tell a journalist, a law student, a paralegal, or anyone who&rsquo;d find appellate decisions easier to follow with this site.</li>
+    <li>Spot something wrong? Report it via the maintainer&rsquo;s email on the <a href="{% url 'opinions:about' %}">about page</a>. Quiet correction is the most valuable contribution.</li>
+  </ul>
+
+  <p class="cta-footnote">
+    DocketDrift will stay ad-free, tracker-free (one GoatCounter pixel for anonymous usage counts, no third parties), and free to read forever. The donation path exists to make that sustainable, not to gate access.
+  </p>
+</div>
+{% endblock %}

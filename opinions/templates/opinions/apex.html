@@ -30,6 +30,15 @@
   {% endif %}
 </div>
 
+<div class="glossy-frame cta-frame">
+  <h2>Don&rsquo;t see your state?</h2>
+  <p>DocketDrift expands one state at a time. Each state&rsquo;s embedding pass costs ~$100 in API fees plus ongoing hosting &mdash; this is a solo project built at cost. You can help us pick what&rsquo;s next.</p>
+  <div class="cta-actions">
+    <a class="cta-primary" href="{% url 'opinions:request_state' %}">Request your state &rarr;</a>
+    <a class="cta-secondary" href="{% url 'opinions:support' %}">Help fund the next embed &rarr;</a>
+  </div>
+</div>
+
 <div class="glossy-frame">
   <h2>What this is</h2>
   <p>DocketDrift collates published opinions from state appellate courts. The goal is to make patterns in published judicial decisions easier to read together &mdash; how a judge votes across related cases, how a court treats similar statutes over time. All source material is in the public record.</p>
