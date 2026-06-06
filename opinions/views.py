@@ -20,15 +20,31 @@ from django.shortcuts import redirect, render
 from opinions.models import Judge, Opinion, State
 
 
-# Per-page row count for the state-home doc-table. 50 keeps the page
-# under ~30 KB rendered, lets a power user browse dense, and still gives
-# a reasonable number of "pages" to navigate (60K MN opinions -> ~1,200
-# pages, so anyone past ~10 pages is using search not browse anyway).
+# Page size when the user has filtered or searched (power-user mode).
+# 60K MN opinions / 50 per page = ~1,200 pages -- comfortable to navigate
+# once filtered down to a topic.
 HOME_PAGE_SIZE = 50
+
+# Page size on the default landing (no filter/search) -- casual visitor.
+# Recent activity surface; search box is the way to go deeper.
+HOME_LANDING_SIZE = 10
 
 
 def home(request):
-    """Apex state-picker when no subdomain matches; per-state landing otherwise."""
+    """Apex state-picker when no subdomain matches; per-state landing otherwise.
+
+    The state landing has two display modes:
+
+    - DEFAULT (no filter/search): shows ``HOME_LANDING_SIZE`` most recent
+      opinions, no pagination, with a "use search to dig deeper" prompt.
+      Mirrors how casual visitors actually use the site -- they want to
+      see what's new, then search for the specific thing they're after.
+    - FILTERED/SEARCHED (``?q=`` or ``?disposition=``): full pagination
+      at ``HOME_PAGE_SIZE`` per page. This is the power-user view.
+
+    Switching modes only on the presence of a query param keeps the
+    contract simple -- one URL grammar, two render modes.
+    """
     state = getattr(request, "state", None)
     search_q = (request.GET.get("q") or "").strip()
     disp_filter = (request.GET.get("disposition") or "").strip().lower()
@@ -57,11 +73,19 @@ def home(request):
     if disp_filter:
         qs = qs.filter(disposition_bucket=disp_filter)
 
-    # Paginate. ``Paginator.get_page`` is tolerant of bad input (out-of-range
-    # page numbers clamp to first/last; non-int falls back to page 1) so we
-    # don't need explicit query-param validation here.
-    paginator = Paginator(qs, HOME_PAGE_SIZE)
-    page_obj = paginator.get_page(request.GET.get("page", 1))
+    is_filtered = bool(search_q or disp_filter)
+
+    if is_filtered:
+        paginator = Paginator(qs, HOME_PAGE_SIZE)
+        page_obj = paginator.get_page(request.GET.get("page", 1))
+        opinions = page_obj.object_list
+        total_count = paginator.count
+    else:
+        # Default landing: just the most recent N. No paginator object so
+        # the template knows we're in landing mode.
+        page_obj = None
+        opinions = list(qs[:HOME_LANDING_SIZE])
+        total_count = qs.count()
 
     # Find the human-readable label of the active disposition filter for the banner.
     disp_label = ""
@@ -74,9 +98,10 @@ def home(request):
 
     return render(request, "opinions/state_home.html", {
         "state": state,
-        "opinions": page_obj.object_list,
+        "opinions": opinions,
         "page_obj": page_obj,
-        "total_count": paginator.count,
+        "total_count": total_count,
+        "is_filtered": is_filtered,
         "active_nav": "opinions",
         "search_q": search_q,
         "disp_filter": disp_filter,

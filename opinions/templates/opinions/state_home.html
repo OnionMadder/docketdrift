@@ -13,7 +13,7 @@
   <h1>{{ state.name }} Appellate Opinions</h1>
   <p class="subtle-lead">
     Published opinions of the {{ state.name }} Supreme Court and Court of Appeals, collated from public records.
-    <strong>{{ total_count }}</strong> opinion{{ total_count|pluralize }}{% if disp_filter or search_q %} matched{% else %} indexed{% endif %}{% if page_obj.paginator.num_pages > 1 %}; showing {{ page_obj.start_index }}&ndash;{{ page_obj.end_index }}{% else %}; latest below{% endif %}.
+    <strong>{{ total_count }}</strong> opinion{{ total_count|pluralize }}{% if is_filtered %} matched{% else %} indexed{% endif %}{% if page_obj and page_obj.paginator.num_pages > 1 %}; showing {{ page_obj.start_index }}&ndash;{{ page_obj.end_index }}{% elif not is_filtered %}; ten most recent below{% endif %}.
   </p>
 
   {% if disp_filter or search_q %}
@@ -62,7 +62,17 @@
     </tbody>
   </table>
 
-  {% if page_obj.has_other_pages %}
+  {% if not is_filtered %}
+    <div class="dig-deeper">
+      <p>
+        <strong>{{ total_count }}</strong> opinions indexed, going back to the 1930s.
+        Use the <strong>search box</strong> above to find specific case numbers, party names, judges, or topics &mdash;
+        or pick an outcome from the <strong>Outcomes</strong> legend in the sidebar to filter by disposition.
+      </p>
+    </div>
+  {% endif %}
+
+  {% if page_obj and page_obj.has_other_pages %}
     <nav class="pagination" aria-label="Opinion pagination">
       <div class="pagination-prev">
         {% if page_obj.has_previous %}

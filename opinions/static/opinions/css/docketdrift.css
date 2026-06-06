@@ -609,6 +609,36 @@
 }
 
 /* ============================================================
+   Dig-deeper prompt (default landing, below the 10-row preview)
+   ============================================================
+   When there's no active filter, the home page shows the 10 most
+   recent opinions and a prompt explaining how to access the full
+   60K corpus (search box, outcome filter, tag cloud). Visually
+   inset so it reads as a guide, not chrome.
+   ============================================================ */
+
+.dig-deeper {
+  margin: 1.25rem 0 0;
+  padding: 0.95rem 1.1rem;
+  background: rgba(20, 0, 30, 0.55);
+  border: var(--border-soft);
+  border-left: 3px solid var(--neon-pink);
+  border-radius: var(--radius-sm);
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+.dig-deeper p {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+.dig-deeper strong {
+  color: var(--neon-cyan);
+  font-weight: 600;
+}
+
+/* ============================================================
    Pagination (state-home doc-table)
    ============================================================
    60K MN opinions means 50/page = 1,200+ pages. Power users use
