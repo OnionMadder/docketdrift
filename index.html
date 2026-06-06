@@ -91,7 +91,7 @@ footer {
     <p class="sub" id="sub">Public-record analysis of state appellate courts.</p>
   </header>
   <main id="main">
-    <span class="tag">In development</span>
+    <span class="tag" id="status-tag">In development</span>
     <p id="lede">DocketDrift will make published opinions from state appellate courts easier to read together &mdash; surfacing how individual judges vote and rule across related cases, for human review and analysis.</p>
     <p id="note">All source material is in the public record. Our work is collation, not interpretation.</p>
     <div class="states" id="states"></div>
@@ -111,13 +111,24 @@ footer {
   var stateCode = (isOurDomain && parts.length > 2) ? parts[0] : null;
   var stateName = stateCode ? (STATES[stateCode] || null) : null;
 
+  // Per-state status tags. Subdomains not listed here fall through to the
+  // generic "In development" placeholder. Update as states graduate from
+  // dev -> beta -> stable.
+  var STATE_STATUS = { mn: "Beta · Minnesota" };
+
   if (stateCode && stateName) {
     document.title = "DocketDrift — " + stateName;
     document.getElementById("title").textContent = "DocketDrift — " + stateName;
     document.getElementById("sub").textContent = stateName + " Supreme Court and Court of Appeals.";
-    document.getElementById("lede").textContent =
-      stateName + " coverage is in development. Published opinions from the " +
-      stateName + " Supreme Court and Court of Appeals will be ingested from the public record and made browsable here.";
+    if (STATE_STATUS[stateCode]) {
+      document.getElementById("status-tag").textContent = STATE_STATUS[stateCode];
+      document.getElementById("lede").textContent =
+        stateName + " appellate opinions are loaded and searchable.";
+    } else {
+      document.getElementById("lede").textContent =
+        stateName + " coverage is in development. Published opinions from the " +
+        stateName + " Supreme Court and Court of Appeals will be ingested from the public record and made browsable here.";
+    }
   } else if (stateCode && !stateName) {
     document.getElementById("sub").textContent = "This state is not yet covered.";
     document.getElementById("lede").textContent =

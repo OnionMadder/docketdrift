@@ -889,3 +889,61 @@ button.cta-primary {
     justify-self: center;
   }
 }
+
+/* ============================================================
+   Privacy link in the sidebar justice-banner
+   ============================================================
+   The four-line "Public record · Human review · No verdicts
+   asserted · Privacy" footer is the editorial pact. The Privacy
+   link is part of that promise, so it's styled to feel like an
+   extension of the static text rather than a flashy CTA.
+   ============================================================ */
+
+.justice-banner-link {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgba(148, 140, 161, 0.45);
+  text-underline-offset: 0.18em;
+  transition: color var(--transition), text-decoration-color var(--transition);
+}
+
+.justice-banner-link:hover,
+.justice-banner-link:focus-visible {
+  color: var(--neon-cyan);
+  text-decoration-color: var(--neon-cyan);
+}
+
+/* ============================================================
+   Status pill (About page) -- "Beta · Minnesota"
+   ============================================================ */
+
+.status-pill {
+  display: inline-block;
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.32rem 0.75rem;
+  border-radius: 3px;
+  border: 1px solid;
+  white-space: nowrap;
+}
+
+.status-pill--beta {
+  color: var(--neon-cyan);
+  border-color: rgba(38, 255, 230, 0.55);
+  background: rgba(38, 255, 230, 0.1);
+  box-shadow: 0 0 10px rgba(38, 255, 230, 0.18);
+}
+
+/* Privacy page signature line ("— DocketDrift") -- right-aligned,
+   muted, monospace, reads as a signoff rather than a paragraph. */
+.signature {
+  margin-top: 2rem;
+  text-align: right;
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+}

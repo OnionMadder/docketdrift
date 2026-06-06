@@ -156,6 +156,15 @@ def about(request):
     })
 
 
+def privacy(request):
+    """Privacy policy. Static page; copy is intentionally short and stark
+    because the privacy posture itself is short and stark: we don't log,
+    don't track, don't share."""
+    return render(request, "opinions/privacy.html", {
+        "active_nav": "about",
+    })
+
+
 def support(request):
     """Donate / why-this-costs-money explainer.
 

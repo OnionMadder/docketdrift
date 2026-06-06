@@ -1,0 +1,34 @@
+{% extends "opinions/base.html" %}
+{% block title %}Privacy &middot; DocketDrift{% endblock %}
+{% block description %}DocketDrift does not log search queries, track users, or save research history. Privacy-by-default for legal research.{% endblock %}
+
+{% block content %}
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+  <ol>
+    <li><a href="{% url 'opinions:home' %}">Home</a></li>
+    <li aria-current="page">Privacy</li>
+  </ol>
+</nav>
+
+<div class="glossy-frame">
+  <h1>Privacy</h1>
+
+  <p>DocketDrift is built for research that needs to stay private.</p>
+
+  <p>We do not log search queries. We do not record what opinions you read, which judges you look up, or how you navigate the site. There are no user accounts. There are no cookies that identify you across visits. There is nothing on our side that could reconstruct your research history.</p>
+
+  <p>The only analytics on the site is GoatCounter, a privacy-friendly counter that records:</p>
+
+  <ul>
+    <li>Aggregate page views (not who viewed them)</li>
+    <li>Your browser's language setting</li>
+    <li>Your country (not your city, not your IP address)</li>
+  </ul>
+
+  <p>GoatCounter does not set tracking cookies, does not identify you individually, and does not share data with third parties. You can opt out entirely by enabling Do Not Track or any standard tracking-protection extension in your browser.</p>
+
+  <p>Whatever you search, whoever you read about, whichever cases you bookmark &mdash; that's yours. We don't see it, we don't save it, and we have nothing to hand over if anyone asks.</p>
+
+  <p class="signature">&mdash; DocketDrift</p>
+</div>
+{% endblock %}

@@ -8,6 +8,7 @@ app_name = "opinions"
 urlpatterns = [
     path("", views.home, name="home"),
     path("about/", views.about, name="about"),
+    path("privacy/", views.privacy, name="privacy"),
     path("support/", views.support, name="support"),
     path("request-state/", views.request_state, name="request_state"),
     path("request-state/thanks/", views.request_state_thanks, name="request_state_thanks"),
