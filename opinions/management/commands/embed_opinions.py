@@ -74,7 +74,9 @@ REQUEST_TIMEOUT_SECONDS = 180
 def _voyage_embed(texts: list[str], model: str, api_key: str) -> tuple[list[list[float]], int]:
     """POST to Voyage's embeddings endpoint; return (embeddings, total_tokens).
 
-    Raises ``requests.HTTPError`` on non-2xx so the caller can retry.
+    Surfaces the API's error response body on non-2xx (Voyage 400s carry a
+    JSON ``detail`` field that pinpoints the bad parameter -- without it
+    the retry loop just sees "400 Bad Request" with no clue what's wrong).
     """
     response = requests.post(
         VOYAGE_EMBED_URL,
@@ -90,7 +92,13 @@ def _voyage_embed(texts: list[str], model: str, api_key: str) -> tuple[list[list
         },
         timeout=REQUEST_TIMEOUT_SECONDS,
     )
-    response.raise_for_status()
+    if not response.ok:
+        # Truncate the body in case it's huge; first 500 chars is plenty
+        # to spot the wrong-model-name / token-limit / etc reason.
+        body = response.text[:500].replace("\n", " ")
+        raise RuntimeError(
+            f"Voyage API {response.status_code} {response.reason}: {body}"
+        )
     payload = response.json()
     embeddings = [item["embedding"] for item in payload["data"]]
     tokens = payload.get("usage", {}).get("total_tokens", 0)
