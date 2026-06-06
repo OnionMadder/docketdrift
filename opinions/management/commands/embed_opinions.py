@@ -13,6 +13,12 @@ Designed for unattended overnight runs:
 - **Cost-aware.** Logs cumulative tokens + estimated dollars every batch
   so you can spot runaway-cost surprises early.
 
+We hit Voyage's HTTP API directly with ``requests`` (already installed)
+rather than the ``voyageai`` Python SDK -- the SDK transitively depends
+on ``orjson>=3.11`` which requires ``rustc>=1.95``, but NFSN's FreeBSD
+host has rustc 1.89. The API is dead simple (OpenAI-compatible shape)
+so dropping the SDK is a tiny no-op.
+
 Usage::
 
     # The full overnight job:
@@ -38,13 +44,15 @@ import json
 import os
 import time
 
+import requests
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection
 
 # Voyage's "voyage-law-2" model -- 1024-dim, legal-domain-tuned, 16K context
 DEFAULT_MODEL = "voyage-law-2"
-# Voyage SDK accepts up to 128 documents per embed() call. Bigger = fewer
-# API roundtrips, but each batch's wall-clock grows with embed inference.
+# Voyage's embed endpoint accepts up to 128 documents per call (their max).
+# Bigger batch = fewer roundtrips, but each call's wall-clock grows with
+# embed inference time.
 DEFAULT_BATCH = 128
 # Voyage free tier: 60 requests/minute. Paid tier: 600+. Adjust via --rpm.
 DEFAULT_RPM = 60
@@ -52,9 +60,41 @@ DEFAULT_RPM = 60
 # cost in the progress log so you can spot surprises.
 PRICE_PER_M_TOKENS_USD = 0.12
 # Auto-retry on transient API errors -- some flakes are normal across a
-# long batch run; voyage-py also has internal backoff for 5xx.
+# long batch run.
 MAX_RETRIES = 3
 RETRY_SLEEP_SECONDS = 30
+
+VOYAGE_EMBED_URL = "https://api.voyageai.com/v1/embeddings"
+# Per-request HTTP timeout. Embed inference on a 128-doc batch of legal
+# text can take 10-30s; pad generously so we don't error out on cold-
+# cache slowness.
+REQUEST_TIMEOUT_SECONDS = 180
+
+
+def _voyage_embed(texts: list[str], model: str, api_key: str) -> tuple[list[list[float]], int]:
+    """POST to Voyage's embeddings endpoint; return (embeddings, total_tokens).
+
+    Raises ``requests.HTTPError`` on non-2xx so the caller can retry.
+    """
+    response = requests.post(
+        VOYAGE_EMBED_URL,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "input": texts,
+            "model": model,
+            "input_type": "document",
+            "truncation": True,
+        },
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    embeddings = [item["embedding"] for item in payload["data"]]
+    tokens = payload.get("usage", {}).get("total_tokens", 0)
+    return embeddings, tokens
 
 
 class Command(BaseCommand):
@@ -71,7 +111,7 @@ class Command(BaseCommand):
             "--batch-size",
             type=int,
             default=DEFAULT_BATCH,
-            help=f"Documents per embed() call (default {DEFAULT_BATCH}, Voyage max 128).",
+            help=f"Documents per embed call (default {DEFAULT_BATCH}, Voyage max 128).",
         )
         parser.add_argument(
             "--rpm",
@@ -97,18 +137,9 @@ class Command(BaseCommand):
             raise CommandError(
                 "VOYAGE_API_KEY not set. Add it to your .env:\n"
                 "    VOYAGE_API_KEY=pa-xxxxxxxxxxxxxxxxxxxx\n"
-                "Get a key at https://www.voyageai.com/  (free tier covers the initial 60K-opinion run)."
+                "Get a key at https://www.voyageai.com/  "
+                "(free tier covers the initial 60K-opinion run)."
             )
-
-        try:
-            import voyageai  # noqa: F401
-        except ImportError:
-            raise CommandError(
-                "voyageai not installed. Run:\n"
-                "    .venv/bin/pip install voyageai"
-            )
-
-        vo = voyageai.Client(api_key=api_key)
 
         # Count work remaining
         with connection.cursor() as cursor:
@@ -161,18 +192,12 @@ class Command(BaseCommand):
 
             texts = [r[1] for r in rows]
 
-            # Embed with retry. The SDK has its own backoff for 5xx, but
-            # network blips / 429 rate-limit hits warrant a Python-side
-            # cooldown too.
-            result = None
+            # Embed with retry. Transient 5xx / 429 / network blips warrant
+            # a short cooldown.
+            embeddings, batch_tokens = None, 0
             for attempt in range(1, MAX_RETRIES + 1):
                 try:
-                    result = vo.embed(
-                        texts=texts,
-                        model=model,
-                        input_type="document",
-                        truncation=True,
-                    )
+                    embeddings, batch_tokens = _voyage_embed(texts, model, api_key)
                     break
                 except Exception as exc:
                     if attempt >= MAX_RETRIES:
@@ -189,8 +214,7 @@ class Command(BaseCommand):
                     time.sleep(RETRY_SLEEP_SECONDS)
 
             last_call_ts = time.time()
-            tokens_total += result.total_tokens
-            embeddings = result.embeddings
+            tokens_total += batch_tokens
 
             # Persist back to the VECTOR column. MariaDB's Vec_FromText()
             # takes a JSON array literal and packs it into the binary

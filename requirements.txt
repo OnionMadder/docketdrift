@@ -6,4 +6,6 @@ gunicorn>=21.0
 whitenoise>=6.0
 pypdf>=4.0
 beautifulsoup4>=4.12
-voyageai>=0.3
+# (no voyageai SDK -- we hit Voyage's REST API directly with requests
+# because the SDK transitively requires orjson>=3.11 which needs
+# rustc>=1.95, and NFSN's FreeBSD has rustc 1.89. The API is simple.)
