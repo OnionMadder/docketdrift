@@ -255,23 +255,28 @@ class Command(BaseCommand):
             texts = [r[1] for r in rows]
 
             # Embed with retry. Transient 5xx / 429 / network blips warrant
-            # a short cooldown.
+            # a short cooldown. We catch BaseException (not just Exception)
+            # so SSL-read interruptions -- which Python's socket layer raises
+            # as KeyboardInterrupt when the SSL socket gets EINTR'd by a
+            # signal -- become retryable instead of fatal. (NFSN sends those
+            # interrupts every few hours of a long background process.)
+            # Real SIGTERM/SIGKILL still take the process down.
             embeddings, batch_tokens = None, 0
             for attempt in range(1, MAX_RETRIES + 1):
                 try:
                     embeddings, batch_tokens = _voyage_embed(texts, model, api_key)
                     break
-                except Exception as exc:
+                except BaseException as exc:
                     if attempt >= MAX_RETRIES:
                         self.stderr.write(self.style.ERROR(
                             f"\nAPI failed {MAX_RETRIES}x for this batch -- exiting. "
                             f"Re-run the command to resume from the same point.\n"
-                            f"Last error: {exc}"
+                            f"Last error: {type(exc).__name__}: {exc}"
                         ))
                         return
                     self.stderr.write(self.style.WARNING(
-                        f"  API error (attempt {attempt}/{MAX_RETRIES}): {exc}; "
-                        f"sleeping {RETRY_SLEEP_SECONDS}s..."
+                        f"  API error (attempt {attempt}/{MAX_RETRIES}) "
+                        f"{type(exc).__name__}: {exc}; sleeping {RETRY_SLEEP_SECONDS}s..."
                     ))
                     time.sleep(RETRY_SLEEP_SECONDS)
 
@@ -300,21 +305,24 @@ class Command(BaseCommand):
                                 [json.dumps(vec), opinion_id],
                             )
                     break
-                except Exception as db_exc:
+                except BaseException as db_exc:
+                    # BaseException not Exception -- see _voyage_embed retry
+                    # comment above for why; same NFSN SSL-interrupt logic.
                     if db_attempt >= DB_MAX_RETRIES:
                         self.stderr.write(self.style.ERROR(
                             f"\nDB failed {DB_MAX_RETRIES}x for this batch -- exiting. "
                             f"Re-run to resume from the same point.\n"
-                            f"Last error: {db_exc}"
+                            f"Last error: {type(db_exc).__name__}: {db_exc}"
                         ))
                         return
                     self.stderr.write(self.style.WARNING(
-                        f"  DB error (attempt {db_attempt}/{DB_MAX_RETRIES}): {db_exc}; "
+                        f"  DB error (attempt {db_attempt}/{DB_MAX_RETRIES}) "
+                        f"{type(db_exc).__name__}: {db_exc}; "
                         f"reconnecting in {DB_RETRY_SLEEP_SECONDS}s..."
                     ))
                     try:
                         connection.close()  # Django reconnects on next use
-                    except Exception:
+                    except BaseException:
                         pass
                     time.sleep(DB_RETRY_SLEEP_SECONDS)
 
