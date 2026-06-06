@@ -74,6 +74,13 @@ PRICE_PER_M_TOKENS_USD = 0.12
 # long batch run.
 MAX_RETRIES = 3
 RETRY_SLEEP_SECONDS = 30
+# DB retry config -- NFSN's MariaDB sits behind an SSL connection that
+# drops every few hours mid-query. Without retry, the embed loop dies
+# with KeyboardInterrupt mid-UPDATE and the whole run aborts. We catch
+# anything during the persist step, close the broken connection so
+# Django re-establishes fresh, and retry.
+DB_MAX_RETRIES = 5
+DB_RETRY_SLEEP_SECONDS = 5
 
 VOYAGE_EMBED_URL = "https://api.voyageai.com/v1/embeddings"
 # Per-request HTTP timeout. Embed inference on a token-packed batch of
@@ -274,16 +281,42 @@ class Command(BaseCommand):
             # Persist back to the VECTOR column. MariaDB's Vec_FromText()
             # takes a JSON array literal and packs it into the binary
             # vector format. We update per-row -- a tighter batch UPDATE
-            # via CASE expressions could shave roundtrips, but 128 simple
-            # UPDATEs per batch is plenty fast for an overnight job.
-            with connection.cursor() as cursor:
-                for (opinion_id, _), vec in zip(rows, embeddings):
-                    cursor.execute(
-                        "UPDATE opinions_opinion "
-                        "SET embedding = Vec_FromText(%s) "
-                        "WHERE id = %s",
-                        [json.dumps(vec), opinion_id],
-                    )
+            # via CASE expressions could shave roundtrips, but plain
+            # UPDATEs per batch are plenty fast for an overnight job.
+            #
+            # Retry on SSL/connection drops: NFSN's MariaDB is reached via
+            # an SSL connection that occasionally cuts mid-query. Without
+            # this guard the process would die with KeyboardInterrupt and
+            # the whole run aborts. We close the broken connection (Django
+            # auto-reconnects on next use) and retry the whole batch.
+            for db_attempt in range(1, DB_MAX_RETRIES + 1):
+                try:
+                    with connection.cursor() as cursor:
+                        for (opinion_id, _), vec in zip(rows, embeddings):
+                            cursor.execute(
+                                "UPDATE opinions_opinion "
+                                "SET embedding = Vec_FromText(%s) "
+                                "WHERE id = %s",
+                                [json.dumps(vec), opinion_id],
+                            )
+                    break
+                except Exception as db_exc:
+                    if db_attempt >= DB_MAX_RETRIES:
+                        self.stderr.write(self.style.ERROR(
+                            f"\nDB failed {DB_MAX_RETRIES}x for this batch -- exiting. "
+                            f"Re-run to resume from the same point.\n"
+                            f"Last error: {db_exc}"
+                        ))
+                        return
+                    self.stderr.write(self.style.WARNING(
+                        f"  DB error (attempt {db_attempt}/{DB_MAX_RETRIES}): {db_exc}; "
+                        f"reconnecting in {DB_RETRY_SLEEP_SECONDS}s..."
+                    ))
+                    try:
+                        connection.close()  # Django reconnects on next use
+                    except Exception:
+                        pass
+                    time.sleep(DB_RETRY_SLEEP_SECONDS)
 
             embedded_total += len(rows)
             elapsed_total = time.time() - run_started
