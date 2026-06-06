@@ -12,11 +12,19 @@ All rendering goes through the ``opinions/*.html`` templates in
 ``opinions/templates/opinions/``; the look is the maddervramsey-derived
 dark/neon design system loaded via the base template.
 """
+from django.core.paginator import Paginator
 from django.db.models import Q
 from django.http import Http404
 from django.shortcuts import redirect, render
 
 from opinions.models import Judge, Opinion, State
+
+
+# Per-page row count for the state-home doc-table. 50 keeps the page
+# under ~30 KB rendered, lets a power user browse dense, and still gives
+# a reasonable number of "pages" to navigate (60K MN opinions -> ~1,200
+# pages, so anyone past ~10 pages is using search not browse anyway).
+HOME_PAGE_SIZE = 50
 
 
 def home(request):
@@ -38,6 +46,7 @@ def home(request):
     qs = (
         Opinion.objects.filter(court__state=state)
         .select_related("court")
+        .order_by("-release_date")
     )
     if search_q:
         qs = qs.filter(
@@ -47,8 +56,12 @@ def home(request):
         )
     if disp_filter:
         qs = qs.filter(disposition_bucket=disp_filter)
-    total_count = qs.count()
-    opinions = list(qs.order_by("-release_date")[:100])
+
+    # Paginate. ``Paginator.get_page`` is tolerant of bad input (out-of-range
+    # page numbers clamp to first/last; non-int falls back to page 1) so we
+    # don't need explicit query-param validation here.
+    paginator = Paginator(qs, HOME_PAGE_SIZE)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
 
     # Find the human-readable label of the active disposition filter for the banner.
     disp_label = ""
@@ -61,8 +74,9 @@ def home(request):
 
     return render(request, "opinions/state_home.html", {
         "state": state,
-        "opinions": opinions,
-        "total_count": total_count,
+        "opinions": page_obj.object_list,
+        "page_obj": page_obj,
+        "total_count": paginator.count,
         "active_nav": "opinions",
         "search_q": search_q,
         "disp_filter": disp_filter,

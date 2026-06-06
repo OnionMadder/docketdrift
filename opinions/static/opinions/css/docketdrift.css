@@ -607,3 +607,84 @@
   background: var(--neon-cyan);
   box-shadow: 0 0 6px rgba(38, 255, 230, 0.65);
 }
+
+/* ============================================================
+   Pagination (state-home doc-table)
+   ============================================================
+   60K MN opinions means 50/page = 1,200+ pages. Power users use
+   search, but the simple Prev/Next + First/Last + "Page X of Y"
+   gives clean orientation. Three-column layout keeps the current-page
+   indicator centered no matter which buttons are visible.
+   ============================================================ */
+
+.pagination {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 1rem;
+  margin: 1.25rem 0 0;
+  padding-top: 1rem;
+  border-top: var(--border-soft);
+}
+
+.pagination-prev {
+  justify-self: start;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.pagination-next {
+  justify-self: end;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.pagination-state {
+  justify-self: center;
+}
+
+.pagination a {
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  text-decoration: none;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid rgba(148, 140, 161, 0.35);
+  border-radius: 3px;
+  transition: color var(--transition), border-color var(--transition), background var(--transition);
+}
+
+.pagination a:hover,
+.pagination a:focus-visible {
+  color: var(--neon-cyan);
+  border-color: rgba(38, 255, 230, 0.6);
+  background: rgba(38, 255, 230, 0.06);
+}
+
+.pagination-current {
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--neon-pink);
+  padding: 0.35rem 0.85rem;
+  background: rgba(255, 43, 179, 0.08);
+  border: 1px solid rgba(255, 43, 179, 0.35);
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+@media (max-width: 540px) {
+  .pagination {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+  .pagination-prev,
+  .pagination-next {
+    justify-self: center;
+  }
+}

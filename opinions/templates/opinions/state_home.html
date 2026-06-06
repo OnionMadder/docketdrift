@@ -13,7 +13,7 @@
   <h1>{{ state.name }} Appellate Opinions</h1>
   <p class="subtle-lead">
     Published opinions of the {{ state.name }} Supreme Court and Court of Appeals, collated from public records.
-    <strong>{{ total_count }}</strong> opinion{{ total_count|pluralize }}{% if disp_filter or search_q %} matched{% else %} indexed{% endif %}; latest below.
+    <strong>{{ total_count }}</strong> opinion{{ total_count|pluralize }}{% if disp_filter or search_q %} matched{% else %} indexed{% endif %}{% if page_obj.paginator.num_pages > 1 %}; showing {{ page_obj.start_index }}&ndash;{{ page_obj.end_index }}{% else %}; latest below{% endif %}.
   </p>
 
   {% if disp_filter or search_q %}
@@ -61,6 +61,29 @@
     {% endfor %}
     </tbody>
   </table>
+
+  {% if page_obj.has_other_pages %}
+    <nav class="pagination" aria-label="Opinion pagination">
+      <div class="pagination-prev">
+        {% if page_obj.has_previous %}
+          <a href="?page=1{% if search_q %}&q={{ search_q|urlencode }}{% endif %}{% if disp_filter %}&disposition={{ disp_filter }}{% endif %}" aria-label="First page">&laquo; First</a>
+          <a href="?page={{ page_obj.previous_page_number }}{% if search_q %}&q={{ search_q|urlencode }}{% endif %}{% if disp_filter %}&disposition={{ disp_filter }}{% endif %}" rel="prev">&lsaquo; Prev</a>
+        {% endif %}
+      </div>
+
+      <div class="pagination-state">
+        <span class="pagination-current">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+      </div>
+
+      <div class="pagination-next">
+        {% if page_obj.has_next %}
+          <a href="?page={{ page_obj.next_page_number }}{% if search_q %}&q={{ search_q|urlencode }}{% endif %}{% if disp_filter %}&disposition={{ disp_filter }}{% endif %}" rel="next">Next &rsaquo;</a>
+          <a href="?page={{ page_obj.paginator.num_pages }}{% if search_q %}&q={{ search_q|urlencode }}{% endif %}{% if disp_filter %}&disposition={{ disp_filter }}{% endif %}" aria-label="Last page">Last &raquo;</a>
+        {% endif %}
+      </div>
+    </nav>
+  {% endif %}
+
   {% else %}
     {% if disp_filter and search_q %}
       <p class="glitch-line">No opinions matched &ldquo;{{ search_q }}&rdquo; with outcome {{ disp_label }}.</p>
