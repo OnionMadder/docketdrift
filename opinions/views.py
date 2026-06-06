@@ -13,11 +13,17 @@ All rendering goes through the ``opinions/*.html`` templates in
 dark/neon design system loaded via the base template.
 """
 from django.core.paginator import Paginator
+from django.db import connection
 from django.db.models import Q
 from django.http import Http404
 from django.shortcuts import redirect, render
 
 from opinions.models import Judge, Opinion, State
+
+
+# MariaDB's default ft_min_word_len is 4. Shorter queries can't match via
+# FULLTEXT so we fall back to LIKE for them.
+FULLTEXT_MIN_QUERY_LEN = 4
 
 
 # Page size when the user has filtered or searched (power-user mode).
@@ -65,11 +71,30 @@ def home(request):
         .order_by("-release_date")
     )
     if search_q:
-        qs = qs.filter(
-            Q(case_number__icontains=search_q)
-            | Q(title__icontains=search_q)
-            | Q(raw_text__icontains=search_q)
+        use_fulltext = (
+            connection.vendor == "mysql"
+            and len(search_q) >= FULLTEXT_MIN_QUERY_LEN
         )
+        if use_fulltext:
+            # MATCH AGAINST against the FULLTEXT index for the big raw_text
+            # field. Phrase-quoted in BOOLEAN MODE so multi-word queries
+            # are treated as exact phrases (matches user intent better than
+            # OR-of-tokens for legal text). LIKE still handles the short
+            # case_number field since that's its own indexed unique pattern.
+            qs = qs.extra(
+                where=[
+                    "(opinions_opinion.case_number LIKE %s OR "
+                    "MATCH(opinions_opinion.raw_text, opinions_opinion.title) "
+                    "AGAINST (%s IN BOOLEAN MODE))"
+                ],
+                params=[f"%{search_q}%", f'"{search_q}"'],
+            )
+        else:
+            qs = qs.filter(
+                Q(case_number__icontains=search_q)
+                | Q(title__icontains=search_q)
+                | Q(raw_text__icontains=search_q)
+            )
     if disp_filter:
         qs = qs.filter(disposition_bucket=disp_filter)
 

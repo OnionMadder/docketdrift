@@ -6,7 +6,12 @@ have to thread it through every view. Registered in
 """
 from __future__ import annotations
 
+import logging
+
 from django.core.cache import cache
+from django.db import connection
+
+logger = logging.getLogger(__name__)
 
 
 # Sidebar tag-cloud taxonomy. Plain-language but *legally specific* phrases
@@ -67,10 +72,17 @@ _CACHE_TTL_SECONDS = 60 * 15  # 15 min -- balance freshness vs. cold-cache cost.
 def _get_sized_tags(state) -> list[tuple[str, int, str]]:
     """Return ``(tag, count, size_bucket)`` for the current state's corpus.
 
-    Counts are ``Opinion.raw_text__icontains=tag`` against the state's
-    opinions, cached per-state for 15 minutes since the cron only changes
-    the corpus a couple of times per week. Tags with zero hits are
-    filtered out so the cloud never lies about coverage.
+    Uses MariaDB's FULLTEXT index (added by migration 0012) when available
+    -- each per-tag count returns in milliseconds against the 60K-row
+    corpus. Falls back to ``raw_text__icontains`` on SQLite / other
+    backends; slow on big corpora but fine for local dev with small data.
+
+    Cached per-state for 15 minutes since the cron only changes the corpus
+    a couple of times per week. The whole computation is wrapped in
+    try/except: if any per-tag query fails for any reason (e.g. FULLTEXT
+    stopword-only tag, transient DB error), we log + skip and continue;
+    if the entire computation explodes, we return an empty cloud rather
+    than crash the page.
     """
     cache_key = f"explore_tags_sized:{state.code}"
     cached = cache.get(cache_key)
@@ -81,12 +93,32 @@ def _get_sized_tags(state) -> list[tuple[str, int, str]]:
     # before Django apps are guaranteed-ready in some startup paths.
     from opinions.models import Opinion
 
+    use_fulltext = connection.vendor == "mysql"
+
     raw_counts: list[tuple[str, int]] = []
     for tag in EXPLORE_TAGS:
-        n = Opinion.objects.filter(
-            court__state=state,
-            raw_text__icontains=tag,
-        ).count()
+        try:
+            if use_fulltext:
+                # BOOLEAN MODE + quoted phrase = exact-phrase match against
+                # the FULLTEXT index. Phrase quoting (" ... ") is what makes
+                # multi-word tags like "Fourth Amendment" match precisely.
+                # extra() is the cleanest way to inject MATCH AGAINST in
+                # Django -- there's no native ORM lookup for MySQL FULLTEXT.
+                n = Opinion.objects.filter(court__state=state).extra(
+                    where=[
+                        "MATCH(opinions_opinion.raw_text, opinions_opinion.title) "
+                        "AGAINST (%s IN BOOLEAN MODE)"
+                    ],
+                    params=[f'"{tag}"'],
+                ).count()
+            else:
+                n = Opinion.objects.filter(
+                    court__state=state,
+                    raw_text__icontains=tag,
+                ).count()
+        except Exception:
+            logger.warning("explore_tags: per-tag count failed for %r", tag, exc_info=True)
+            continue
         if n > 0:
             raw_counts.append((tag, n))
 
@@ -113,9 +145,19 @@ def _get_sized_tags(state) -> list[tuple[str, int, str]]:
 
 
 def site_extras(request):
-    """Inject site-wide constants + per-state tag cloud sizing."""
+    """Inject site-wide constants + per-state tag cloud sizing.
+
+    Wrapped in try/except so a failure inside the tag computation NEVER
+    propagates to the template render. If it crashes, the sidebar tag
+    cloud silently hides; everything else (search, opinion list, etc.)
+    keeps working.
+    """
     state = getattr(request, "state", None)
-    tags = _get_sized_tags(state) if state is not None else []
+    try:
+        tags = _get_sized_tags(state) if state is not None else []
+    except Exception:
+        logger.warning("site_extras: explore-tags computation failed; rendering empty", exc_info=True)
+        tags = []
     return {
         "EXPLORE_TAGS": tags,
         "DISPOSITION_BUCKETS": DISPOSITION_BUCKETS,
