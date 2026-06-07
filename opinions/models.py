@@ -265,7 +265,7 @@ class Opinion(models.Model):
     )
 
     class ReviewStatus(models.TextChoices):
-        AI_ONLY = "ai_only", "AI-processed only"
+        AI_ONLY = "ai_only", "Processed"
         FLAGGED = "flagged", "Flagged for review"
         REVIEWED = "reviewed", "Human-reviewed"
 

@@ -202,14 +202,14 @@ def mark_flagged(modeladmin, request, queryset):
     modeladmin.message_user(request, f"{n} opinion(s) flagged for review.")
 
 
-@admin.action(description="Revert selected to AI-processed only")
+@admin.action(description="Revert selected to Processed (un-review)")
 def mark_ai_only(modeladmin, request, queryset):
     n = queryset.update(
         review_status=Opinion.ReviewStatus.AI_ONLY,
         reviewed_by="",
         reviewed_at=None,
     )
-    modeladmin.message_user(request, f"{n} opinion(s) reverted to AI-processed.")
+    modeladmin.message_user(request, f"{n} opinion(s) reverted to Processed.")
 
 
 @admin.action(description="Re-run parser on selected (fill missing disposition + bucket)")
