@@ -62,6 +62,46 @@
     </tbody>
   </table>
 
+  {% if semantic_opinions %}
+    <div class="semantic-results">
+      <h2 class="semantic-results-heading">
+        <span class="semantic-badge">Semantically similar</span>
+        Opinions related to &ldquo;{{ search_q }}&rdquo; by meaning, not just keyword
+      </h2>
+      <table class="doc-table">
+        <thead>
+          <tr>
+            <th>Docket</th>
+            <th>Court</th>
+            <th>Filed</th>
+            <th>Disposition</th>
+            <th>Case</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for op in semantic_opinions %}
+          <tr>
+            <td class="case-number-cell"><span class="file-number">{{ op.case_number }}</span></td>
+            <td class="doc-court-cell"><span class="court-pill court-pill--{{ op.court.level_slug }}" title="{{ op.court.name }}">{{ op.court.short_label }}</span></td>
+            <td class="doc-date-cell">{{ op.release_date|date:"Y-m-d" }}</td>
+            <td>
+              {% if op.disposition %}
+                <span class="case-status disposition-{{ op.disposition_class }}">{{ op.disposition }}</span>
+              {% else %}
+                <span class="doc-date-cell is-tbd">&mdash;</span>
+              {% endif %}
+            </td>
+            <td class="title-cell">
+              <span class="review-dot review-dot--{{ op.review_status }}" title="{{ op.get_review_status_display }}"></span>
+              <a href="{% url 'opinions:detail' case_number=op.case_number %}">{{ op.title|truncatechars:90 }}</a>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+
   {% if not is_filtered %}
     <div class="dig-deeper">
       <p>

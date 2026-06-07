@@ -8,9 +8,25 @@ from opinions.models import (
     OpinionHolding,
     PanelVote,
     ParseLog,
+    QueryEmbedding,
     State,
     StateRequest,
 )
+
+
+@admin.register(QueryEmbedding)
+class QueryEmbeddingAdmin(admin.ModelAdmin):
+    """Read-only view into the semantic-search query cache.
+
+    Useful for spot-checking: what are users searching for, and how
+    often is the cache earning its keep? hit_count > 1 means we saved
+    a Voyage API call.
+    """
+    list_display = ("query", "hit_count", "created_at", "last_used_at")
+    list_filter = ("created_at",)
+    search_fields = ("query",)
+    readonly_fields = ("query", "embedding_json", "hit_count", "created_at", "last_used_at")
+    ordering = ("-hit_count",)
 
 
 @admin.register(State)

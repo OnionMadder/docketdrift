@@ -82,4 +82,49 @@
     <p class="glitch-line">No opinion text available.</p>
   {% endif %}
 </div>
+
+{% if similar_opinions %}
+  <div class="glossy-frame">
+    <h2>
+      <span class="semantic-badge">Semantically similar</span>
+      Other opinions on related ground
+    </h2>
+    <p class="subtle-lead">
+      Ranked by cosine-distance similarity of voyage-law-2 embeddings &mdash;
+      these read closest to this opinion's legal subject matter, not just
+      by keyword overlap.
+    </p>
+    <table class="doc-table">
+      <thead>
+        <tr>
+          <th>Docket</th>
+          <th>Court</th>
+          <th>Filed</th>
+          <th>Disposition</th>
+          <th>Case</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for op in similar_opinions %}
+        <tr>
+          <td class="case-number-cell"><span class="file-number">{{ op.case_number }}</span></td>
+          <td class="doc-court-cell"><span class="court-pill court-pill--{{ op.court.level_slug }}" title="{{ op.court.name }}">{{ op.court.short_label }}</span></td>
+          <td class="doc-date-cell">{{ op.release_date|date:"Y-m-d" }}</td>
+          <td>
+            {% if op.disposition %}
+              <span class="case-status disposition-{{ op.disposition_class }}">{{ op.disposition }}</span>
+            {% else %}
+              <span class="doc-date-cell is-tbd">&mdash;</span>
+            {% endif %}
+          </td>
+          <td class="title-cell">
+            <span class="review-dot review-dot--{{ op.review_status }}" title="{{ op.get_review_status_display }}"></span>
+            <a href="{% url 'opinions:detail' case_number=op.case_number %}">{{ op.title|truncatechars:80 }}</a>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
 {% endblock %}

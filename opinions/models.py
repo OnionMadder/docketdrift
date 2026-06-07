@@ -570,6 +570,52 @@ class OpinionHolding(models.Model):
         return f"Holding on opinion {self.opinion_id}: {self.holding_text[:60]}"
 
 
+class QueryEmbedding(models.Model):
+    """Cache layer for the Scan endpoint's query-side embeddings.
+
+    Voyage's embed-a-query call costs real money. Without a cache, every
+    user search hits the API; a single bot doing 100 scans/min would blow
+    up the Voyage bill faster than NFSN's CPU bill. With this cache, the
+    Nth user searching for the same phrase pays nothing -- we serve the
+    cached vector from a tiny on-disk lookup.
+
+    Stored as a JSON-string list of 1024 floats rather than a native
+    VECTOR column because Django's ORM doesn't speak VECTOR and we never
+    need to do distance comparisons on the cache itself (we compare
+    against ``Opinion.embedding``, which IS a VECTOR column). The cache
+    just stores; the distance math runs at search time.
+
+    Normalized lowercase query is the PK so identical-but-different-case
+    queries share an entry. Length cap 512 to bound the column; very long
+    queries (> 512 chars) bypass the cache entirely.
+    """
+
+    query = models.CharField(
+        max_length=512,
+        primary_key=True,
+        help_text="Lowercase-normalized search query.",
+    )
+    embedding_json = models.TextField(
+        help_text="JSON array of 1024 floats -- the Voyage embedding for ``query``.",
+    )
+    hit_count = models.PositiveIntegerField(
+        default=1,
+        help_text="How many times this cached embedding has been served.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(
+        auto_now=True,
+        db_index=True,
+        help_text="Used for LRU eviction if the cache ever needs trimming.",
+    )
+
+    class Meta:
+        ordering = ["-last_used_at"]
+
+    def __str__(self):
+        return f"{self.query!r} (hits={self.hit_count})"
+
+
 class StateRequest(models.Model):
     """A reader's request to add their state's appellate corpus.
 

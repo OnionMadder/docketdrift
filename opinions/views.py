@@ -128,6 +128,31 @@ def home(request):
         opinions = list(qs[:HOME_LANDING_SIZE])
         total_count = qs.count()
 
+    # Semantic search: when the user has typed a query, also run a
+    # vector-similarity search alongside the keyword/FULLTEXT one and
+    # surface a separate "semantically similar" block in the template.
+    # Cached per-query, so repeat searches cost nothing. Skips silently
+    # on local SQLite (no VECTOR column) and when Voyage isn't configured.
+    semantic_opinions = []
+    if search_q and not disp_filter:
+        from opinions.semantic import get_query_embedding, search_similar_opinions
+        embedding = get_query_embedding(search_q)
+        if embedding:
+            similar_ids = search_similar_opinions(embedding, state, limit=10)
+            if similar_ids:
+                # Preserve the cosine-distance ordering returned by the
+                # similarity query (it's not the same as release_date desc).
+                ordering = {pk: i for i, pk in enumerate(similar_ids)}
+                fetched = list(
+                    Opinion.objects.filter(pk__in=similar_ids)
+                    .select_related("court")
+                )
+                fetched.sort(key=lambda op: ordering.get(op.pk, 999))
+                # Hide opinions that already appeared in the keyword
+                # results so we don't show the same row twice.
+                keyword_ids = {op.pk for op in opinions}
+                semantic_opinions = [op for op in fetched if op.pk not in keyword_ids]
+
     # Find the human-readable label of the active disposition filter for the banner.
     disp_label = ""
     if disp_filter:
@@ -140,6 +165,7 @@ def home(request):
     return render(request, "opinions/state_home.html", {
         "state": state,
         "opinions": opinions,
+        "semantic_opinions": semantic_opinions,
         "page_obj": page_obj,
         "total_count": total_count,
         "is_filtered": is_filtered,
@@ -161,8 +187,24 @@ def opinion_detail(request, case_number):
         opinion = qs.get(case_number=case_number)
     except Opinion.DoesNotExist:
         raise Http404("Opinion not found")
+
+    # Similar-opinions widget. Uses the opinion's own stored embedding
+    # (no Voyage call), so this is effectively free at request time --
+    # one cosine-distance query against the corpus. Returns empty list
+    # on SQLite (no VECTOR column) or when the opinion has no embedding.
+    from opinions.semantic import similar_to_opinion
+    similar_ids = similar_to_opinion(opinion, limit=5)
+    similar_opinions = []
+    if similar_ids:
+        ordering = {pk: i for i, pk in enumerate(similar_ids)}
+        similar_opinions = list(
+            Opinion.objects.filter(pk__in=similar_ids).select_related("court")
+        )
+        similar_opinions.sort(key=lambda op: ordering.get(op.pk, 999))
+
     return render(request, "opinions/opinion_detail.html", {
         "opinion": opinion,
+        "similar_opinions": similar_opinions,
         "active_nav": "opinions",
     })
 

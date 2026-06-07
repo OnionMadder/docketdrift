@@ -947,3 +947,45 @@ button.cta-primary {
   color: var(--text-dim);
   letter-spacing: 0.05em;
 }
+
+/* ============================================================
+   Semantic search results block (state-home below keyword table)
+   ============================================================
+   When the user runs a query, we surface keyword/FULLTEXT matches in
+   the main table AND a "semantically similar" block below for
+   meaning-not-just-words matches. The block needs a clear visual
+   break from the keyword results so users understand they're seeing
+   a different kind of match.
+   ============================================================ */
+
+.semantic-results {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px dashed rgba(255, 43, 179, 0.3);
+}
+
+.semantic-results-heading {
+  font-size: 1.15rem;
+  margin: 0 0 1rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.semantic-badge {
+  display: inline-block;
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.28rem 0.65rem;
+  border-radius: 3px;
+  color: var(--neon-pink);
+  border: 1px solid rgba(255, 43, 179, 0.5);
+  background: rgba(255, 43, 179, 0.08);
+  box-shadow: 0 0 8px rgba(255, 43, 179, 0.18);
+  white-space: nowrap;
+  vertical-align: middle;
+}
