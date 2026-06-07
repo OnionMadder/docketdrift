@@ -149,6 +149,64 @@ class OpinionAdmin(admin.ModelAdmin):
     filter_horizontal = ("tags",)
     inlines = [PanelVoteInline, OpinionHoldingInline, ParseLogInline]
     actions = [mark_reviewed, mark_flagged, mark_ai_only]
+    # 60K opinions in the corpus -- without these, the changelist tries
+    # to count + render too much per request.
+    list_per_page = 50
+    show_full_result_count = False  # skip the unfiltered-count query
+
+    def get_queryset(self, request):
+        # select_related the FKs that list_display renders so the
+        # changelist makes one query instead of N+1.
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("court", "court__state")
+        )
+
+    def changelist_view(self, request, extra_context=None):
+        """Year-picker landing when no filter is active.
+
+        With 60K opinions, hitting /admin/opinions/opinion/ raw is slow
+        AND useless -- there's nothing meaningful to do with a 60K-row
+        list. So when there are no query params, we render a year-grid
+        instead: each year is a clickable tile that drops into the
+        normal changelist filtered to that year. Once filtered to
+        ~1-3K opinions per year, the changelist renders fast and the
+        editorial review workflow has natural drill-down.
+
+        Clicking ANY filter or year in date_hierarchy keeps the normal
+        changelist behavior (the redirect only fires on the bare URL).
+        """
+        if request.GET:
+            return super().changelist_view(request, extra_context=extra_context)
+
+        from django.db.models import Count
+        from django.db.models.functions import ExtractYear
+        from django.template.response import TemplateResponse
+
+        years = list(
+            Opinion.objects
+            .filter(release_date__isnull=False)
+            .annotate(year=ExtractYear("release_date"))
+            .values("year")
+            .annotate(count=Count("id"))
+            .order_by("-year")
+        )
+        total = sum(y["count"] for y in years)
+
+        context = {
+            **self.admin_site.each_context(request),
+            "title": "Opinions — browse by year",
+            "opts": self.model._meta,
+            "years": years,
+            "total": total,
+            "has_unfiltered_data": bool(years),
+        }
+        return TemplateResponse(
+            request,
+            "admin/opinions/opinion/year_picker.html",
+            context,
+        )
 
     fieldsets = (
         (None, {

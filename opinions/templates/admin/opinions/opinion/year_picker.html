@@ -1,0 +1,95 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+  .year-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
+    gap: 0.75rem;
+    margin: 1.5rem 0 2rem;
+  }
+  .year-tile {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 1.1rem 0.75rem;
+    background: var(--body-quiet-color, #f5f5f5);
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 6px;
+    text-decoration: none;
+    color: var(--body-fg, #333);
+    transition: background 0.15s, border-color 0.15s, transform 0.15s;
+  }
+  .year-tile:hover {
+    background: var(--object-tools-bg, #79aec8);
+    color: white;
+    border-color: var(--object-tools-bg, #79aec8);
+    transform: translateY(-1px);
+  }
+  .year-tile strong {
+    font-size: 1.45rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin-bottom: 0.2rem;
+  }
+  .year-tile span {
+    font-size: 0.82rem;
+    opacity: 0.85;
+  }
+  .year-picker-lead {
+    color: var(--body-quiet-color-fg, #666);
+    margin: 0.5rem 0 1rem;
+  }
+  .year-picker-shortcuts {
+    margin: 1.25rem 0;
+    padding: 0.85rem 1rem;
+    background: var(--message-info-bg, #e8f4f8);
+    border-left: 4px solid var(--primary, #79aec8);
+    border-radius: 4px;
+    font-size: 0.92rem;
+  }
+  .year-picker-shortcuts a {
+    margin-right: 1rem;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Opinions — browse by year</h1>
+
+<p class="year-picker-lead">
+  <strong>{{ total|default:0 }}</strong> opinion{{ total|pluralize }} indexed across
+  <strong>{{ years|length }}</strong> year{{ years|length|pluralize }}.
+  Click a year to drill into the normal list view, filtered to that year.
+</p>
+
+<div class="year-picker-shortcuts">
+  <strong>Quick filters:</strong>
+  <a href="?review_status__exact=ai_only">Unreviewed (AI-only)</a>
+  <a href="?review_status__exact=flagged">Flagged for review</a>
+  <a href="?review_status__exact=reviewed">Already reviewed</a>
+  <a href="?disposition=">Without disposition</a>
+</div>
+
+{% if years %}
+  <div class="year-grid">
+    {% for y in years %}
+      <a href="?release_date__year={{ y.year }}" class="year-tile">
+        <strong>{{ y.year }}</strong>
+        <span>{{ y.count }} opinion{{ y.count|pluralize }}</span>
+      </a>
+    {% endfor %}
+  </div>
+{% else %}
+  <p>No opinions indexed yet.</p>
+{% endif %}
+
+<p class="year-picker-lead">
+  Looking for a specific docket? Use the
+  <a href="?q=">search box</a> instead — it's faster than browsing.
+</p>
+{% endblock %}
