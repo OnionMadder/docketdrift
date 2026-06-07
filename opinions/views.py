@@ -516,14 +516,25 @@ def judge_detail(request, slug):
 
     # Court breakdown -- Supreme vs Court of Appeals splits via panel
     # votes, since a single judge can sit on multiple courts over time.
-    court_breakdown = list(
-        opinions_qs.values(
-            "court__short_label",
-            "court__level",
-        )
+    # Group by court_id (a real DB column) and resolve to Court instances
+    # after the aggregation -- short_label is a Python @property so it
+    # can't appear in .values().
+    from opinions.models import Court as _Court
+    court_breakdown_rows = list(
+        opinions_qs.values("court_id")
         .annotate(n=Count("id"))
         .order_by("-n")
     )
+    courts_map = {
+        c.id: c for c in _Court.objects.filter(
+            id__in=[r["court_id"] for r in court_breakdown_rows]
+        )
+    }
+    court_breakdown = [
+        {"court": courts_map[row["court_id"]], "n": row["n"]}
+        for row in court_breakdown_rows
+        if row["court_id"] in courts_map
+    ]
 
     # Disposition breakdown for the disposition pill colors.
     disposition_breakdown = list(

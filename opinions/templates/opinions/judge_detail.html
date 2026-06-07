@@ -129,7 +129,7 @@
         {% for c in court_breakdown %}
           <li>
             <span class="judge-bar-label">
-              <span class="court-pill court-pill--{{ c.court__level|lower }}">{{ c.court__short_label }}</span>
+              <span class="court-pill court-pill--{{ c.court.level_slug }}" title="{{ c.court.name }}">{{ c.court.short_label }}</span>
             </span>
             <span class="judge-bar-track">
               <span class="judge-bar-fill" style="width: {% widthratio c.n total_opinions 100 %}%"></span>
