@@ -1,6 +1,36 @@
 {% extends "opinions/base.html" %}
 {% block title %}{{ opinion.case_number }} &middot; {{ opinion.title|truncatechars:60 }} &middot; DocketDrift{% endblock %}
-{% block description %}{{ opinion.case_number }}: {{ opinion.title|truncatechars:150 }}{% endblock %}
+{% block description %}{{ opinion.case_number }}: {{ opinion.title|truncatechars:150 }}{% if opinion.disposition %} &mdash; {{ opinion.disposition }}{% endif %} &mdash; {{ opinion.court.name }}, {{ opinion.release_date|date:"F Y" }}.{% endblock %}
+
+{% block og_type %}article{% endblock %}
+{% block og_title %}{{ opinion.case_number }} &middot; {{ opinion.title|truncatechars:90 }}{% endblock %}
+{% block og_description %}{{ opinion.court.name }} &middot; Filed {{ opinion.release_date|date:"F j, Y" }}{% if opinion.disposition %} &middot; {{ opinion.disposition }}{% endif %}.{% endblock %}
+
+{% block jsonld %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "LegalCase",
+  "name": "{{ opinion.title|escapejs }}",
+  "docketNumber": "{{ opinion.case_number|escapejs }}",
+  "dateDecided": "{{ opinion.release_date|date:'Y-m-d' }}",
+  "url": "https://{{ request.get_host }}{{ request.path }}",
+  "court": {
+    "@type": "GovernmentOrganization",
+    "name": "{{ opinion.court.name|escapejs }}",
+    "areaServed": "{{ opinion.court.state.name|escapejs }}"
+  }{% if opinion.disposition %},
+  "disposition": "{{ opinion.disposition|escapejs }}"{% endif %}{% if opinion.is_precedential %},
+  "additionalType": "PrecedentialOpinion"{% endif %},
+  "isAccessibleForFree": true,
+  "publisher": {
+    "@type": "Organization",
+    "name": "DocketDrift",
+    "url": "https://docketdrift.com/"
+  }
+}
+</script>
+{% endblock %}
 
 {% block content %}
 <nav class="breadcrumbs" aria-label="Breadcrumb">

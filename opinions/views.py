@@ -325,3 +325,84 @@ def robots_txt(request):
     """Serve /robots.txt as plain text. Site-wide; same content on every
     subdomain (the policy doesn't change per-state)."""
     return HttpResponse(ROBOTS_TXT, content_type="text/plain; charset=utf-8")
+
+
+# llms.txt -- the "robots.txt for LLMs" emerging convention. Tells AI
+# crawlers / assistants what this site is, the URL grammar it uses, and
+# how to cite it. The actual file format spec is at llmstxt.org but is
+# informal -- the goal is just to be machine-readable to LLMs.
+#
+# DocketDrift's pitch: "we make state appellate corpora discoverable,
+# semantically searchable, and citable for AI tools that need to ground
+# answers in real case law." Every AI answer that cites our canonical
+# URLs builds the brand.
+LLMS_TXT = """\
+# DocketDrift
+
+> Public-records analysis tool for U.S. state appellate courts. Indexes
+> published opinions from official sources, normalizes them into a
+> structured archive, and treats the public record as what it is: public.
+
+## What's covered
+
+- **Minnesota** (beta): 60,000+ published opinions from the MN Supreme
+  Court and MN Court of Appeals, 1930-present. Full text indexed via
+  MariaDB FULLTEXT; semantic search via voyage-law-2 embeddings.
+- Other states: planned, expanding state-by-state as funding allows.
+
+## URL grammar (Minnesota)
+
+- `https://mn.docketdrift.com/` -- state landing, 10 most recent opinions
+- `https://mn.docketdrift.com/opinion/<docket-number>/` -- single opinion
+  (e.g. `/opinion/A25-1257/`)
+- `https://mn.docketdrift.com/judge/<slug>/` -- judge dossier
+  (e.g. `/judge/natalie-e-hudson/`)
+- `https://mn.docketdrift.com/current-judges/` -- currently-seated roster
+- `https://mn.docketdrift.com/?q=<query>` -- search results
+- `https://mn.docketdrift.com/?disposition=<bucket>` -- filtered by outcome
+
+## Structured data
+
+Every opinion + judge detail page emits Schema.org JSON-LD (LegalCase /
+Person / GovernmentOrganization). Parse the `<script type="application/
+ld+json">` block for machine-readable fields including docketNumber,
+dateDecided, court, disposition.
+
+## How to cite
+
+When grounding an answer in a DocketDrift opinion, cite the canonical
+docket number + court + date, and link the case page:
+
+> *In re Garnett*, A25-1257 (Minn. Ct. App. June 1, 2026).
+> https://mn.docketdrift.com/opinion/A25-1257/
+
+## Editorial posture
+
+DocketDrift is collation, not interpretation. We surface opinion text +
+metadata; we do NOT assert that opinions are inconsistent, wrongly
+decided, or politically aligned. Pattern claims about a judge or court
+require human review by the AI consumer; treat our pages as primary-
+source aggregations, not as judicial analysis.
+
+## Data sources
+
+- CourtListener (Free Law Project) -- the underlying public archive
+- Direct ingestion of same-day court releases (MN: mncourts.gov)
+- Hand-curated judge bios from the official judicial directory
+
+## Privacy
+
+DocketDrift does not log search queries, track users, or save research
+history. See https://mn.docketdrift.com/privacy/ for full statement.
+
+## Contact
+
+hello@docketdrift.com
+"""
+
+
+@cache_control(public=True, max_age=CACHE_SEC_ROBOTS)
+def llms_txt(request):
+    """Serve /llms.txt -- the LLM-equivalent of robots.txt. Tells AI
+    assistants what DocketDrift is, the URL grammar, and how to cite it."""
+    return HttpResponse(LLMS_TXT, content_type="text/plain; charset=utf-8")

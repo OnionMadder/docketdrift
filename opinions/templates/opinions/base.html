@@ -7,6 +7,22 @@
 <meta name="description" content="{% block description %}Real-time tracking of state judicial trends.{% endblock %}">
 <meta name="theme-color" content="#0a0011">
 
+{# Canonical + Open Graph + Twitter cards. Pages override the og_title /
+   og_description / og_url blocks where the title block alone isn't enough.
+   og:type defaults to 'website'; opinion + judge detail templates flip it
+   to 'article'/'profile' accordingly. og:image defaults to the apple-touch
+   favicon -- a brand image swap is a v1.1 task. #}
+<link rel="canonical" href="{% block canonical_url %}https://{{ request.get_host }}{{ request.path }}{% endblock %}">
+<meta property="og:site_name" content="DocketDrift">
+<meta property="og:title" content="{% block og_title %}{{ self.title|default:'DocketDrift' }}{% endblock %}">
+<meta property="og:description" content="{% block og_description %}{{ self.description|default:'Real-time tracking of state judicial trends.' }}{% endblock %}">
+<meta property="og:type" content="{% block og_type %}website{% endblock %}">
+<meta property="og:url" content="https://{{ request.get_host }}{{ request.path }}">
+<meta property="og:image" content="{% block og_image %}https://{{ request.get_host }}{% static 'opinions/favi/apple-touch-icon.png' %}{% endblock %}">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="{% block twitter_title %}{{ self.og_title|default:'DocketDrift' }}{% endblock %}">
+<meta name="twitter:description" content="{% block twitter_description %}{{ self.og_description|default:'Public records, treated as public.' }}{% endblock %}">
+
 <link rel="icon" type="image/png" sizes="32x32" href="{% static 'opinions/favi/favicon-32x32.png' %}">
 <link rel="icon" type="image/png" sizes="16x16" href="{% static 'opinions/favi/favicon-16x16.png' %}">
 <link rel="apple-touch-icon" sizes="180x180" href="{% static 'opinions/favi/apple-touch-icon.png' %}">
@@ -20,6 +36,11 @@
 <link rel="stylesheet" href="{% static 'opinions/css/core.css' %}">
 <link rel="stylesheet" href="{% static 'opinions/css/documents.css' %}">
 <link rel="stylesheet" href="{% static 'opinions/css/docketdrift.css' %}">
+
+{# Page-specific schema.org JSON-LD. Detail pages override this block with
+   LegalCase / Person / GovernmentOrganization schemas so Google + AI
+   crawlers see structured data for every opinion + judge. #}
+{% block jsonld %}{% endblock %}
 </head>
 <body>
 <button class="nav-toggle" aria-label="Toggle navigation" aria-expanded="false">

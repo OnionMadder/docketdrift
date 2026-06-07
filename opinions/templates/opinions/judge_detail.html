@@ -1,6 +1,38 @@
 {% extends "opinions/base.html" %}
 {% block title %}{{ judge.full_name }} &middot; DocketDrift{% endblock %}
-{% block description %}Dossier: {{ judge.full_name }}{% if judge.court %}, {{ judge.court.name }}{% endif %}.{% endblock %}
+{% block description %}Dossier: {{ judge.full_name }}{% if judge.court %}, {{ judge.court.name }}{% endif %}{% if judge.appointment_date %}, appointed {{ judge.appointment_date|date:"F Y" }}{% endif %}.{% endblock %}
+
+{% block og_type %}profile{% endblock %}
+{% block og_title %}{{ judge.full_name }} &middot; {{ judge.get_role_display|default:"Judge" }}{% endblock %}
+{% block og_description %}{% if judge.court %}{{ judge.court.name }}.{% endif %}{% if judge.bio_summary %} {{ judge.bio_summary|truncatechars:200 }}{% endif %}{% endblock %}
+{% block og_image %}{% if judge.photo_url %}{{ judge.photo_url }}{% else %}https://{{ request.get_host }}{% load static %}{% static 'opinions/favi/apple-touch-icon.png' %}{% endif %}{% endblock %}
+
+{% block jsonld %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Person",
+  "name": "{{ judge.full_name|escapejs }}",
+  "jobTitle": "{{ judge.get_role_display|default:'Judge'|escapejs }}",
+  "url": "https://{{ request.get_host }}{{ request.path }}"{% if judge.photo_url %},
+  "image": "{{ judge.photo_url|escapejs }}"{% endif %}{% if judge.bio_summary %},
+  "description": "{{ judge.bio_summary|truncatechars:300|escapejs }}"{% endif %}{% if judge.court %},
+  "worksFor": {
+    "@type": "GovernmentOrganization",
+    "name": "{{ judge.court.name|escapejs }}",
+    "areaServed": "{{ judge.state.name|escapejs }}"
+  }{% endif %}{% if judge.appointment_date %},
+  "hasOccupation": {
+    "@type": "Occupation",
+    "name": "{{ judge.get_role_display|default:'Judge'|escapejs }}",
+    "occupationLocation": {
+      "@type": "AdministrativeArea",
+      "name": "{{ judge.state.name|escapejs }}"
+    }
+  }{% endif %}
+}
+</script>
+{% endblock %}
 
 {% block content %}
 <nav class="breadcrumbs" aria-label="Breadcrumb">
