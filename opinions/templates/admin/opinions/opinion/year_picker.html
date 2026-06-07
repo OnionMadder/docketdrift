@@ -68,11 +68,18 @@
 </p>
 
 <div class="year-picker-shortcuts">
-  <strong>Quick filters:</strong>
+  <strong>Review queues:</strong>
   <a href="?review_status__exact=ai_only">Unreviewed (AI-only)</a>
   <a href="?review_status__exact=flagged">Flagged for review</a>
   <a href="?review_status__exact=reviewed">Already reviewed</a>
-  <a href="?disposition=">Without disposition</a>
+</div>
+
+<div class="year-picker-shortcuts" style="border-left-color: #ba2121; background: rgba(186,33,33,0.08);">
+  <strong>Data-quality triage:</strong>
+  <a href="?date_sanity=pre_1849">Pre-1849 (likely misdated)</a>
+  <a href="?date_sanity=pre_1900">Pre-1900 (verify era)</a>
+  <a href="?date_sanity=future">Future-dated (impossible)</a>
+  <a href="?body=none">Missing body text</a>
 </div>
 
 {% if years %}

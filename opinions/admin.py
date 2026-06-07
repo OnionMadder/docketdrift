@@ -212,6 +212,83 @@ def mark_ai_only(modeladmin, request, queryset):
     modeladmin.message_user(request, f"{n} opinion(s) reverted to AI-processed.")
 
 
+@admin.action(description="Auto-flag ALL pre-1849 opinions (data-quality triage)")
+def flag_pre_1849(modeladmin, request, queryset):
+    """One-shot data-quality triage: anything released before MN Territory
+    was even organized (March 3, 1849) is almost certainly misdated -- the
+    actual release year is hidden in the case number or the text. Flagging
+    them creates a clean review queue under ?review_status__exact=flagged.
+
+    Operates on the FULL corpus, not just the changelist selection,
+    because the user normally doesn't have all suspicious rows visible
+    at once; the goal is "build my triage queue in one click".
+    """
+    from datetime import date
+    n = Opinion.objects.filter(
+        release_date__lt=date(1849, 1, 1),
+    ).update(review_status=Opinion.ReviewStatus.FLAGGED)
+    modeladmin.message_user(
+        request,
+        f"{n} pre-1849 opinion(s) flagged for review. "
+        f"Find them at ?review_status__exact=flagged.",
+    )
+
+
+class SuspiciousDateFilter(admin.SimpleListFilter):
+    """Sidebar filter for surfacing likely-misdated opinions.
+
+    MN Territorial Supreme Court started March 1849 (statehood 1858).
+    Anything older than 1849 is almost certainly a CL data-quality
+    error where the actual year was misread into release_date. 1849-1899
+    deserves verification but might be real territorial / early-state
+    jurisprudence.
+    """
+    title = "Date sanity"
+    parameter_name = "date_sanity"
+
+    def lookups(self, request, model_admin):
+        return [
+            ("pre_1849", "Pre-1849 (likely misdated)"),
+            ("pre_1900", "Pre-1900 (worth verifying)"),
+            ("future", "Future-dated (impossible)"),
+        ]
+
+    def queryset(self, request, queryset):
+        from datetime import date
+        if self.value() == "pre_1849":
+            return queryset.filter(release_date__lt=date(1849, 1, 1))
+        if self.value() == "pre_1900":
+            return queryset.filter(release_date__lt=date(1900, 1, 1))
+        if self.value() == "future":
+            return queryset.filter(release_date__gt=date.today())
+        return queryset
+
+
+class HasBodyFilter(admin.SimpleListFilter):
+    """Filter on whether raw_text was successfully extracted.
+
+    Empty raw_text + populated metadata = ingest happened but the body
+    didn't make it through the CL fallback ladder (plain_text → xml_harvard
+    → html_*). These are the rows where editorial review is most useful
+    because the parser has nothing to work with.
+    """
+    title = "Body text"
+    parameter_name = "body"
+
+    def lookups(self, request, model_admin):
+        return [
+            ("none", "No body text"),
+            ("yes", "Has body text"),
+        ]
+
+    def queryset(self, request, queryset):
+        if self.value() == "none":
+            return queryset.filter(raw_text="")
+        if self.value() == "yes":
+            return queryset.exclude(raw_text="")
+        return queryset
+
+
 @admin.register(Opinion)
 class OpinionAdmin(admin.ModelAdmin):
     list_display = (
@@ -227,6 +304,8 @@ class OpinionAdmin(admin.ModelAdmin):
         "review_status",
         "court__state",
         "court",
+        SuspiciousDateFilter,
+        HasBodyFilter,
         "is_precedential",
         "release_date",
         "disposition",
@@ -236,7 +315,7 @@ class OpinionAdmin(admin.ModelAdmin):
     readonly_fields = ("reviewed_at",)
     filter_horizontal = ("tags",)
     inlines = [PanelVoteInline, OpinionHoldingInline, ParseLogInline]
-    actions = [mark_reviewed, mark_flagged, mark_ai_only]
+    actions = [mark_reviewed, mark_flagged, mark_ai_only, flag_pre_1849]
     # 60K opinions in the corpus -- without these, the changelist tries
     # to count + render too much per request.
     list_per_page = 50
