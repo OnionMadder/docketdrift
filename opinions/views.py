@@ -15,10 +15,25 @@ dark/neon design system loaded via the base template.
 from django.core.paginator import Paginator
 from django.db import connection
 from django.db.models import Q
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
+from django.views.decorators.cache import cache_control
 
 from opinions.models import Judge, Opinion, State
+
+
+# Cache-Control max-age budgets, in seconds. Set on views below via the
+# ``@cache_control`` decorator. Cloudflare (when sitting in front of the
+# origin) reads these and serves cached responses from the edge,
+# absorbing repeat-traffic without touching NFSN. Budgets are deliberately
+# conservative -- a new opinion ingest only changes detail pages it
+# creates (fresh URLs cache-miss naturally), and the existing pages stay
+# valid until evicted.
+CACHE_SEC_DETAIL = 3600          # opinion + judge detail (1 hour)
+CACHE_SEC_DOSSIER_LIST = 3600    # current-judges (1 hour)
+CACHE_SEC_HOME = 900             # state home (15 min -- new opinions land via cron)
+CACHE_SEC_STATIC = 86400         # about / privacy / support (24 hours)
+CACHE_SEC_ROBOTS = 86400         # /robots.txt (24 hours)
 
 
 # MariaDB's default ft_min_word_len is 4. Shorter queries can't match via
@@ -36,6 +51,7 @@ HOME_PAGE_SIZE = 50
 HOME_LANDING_SIZE = 10
 
 
+@cache_control(public=True, max_age=CACHE_SEC_HOME)
 def home(request):
     """Apex state-picker when no subdomain matches; per-state landing otherwise.
 
@@ -134,6 +150,7 @@ def home(request):
     })
 
 
+@cache_control(public=True, max_age=CACHE_SEC_DETAIL)
 def opinion_detail(request, case_number):
     """Single-opinion detail. Scoped to the current state subdomain when set."""
     state = getattr(request, "state", None)
@@ -150,12 +167,14 @@ def opinion_detail(request, case_number):
     })
 
 
+@cache_control(public=True, max_age=CACHE_SEC_STATIC)
 def about(request):
     return render(request, "opinions/about.html", {
         "active_nav": "about",
     })
 
 
+@cache_control(public=True, max_age=CACHE_SEC_STATIC)
 def privacy(request):
     """Privacy policy. Static page; copy is intentionally short and stark
     because the privacy posture itself is short and stark: we don't log,
@@ -165,6 +184,7 @@ def privacy(request):
     })
 
 
+@cache_control(public=True, max_age=CACHE_SEC_STATIC)
 def support(request):
     """Donate / why-this-costs-money explainer.
 
@@ -217,6 +237,7 @@ def request_state_thanks(request):
     })
 
 
+@cache_control(public=True, max_age=CACHE_SEC_DOSSIER_LIST)
 def current_judges(request):
     """Roster of currently-seated judges. State-scoped: redirects to apex
     when accessed without a state subdomain (no roster to show without one)."""
@@ -243,6 +264,7 @@ def current_judges(request):
     })
 
 
+@cache_control(public=True, max_age=CACHE_SEC_DETAIL)
 def judge_detail(request, slug):
     """Per-judge dossier page. State-scoped to keep slugs unambiguous."""
     state = getattr(request, "state", None)
@@ -257,3 +279,49 @@ def judge_detail(request, slug):
         "judge": judge,
         "active_nav": "judges",
     })
+
+
+# robots.txt -- crawler instructions. Public-records-as-public posture
+# means we WELCOME the major web search + AI crawlers. Aggressive
+# real-time scraping (no crawl-delay, hammering specific endpoints) is
+# caught at the Cloudflare layer; this just sets the polite-bot policy.
+# Cached aggressively because the content is effectively static.
+ROBOTS_TXT = """\
+# DocketDrift -- public records, treated as public.
+# Welcome crawlers. Be considerate. Honor Crawl-delay.
+
+User-agent: Googlebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: DuckDuckBot
+Allow: /
+
+User-agent: GPTBot
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: CCBot
+Allow: /
+
+User-agent: *
+Crawl-delay: 5
+Disallow: /admin/
+"""
+
+
+@cache_control(public=True, max_age=CACHE_SEC_ROBOTS)
+def robots_txt(request):
+    """Serve /robots.txt as plain text. Site-wide; same content on every
+    subdomain (the policy doesn't change per-state)."""
+    return HttpResponse(ROBOTS_TXT, content_type="text/plain; charset=utf-8")

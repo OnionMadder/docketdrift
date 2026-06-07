@@ -15,4 +15,5 @@ urlpatterns = [
     path("opinion/<str:case_number>/", views.opinion_detail, name="detail"),
     path("current-judges/", views.current_judges, name="current_judges"),
     path("judge/<slug:slug>/", views.judge_detail, name="judge_detail"),
+    path("robots.txt", views.robots_txt, name="robots_txt"),
 ]
