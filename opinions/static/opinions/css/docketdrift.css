@@ -990,6 +990,153 @@ button.cta-primary {
 }
 
 /* ============================================================
+   Judge dossier stats (J3 -- per-judge opinion infographic)
+   ============================================================
+   The judge detail page now has real per-judge data: stat cards for
+   role summary (authored / joined / dissents), CSS-only bar charts
+   for court split + disposition breakdown, co-panelist list, and
+   recent opinions table. All pure-HTML/CSS -- no JS framework, no
+   chart library, lightweight forever.
+   ============================================================ */
+
+.judge-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.85rem;
+  margin: 1.25rem 0 0.5rem;
+}
+
+.judge-stat-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 1rem 1.1rem;
+  background: rgba(20, 0, 30, 0.5);
+  border: var(--border-soft);
+  border-left: 3px solid var(--neon-cyan);
+  border-radius: var(--radius-sm);
+}
+
+.judge-stat-card strong {
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--neon-cyan);
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.judge-stat-card span {
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.judge-stat-card--accent {
+  border-left-color: var(--neon-pink);
+}
+.judge-stat-card--accent strong {
+  color: var(--neon-pink);
+}
+
+/* Horizontal CSS bar chart for court + disposition breakdowns. */
+.judge-bar-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.judge-bar-list li {
+  display: grid;
+  grid-template-columns: minmax(120px, 200px) 1fr 60px;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.judge-bar-label {
+  display: flex;
+  align-items: center;
+}
+
+.judge-bar-track {
+  position: relative;
+  height: 14px;
+  background: rgba(148, 140, 161, 0.12);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.judge-bar-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  background: var(--neon-cyan);
+  opacity: 0.65;
+  border-radius: 999px;
+  min-width: 4px;
+}
+
+.judge-bar-fill--affirmed { background: #00ffc8; }
+.judge-bar-fill--reversed { background: var(--neon-pink); }
+.judge-bar-fill--vacated, .judge-bar-fill--denied { background: var(--hazard-red); }
+.judge-bar-fill--remanded, .judge-bar-fill--modified { background: #ffbf3d; }
+.judge-bar-fill--mixed { background: #b394ff; }
+.judge-bar-fill--dismissed, .judge-bar-fill--other { background: rgba(148, 140, 161, 0.6); }
+.judge-bar-fill--granted { background: var(--neon-cyan); }
+
+.judge-bar-count {
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  text-align: right;
+  letter-spacing: 0.05em;
+}
+
+/* Frequent co-panelists list -- simple list with right-aligned counts. */
+.judge-cohort-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.judge-cohort-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0.45rem 0.65rem;
+  border-bottom: 1px dashed rgba(148, 140, 161, 0.18);
+}
+
+.judge-cohort-list a {
+  color: var(--neon-cyan);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.judge-cohort-list a:hover,
+.judge-cohort-list a:focus-visible {
+  color: var(--neon-pink);
+  text-decoration: underline;
+  text-decoration-color: var(--neon-pink);
+}
+
+.judge-cohort-count {
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+}
+
+/* ============================================================
    Editorial tag chips (opinion detail header + browse pages)
    ============================================================
    Tags are the editorial moat -- the visible signal that a human has

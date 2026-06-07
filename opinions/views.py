@@ -13,7 +13,7 @@ All rendering goes through the ``opinions/*.html`` templates in
 dark/neon design system loaded via the base template.
 """
 from django.core.paginator import Paginator
-from django.db import connection
+from django.db import connection, models
 from django.db.models import Q
 from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
@@ -412,7 +412,15 @@ def tag_detail(request, slug):
 
 @cache_control(public=True, max_age=CACHE_SEC_DETAIL)
 def judge_detail(request, slug):
-    """Per-judge dossier page. State-scoped to keep slugs unambiguous."""
+    """Per-judge dossier page. State-scoped to keep slugs unambiguous.
+
+    Pulls everything we know about this judge from the PanelVote rows
+    the CL bulk load created: total opinions, authored vs joined,
+    dissent count, court breakdown, disposition breakdown, recent
+    opinions, frequent co-panelists. Heavy query (~5-10 aggregates +
+    a recent-list query) but cached for an hour so subsequent requests
+    are free.
+    """
     state = getattr(request, "state", None)
     qs = Judge.objects.select_related("state", "court")
     if state is not None:
@@ -421,8 +429,89 @@ def judge_detail(request, slug):
         judge = qs.get(slug=slug)
     except Judge.DoesNotExist:
         raise Http404("Judge not found")
+
+    from django.db.models import Count, Q
+    from opinions.models import PanelVote
+
+    # Total opinions the judge sat on
+    opinions_qs = Opinion.objects.filter(panel_votes__judge=judge).distinct()
+    total_opinions = opinions_qs.count()
+
+    # Vote-type breakdown (authored vs joined vs dissent etc)
+    vote_counts = dict(
+        PanelVote.objects.filter(judge=judge)
+        .values_list("vote_type")
+        .annotate(n=Count("id"))
+        .values_list("vote_type", "n")
+    )
+
+    # Group authored / joined / dissent at a higher level so display
+    # is "Majority opinions authored: N, Joined majority: N, Dissents: N"
+    role_summary = {
+        "authored_majority": vote_counts.get(PanelVote.Vote.MAJORITY_AUTHOR, 0),
+        "joined_majority": vote_counts.get(PanelVote.Vote.MAJORITY_JOIN, 0),
+        "authored_concurrence": vote_counts.get(PanelVote.Vote.CONCURRENCE_AUTHOR, 0),
+        "joined_concurrence": vote_counts.get(PanelVote.Vote.CONCURRENCE_JOIN, 0),
+        "authored_dissent": vote_counts.get(PanelVote.Vote.DISSENT_AUTHOR, 0),
+        "joined_dissent": vote_counts.get(PanelVote.Vote.DISSENT_JOIN, 0),
+        "recused": vote_counts.get(PanelVote.Vote.RECUSED, 0),
+    }
+
+    # Date range -- when did this judge sit on opinions we have?
+    date_range = opinions_qs.aggregate(
+        first=models.Min("release_date"),
+        last=models.Max("release_date"),
+    ) if total_opinions else {"first": None, "last": None}
+
+    # Court breakdown -- Supreme vs Court of Appeals splits via panel
+    # votes, since a single judge can sit on multiple courts over time.
+    court_breakdown = list(
+        opinions_qs.values(
+            "court__short_label",
+            "court__level",
+        )
+        .annotate(n=Count("id"))
+        .order_by("-n")
+    )
+
+    # Disposition breakdown for the disposition pill colors.
+    disposition_breakdown = list(
+        opinions_qs.exclude(disposition_bucket="")
+        .values("disposition_bucket")
+        .annotate(n=Count("id"))
+        .order_by("-n")
+    )
+
+    # Recent opinions list -- 15 most recent we have a panel-vote for
+    recent_opinions = list(
+        opinions_qs.select_related("court")
+        .order_by("-release_date")[:15]
+    )
+
+    # Frequent co-panelists -- other judges who appeared on the same
+    # opinions, ranked by overlap count. Capped at top 10. Heavy query;
+    # only computed when the judge has > 0 opinions.
+    cohort = []
+    if total_opinions > 0:
+        cohort = list(
+            Judge.objects.filter(
+                panel_votes__opinion__panel_votes__judge=judge,
+            )
+            .exclude(pk=judge.pk)
+            .annotate(shared=Count("panel_votes__opinion", distinct=True))
+            .order_by("-shared", "full_name")[:10]
+            .values("slug", "full_name", "shared")
+        )
+
     return render(request, "opinions/judge_detail.html", {
         "judge": judge,
+        "total_opinions": total_opinions,
+        "role_summary": role_summary,
+        "date_range": date_range,
+        "court_breakdown": court_breakdown,
+        "disposition_breakdown": disposition_breakdown,
+        "recent_opinions": recent_opinions,
+        "cohort": cohort,
         "active_nav": "judges",
     })
 

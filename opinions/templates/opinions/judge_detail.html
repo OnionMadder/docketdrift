@@ -79,8 +79,149 @@
   {% endif %}
 </div>
 
-<div class="glossy-frame">
-  <h2>Opinions Authored</h2>
-  <p class="glitch-line">Per-judge opinion infographic lands once the parser populates PanelVote rows from cluster panel data &mdash; authored vs. joined vs. dissent distribution, disposition breakdown, statutes cited heatmap, and recent opinions list.</p>
-</div>
+{% if total_opinions %}
+  <div class="glossy-frame">
+    <h2>Judicial record</h2>
+    <p class="subtle-lead">
+      <strong>{{ total_opinions }}</strong> opinion{{ total_opinions|pluralize }}
+      where {{ judge.full_name }} sat on the panel{% if date_range.first %},
+      spanning {{ date_range.first|date:"Y" }}&ndash;{{ date_range.last|date:"Y" }}{% endif %}.
+    </p>
+
+    <div class="judge-stat-grid">
+      {% if role_summary.authored_majority %}
+        <div class="judge-stat-card">
+          <strong>{{ role_summary.authored_majority }}</strong>
+          <span>Majority authored</span>
+        </div>
+      {% endif %}
+      {% if role_summary.joined_majority %}
+        <div class="judge-stat-card">
+          <strong>{{ role_summary.joined_majority }}</strong>
+          <span>Joined majority</span>
+        </div>
+      {% endif %}
+      {% if role_summary.authored_concurrence or role_summary.joined_concurrence %}
+        <div class="judge-stat-card">
+          <strong>{{ role_summary.authored_concurrence|add:role_summary.joined_concurrence }}</strong>
+          <span>Concurrences</span>
+        </div>
+      {% endif %}
+      {% if role_summary.authored_dissent or role_summary.joined_dissent %}
+        <div class="judge-stat-card judge-stat-card--accent">
+          <strong>{{ role_summary.authored_dissent|add:role_summary.joined_dissent }}</strong>
+          <span>Dissents</span>
+        </div>
+      {% endif %}
+      {% if role_summary.recused %}
+        <div class="judge-stat-card">
+          <strong>{{ role_summary.recused }}</strong>
+          <span>Recused</span>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if court_breakdown %}
+    <div class="glossy-frame">
+      <h2>By court</h2>
+      <ul class="judge-bar-list">
+        {% for c in court_breakdown %}
+          <li>
+            <span class="judge-bar-label">
+              <span class="court-pill court-pill--{{ c.court__level|lower }}">{{ c.court__short_label }}</span>
+            </span>
+            <span class="judge-bar-track">
+              <span class="judge-bar-fill" style="width: {% widthratio c.n total_opinions 100 %}%"></span>
+            </span>
+            <span class="judge-bar-count">{{ c.n }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  {% if disposition_breakdown %}
+    <div class="glossy-frame">
+      <h2>By disposition</h2>
+      <ul class="judge-bar-list">
+        {% for d in disposition_breakdown %}
+          <li>
+            <span class="judge-bar-label">
+              <span class="case-status disposition-{{ d.disposition_bucket }}">{{ d.disposition_bucket|title }}</span>
+            </span>
+            <span class="judge-bar-track">
+              <span class="judge-bar-fill judge-bar-fill--{{ d.disposition_bucket }}" style="width: {% widthratio d.n total_opinions 100 %}%"></span>
+            </span>
+            <span class="judge-bar-count">{{ d.n }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  {% if cohort %}
+    <div class="glossy-frame">
+      <h2>Most-frequent co-panelists</h2>
+      <p class="subtle-lead">Judges who appeared on the same opinions, ranked by overlap count.</p>
+      <ul class="judge-cohort-list">
+        {% for c in cohort %}
+          <li>
+            <a href="{% url 'opinions:judge_detail' slug=c.slug %}">{{ c.full_name }}</a>
+            <span class="judge-cohort-count">{{ c.shared }} shared</span>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+
+  {% if recent_opinions %}
+    <div class="glossy-frame">
+      <h2>Recent opinions</h2>
+      <p class="subtle-lead">15 most recent opinions where {{ judge.full_name }} sat on the panel.</p>
+      <table class="doc-table">
+        <thead>
+          <tr>
+            <th>Docket</th>
+            <th>Court</th>
+            <th>Filed</th>
+            <th>Disposition</th>
+            <th>Case</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for op in recent_opinions %}
+          <tr>
+            <td class="case-number-cell"><span class="file-number">{{ op.case_number }}</span></td>
+            <td class="doc-court-cell"><span class="court-pill court-pill--{{ op.court.level_slug }}" title="{{ op.court.name }}">{{ op.court.short_label }}</span></td>
+            <td class="doc-date-cell">{{ op.release_date|date:"Y-m-d" }}</td>
+            <td>
+              {% if op.disposition %}
+                <span class="case-status disposition-{{ op.disposition_class }}">{{ op.disposition }}</span>
+              {% else %}
+                <span class="doc-date-cell is-tbd">&mdash;</span>
+              {% endif %}
+            </td>
+            <td class="title-cell">
+              <span class="review-dot review-dot--{{ op.review_status }}" title="{{ op.get_review_status_display }}"></span>
+              <a href="{% url 'opinions:detail' case_number=op.case_number %}">{{ op.title|truncatechars:80 }}</a>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+{% else %}
+  <div class="glossy-frame">
+    <h2>Judicial record</h2>
+    <p class="glitch-line">
+      No opinion panel data linked to {{ judge.full_name }} yet. This usually means
+      CourtListener's panel data didn't include this judge for the opinions in our
+      corpus &mdash; common for historical judges where panel composition was
+      recorded as free-text rather than structured. Coverage improves as we add
+      manual panel-vote ingestion.
+    </p>
+  </div>
+{% endif %}
 {% endblock %}
