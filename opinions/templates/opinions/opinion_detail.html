@@ -1,4 +1,5 @@
 {% extends "opinions/base.html" %}
+{% load opinion_text %}
 {% block title %}{{ opinion.case_number }} &middot; {{ opinion.title|truncatechars:60 }} &middot; DocketDrift{% endblock %}
 {% block description %}{{ opinion.case_number }}: {{ opinion.title|truncatechars:150 }}{% if opinion.disposition %} &mdash; {{ opinion.disposition }}{% endif %} &mdash; {{ opinion.court.name }}, {{ opinion.release_date|date:"F Y" }}.{% endblock %}
 
@@ -91,7 +92,9 @@
 <div class="glossy-frame">
   <h2>Opinion text</h2>
   {% if opinion.raw_text %}
-    <pre class="opinion-body">{{ opinion.raw_text }}</pre>
+    <div class="opinion-body">
+      {{ opinion.raw_text|format_opinion_text }}
+    </div>
   {% else %}
     <p class="glitch-line">No opinion text available.</p>
   {% endif %}
