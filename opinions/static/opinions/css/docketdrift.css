@@ -990,6 +990,111 @@ button.cta-primary {
 }
 
 /* ============================================================
+   Editorial tag chips (opinion detail header + browse pages)
+   ============================================================
+   Tags are the editorial moat -- the visible signal that a human has
+   read this opinion and applied controlled-vocabulary topic markers.
+   Color-coded per category so users see at a glance whether a tag
+   describes a substantive doctrine, a procedural posture, etc.
+   ============================================================ */
+
+.opinion-tags {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.opinion-tag {
+  display: inline-block;
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  padding: 0.25rem 0.65rem;
+  border-radius: 3px;
+  border: 1px solid;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color var(--transition), border-color var(--transition), background var(--transition);
+}
+
+.opinion-tag:hover,
+.opinion-tag:focus-visible {
+  filter: brightness(1.2);
+}
+
+.opinion-tag--lg {
+  font-size: 0.85rem;
+  padding: 0.4rem 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.tag-count {
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 0.08rem 0.4rem;
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+}
+
+.opinion-tag--doctrine {
+  color: var(--neon-cyan);
+  border-color: rgba(38, 255, 230, 0.45);
+  background: rgba(38, 255, 230, 0.07);
+}
+
+.opinion-tag--subject {
+  color: var(--neon-pink);
+  border-color: rgba(255, 43, 179, 0.45);
+  background: rgba(255, 43, 179, 0.07);
+}
+
+.opinion-tag--procedural {
+  color: #ffbf3d;
+  border-color: rgba(255, 191, 61, 0.45);
+  background: rgba(255, 191, 61, 0.07);
+}
+
+.opinion-tag--posture {
+  color: #b394ff;
+  border-color: rgba(179, 148, 255, 0.45);
+  background: rgba(179, 148, 255, 0.07);
+}
+
+/* Tag-index browse page: category sections + tag grid */
+
+.tag-category-block {
+  margin: 1.75rem 0;
+}
+
+.tag-category-heading {
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-dim);
+  margin: 0 0 0.85rem;
+  border-bottom: 1px dashed rgba(148, 140, 161, 0.25);
+  padding-bottom: 0.5rem;
+}
+
+.tag-grid {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+/* ============================================================
    Semantic search results block (state-home below keyword table)
    ============================================================
    When the user runs a query, we surface keyword/FULLTEXT matches in

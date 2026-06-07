@@ -1,0 +1,88 @@
+{% extends "opinions/base.html" %}
+{% block title %}{{ tag.label }} &middot; Tag &middot; DocketDrift{% endblock %}
+{% block description %}Opinions tagged "{{ tag.label }}"{% if tag.description %} &mdash; {{ tag.description }}{% endif %}{% endblock %}
+
+{% block content %}
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+  <ol>
+    <li><a href="https://docketdrift.com/">DocketDrift</a></li>
+    {% if request.state %}<li><a href="{% url 'opinions:home' %}">{{ request.state.name }}</a></li>{% endif %}
+    <li><a href="{% url 'opinions:tag_index' %}">Tags</a></li>
+    <li aria-current="page">{{ tag.label }}</li>
+  </ol>
+</nav>
+
+<div class="glossy-frame">
+  <div class="opinion-header">
+    <span class="opinion-tag opinion-tag--{{ tag.category }} opinion-tag--lg">{{ tag.label }}</span>
+    <span class="role-chip institution">{{ tag.get_category_display }}</span>
+  </div>
+
+  <h1>{{ tag.label }}</h1>
+
+  {% if tag.description %}
+    <p class="subtle-lead">{{ tag.description }}</p>
+  {% endif %}
+
+  <p class="opinion-meta">
+    <strong>{{ total_count }}</strong> opinion{{ total_count|pluralize }} tagged{% if request.state %} in {{ request.state.name }}{% endif %}.
+  </p>
+
+  {% if opinions %}
+  <table class="doc-table">
+    <thead>
+      <tr>
+        <th>Docket</th>
+        <th>Court</th>
+        <th>Filed</th>
+        <th>Disposition</th>
+        <th>Case</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for op in opinions %}
+      <tr>
+        <td class="case-number-cell"><span class="file-number">{{ op.case_number }}</span></td>
+        <td class="doc-court-cell"><span class="court-pill court-pill--{{ op.court.level_slug }}" title="{{ op.court.name }}">{{ op.court.short_label }}</span></td>
+        <td class="doc-date-cell">{{ op.release_date|date:"Y-m-d" }}</td>
+        <td>
+          {% if op.disposition %}
+            <span class="case-status disposition-{{ op.disposition_class }}">{{ op.disposition }}</span>
+          {% else %}
+            <span class="doc-date-cell is-tbd">&mdash;</span>
+          {% endif %}
+        </td>
+        <td class="title-cell">
+          <span class="review-dot review-dot--{{ op.review_status }}" title="{{ op.get_review_status_display }}"></span>
+          <a href="{% url 'opinions:detail' case_number=op.case_number %}">{{ op.title|truncatechars:90 }}</a>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+
+  {% if page_obj.has_other_pages %}
+    <nav class="pagination" aria-label="Tag opinion pagination">
+      <div class="pagination-prev">
+        {% if page_obj.has_previous %}
+          <a href="?page=1" aria-label="First page">&laquo; First</a>
+          <a href="?page={{ page_obj.previous_page_number }}" rel="prev">&lsaquo; Prev</a>
+        {% endif %}
+      </div>
+      <div class="pagination-state">
+        <span class="pagination-current">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+      </div>
+      <div class="pagination-next">
+        {% if page_obj.has_next %}
+          <a href="?page={{ page_obj.next_page_number }}" rel="next">Next &rsaquo;</a>
+          <a href="?page={{ page_obj.paginator.num_pages }}" aria-label="Last page">Last &raquo;</a>
+        {% endif %}
+      </div>
+    </nav>
+  {% endif %}
+
+  {% else %}
+    <p class="glitch-line">No opinions carry this tag yet{% if request.state %} in {{ request.state.name }}{% endif %}.</p>
+  {% endif %}
+</div>
+{% endblock %}

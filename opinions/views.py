@@ -19,7 +19,7 @@ from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.cache import cache_control
 
-from opinions.models import Judge, Opinion, State
+from opinions.models import Judge, Opinion, State, Tag
 
 
 # Cache-Control max-age budgets, in seconds. Set on views below via the
@@ -216,7 +216,10 @@ def home(request):
 def opinion_detail(request, case_number):
     """Single-opinion detail. Scoped to the current state subdomain when set."""
     state = getattr(request, "state", None)
-    qs = Opinion.objects.select_related("court", "court__state")
+    qs = (
+        Opinion.objects.select_related("court", "court__state")
+        .prefetch_related("tags")
+    )
     if state is not None:
         qs = qs.filter(court__state=state)
     try:
@@ -342,6 +345,71 @@ def current_judges(request):
     })
 
 
+@cache_control(public=True, max_age=CACHE_SEC_DOSSIER_LIST)
+def tag_index(request):
+    """Browse all tags, grouped by category.
+
+    Public tag-cloud-style index of the editorial taxonomy. Tags with
+    zero opinions in the current state are filtered out so the index
+    is always honest about what's actually tagged.
+    """
+    state = getattr(request, "state", None)
+
+    tags_qs = Tag.objects.all().order_by("category", "label")
+    if state is not None:
+        # Annotate with count of opinions in THIS state's corpus that
+        # carry this tag, then keep only the tags with nonzero counts.
+        from django.db.models import Count, Q
+        tags_qs = tags_qs.annotate(
+            state_opinion_count=Count(
+                "opinions",
+                filter=Q(opinions__court__state=state),
+            )
+        )
+        tags_with_counts = [t for t in tags_qs if t.state_opinion_count > 0]
+    else:
+        tags_with_counts = list(tags_qs)
+
+    # Group by category for the template.
+    by_category: dict[str, list] = {}
+    for tag in tags_with_counts:
+        by_category.setdefault(tag.get_category_display(), []).append(tag)
+
+    return render(request, "opinions/tag_index.html", {
+        "tag_groups": list(by_category.items()),
+        "active_nav": "tags",
+    })
+
+
+@cache_control(public=True, max_age=CACHE_SEC_DOSSIER_LIST)
+def tag_detail(request, slug):
+    """Opinions carrying a specific tag, state-scoped, paginated."""
+    state = getattr(request, "state", None)
+    try:
+        tag = Tag.objects.get(slug=slug)
+    except Tag.DoesNotExist:
+        raise Http404("Tag not found")
+
+    qs = (
+        Opinion.objects.filter(tags=tag)
+        .select_related("court")
+        .order_by("-release_date")
+    )
+    if state is not None:
+        qs = qs.filter(court__state=state)
+
+    paginator = Paginator(qs, HOME_PAGE_SIZE)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
+
+    return render(request, "opinions/tag_detail.html", {
+        "tag": tag,
+        "opinions": page_obj.object_list,
+        "page_obj": page_obj,
+        "total_count": paginator.count,
+        "active_nav": "tags",
+    })
+
+
 @cache_control(public=True, max_age=CACHE_SEC_DETAIL)
 def judge_detail(request, slug):
     """Per-judge dossier page. State-scoped to keep slugs unambiguous."""
@@ -395,6 +463,8 @@ Allow: /
 User-agent: *
 Crawl-delay: 5
 Disallow: /admin/
+
+Sitemap: https://mn.docketdrift.com/sitemap.xml
 """
 
 
@@ -484,3 +554,121 @@ def llms_txt(request):
     """Serve /llms.txt -- the LLM-equivalent of robots.txt. Tells AI
     assistants what DocketDrift is, the URL grammar, and how to cite it."""
     return HttpResponse(LLMS_TXT, content_type="text/plain; charset=utf-8")
+
+
+# Sitemap configuration. Each sitemap is capped at 50K URLs per the
+# protocol; with ~60K MN opinions we need chunked sitemaps + an index
+# that points at the chunks. 25K per chunk keeps each file small enough
+# to cache + serve quickly.
+SITEMAP_CHUNK_SIZE = 25_000
+CACHE_SEC_SITEMAP = 3600  # 1 hour -- new opinions land weekly via cron
+
+
+def _sitemap_xml_header() -> list[str]:
+    return [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ]
+
+
+def _sitemap_xml_footer() -> list[str]:
+    return ["</urlset>"]
+
+
+@cache_control(public=True, max_age=CACHE_SEC_SITEMAP)
+def sitemap_index(request):
+    """Site-wide sitemap index. Lists sub-sitemap URLs for chunked
+    opinion lists + judges + static pages.
+
+    Apex (docketdrift.com without a state subdomain) gets a minimal
+    index since there's nothing state-specific to surface; the real
+    indexes live on the state subdomains.
+    """
+    state = getattr(request, "state", None)
+    host = f"https://{request.get_host()}"
+
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ]
+
+    if state is None:
+        # Apex: just point to the static-pages sitemap; state subdomains
+        # have their own indexes.
+        lines.append(f"  <sitemap><loc>{host}/sitemap-static.xml</loc></sitemap>")
+    else:
+        lines.append(f"  <sitemap><loc>{host}/sitemap-static.xml</loc></sitemap>")
+        lines.append(f"  <sitemap><loc>{host}/sitemap-judges.xml</loc></sitemap>")
+        opinion_count = Opinion.objects.filter(court__state=state).count()
+        num_chunks = max(1, (opinion_count + SITEMAP_CHUNK_SIZE - 1) // SITEMAP_CHUNK_SIZE)
+        for i in range(1, num_chunks + 1):
+            lines.append(f"  <sitemap><loc>{host}/sitemap-opinions-{i}.xml</loc></sitemap>")
+
+    lines.append("</sitemapindex>")
+    return HttpResponse("\n".join(lines), content_type="application/xml; charset=utf-8")
+
+
+@cache_control(public=True, max_age=CACHE_SEC_SITEMAP)
+def sitemap_static(request):
+    """Static-page sitemap: home, about, privacy, support, current-judges."""
+    host = f"https://{request.get_host()}"
+    state = getattr(request, "state", None)
+
+    urls = ["/", "/about/", "/privacy/", "/support/", "/request-state/"]
+    if state is not None:
+        urls.append("/current-judges/")
+
+    lines = _sitemap_xml_header()
+    for u in urls:
+        lines.append(f"  <url><loc>{host}{u}</loc></url>")
+    lines.extend(_sitemap_xml_footer())
+    return HttpResponse("\n".join(lines), content_type="application/xml; charset=utf-8")
+
+
+@cache_control(public=True, max_age=CACHE_SEC_SITEMAP)
+def sitemap_judges(request):
+    """All judges in the current state. Slug-keyed URLs."""
+    state = getattr(request, "state", None)
+    host = f"https://{request.get_host()}"
+
+    lines = _sitemap_xml_header()
+    if state is not None:
+        slugs = Judge.objects.filter(state=state).values_list("slug", flat=True)
+        for slug in slugs:
+            lines.append(f"  <url><loc>{host}/judge/{slug}/</loc></url>")
+    lines.extend(_sitemap_xml_footer())
+    return HttpResponse("\n".join(lines), content_type="application/xml; charset=utf-8")
+
+
+@cache_control(public=True, max_age=CACHE_SEC_SITEMAP)
+def sitemap_opinions(request, chunk: int):
+    """One chunk of ``SITEMAP_CHUNK_SIZE`` opinion URLs.
+
+    Chunks are 1-indexed (sitemap-opinions-1.xml = first 25K, etc.) so
+    the sitemap index URLs read naturally. Returns 404 for chunk numbers
+    beyond the actual corpus size.
+    """
+    state = getattr(request, "state", None)
+    host = f"https://{request.get_host()}"
+
+    if state is None or chunk < 1:
+        raise Http404("Sitemap chunk not found")
+
+    offset = (chunk - 1) * SITEMAP_CHUNK_SIZE
+    rows = list(
+        Opinion.objects.filter(court__state=state)
+        .order_by("id")
+        .values_list("case_number", "release_date")[offset : offset + SITEMAP_CHUNK_SIZE]
+    )
+    if not rows:
+        raise Http404("Sitemap chunk empty")
+
+    lines = _sitemap_xml_header()
+    for case_number, release_date in rows:
+        lines.append(f"  <url>")
+        lines.append(f"    <loc>{host}/opinion/{case_number}/</loc>")
+        if release_date:
+            lines.append(f"    <lastmod>{release_date.isoformat()}</lastmod>")
+        lines.append(f"  </url>")
+    lines.extend(_sitemap_xml_footer())
+    return HttpResponse("\n".join(lines), content_type="application/xml; charset=utf-8")

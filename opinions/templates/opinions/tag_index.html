@@ -1,0 +1,41 @@
+{% extends "opinions/base.html" %}
+{% block title %}Tags &middot; DocketDrift{% endblock %}
+{% block description %}Browse opinions by editorial tag &mdash; controlled-vocabulary topics, procedural posture, and significance markers applied by human review.{% endblock %}
+
+{% block content %}
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+  <ol>
+    <li><a href="https://docketdrift.com/">DocketDrift</a></li>
+    {% if request.state %}<li><a href="{% url 'opinions:home' %}">{{ request.state.name }}</a></li>{% endif %}
+    <li aria-current="page">Tags</li>
+  </ol>
+</nav>
+
+<div class="glossy-frame">
+  <h1>Editorial tags</h1>
+  <p class="subtle-lead">
+    DocketDrift's editorial layer &mdash; a controlled vocabulary of tags applied to opinions by human review.
+    Click any tag to see the opinions that carry it.
+  </p>
+
+  {% if tag_groups %}
+    {% for category_label, tags in tag_groups %}
+      <section class="tag-category-block">
+        <h2 class="tag-category-heading">{{ category_label }}</h2>
+        <ul class="tag-grid">
+          {% for tag in tags %}
+            <li>
+              <a class="opinion-tag opinion-tag--{{ tag.category }} opinion-tag--lg" href="{% url 'opinions:tag_detail' slug=tag.slug %}" title="{{ tag.description }}">
+                {{ tag.label }}
+                <span class="tag-count">{{ tag.state_opinion_count }}</span>
+              </a>
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endfor %}
+  {% else %}
+    <p class="glitch-line">No tags have been applied to opinions in this state yet. As editorial review picks up, tags will populate here.</p>
+  {% endif %}
+</div>
+{% endblock %}

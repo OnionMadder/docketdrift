@@ -11,7 +11,27 @@ from opinions.models import (
     QueryEmbedding,
     State,
     StateRequest,
+    Tag,
 )
+
+
+@admin.register(Tag)
+class TagAdmin(admin.ModelAdmin):
+    """Controlled-vocabulary tag editor.
+
+    Add a new tag here when manual review surfaces a pattern that the
+    starter vocabulary doesn't cover. Slug should be URL-safe (lowercase,
+    hyphens); category groups the tag on the public browse page.
+    """
+    list_display = ("label", "slug", "category", "opinion_count", "created_at")
+    list_filter = ("category",)
+    search_fields = ("slug", "label", "description")
+    prepopulated_fields = {"slug": ("label",)}
+    ordering = ("category", "label")
+
+    @admin.display(description="opinions", ordering=None)
+    def opinion_count(self, obj):
+        return obj.opinions.count()
 
 
 @admin.register(QueryEmbedding)
@@ -126,6 +146,7 @@ class OpinionAdmin(admin.ModelAdmin):
     search_fields = ("case_number", "title", "courtlistener_id", "disposition")
     date_hierarchy = "release_date"
     readonly_fields = ("reviewed_at",)
+    filter_horizontal = ("tags",)
     inlines = [PanelVoteInline, OpinionHoldingInline, ParseLogInline]
     actions = [mark_reviewed, mark_flagged, mark_ai_only]
 
@@ -146,10 +167,12 @@ class OpinionAdmin(admin.ModelAdmin):
             "fields": ("pdf_file", "raw_text", "html_content", "sha256"),
         }),
         ("Editorial review", {
-            "fields": ("review_status", "reviewed_by", "reviewed_at", "review_notes"),
+            "fields": ("review_status", "reviewed_by", "reviewed_at", "review_notes", "tags"),
             "description": (
                 "Use the bulk actions on the changelist for fast review passes. "
-                "Editing review_status here will auto-stamp reviewed_at when saved."
+                "Editing review_status here will auto-stamp reviewed_at when saved. "
+                "Tags are the controlled-vocabulary editorial layer -- add via the "
+                "Tag changelist; apply via the multi-select widget below."
             ),
         }),
     )

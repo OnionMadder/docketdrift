@@ -298,6 +298,13 @@ class Opinion(models.Model):
         help_text="Internal editor notes. Not shown publicly.",
     )
 
+    tags = models.ManyToManyField(
+        "Tag",
+        blank=True,
+        related_name="opinions",
+        help_text="Editorial tags applied to this opinion. Public; see Tag model.",
+    )
+
     pdf_file = models.FileField(
         upload_to=_opinion_pdf_upload_path,
         blank=True,
@@ -568,6 +575,58 @@ class OpinionHolding(models.Model):
 
     def __str__(self):
         return f"Holding on opinion {self.opinion_id}: {self.holding_text[:60]}"
+
+
+class Tag(models.Model):
+    """Editorial tag applied to opinions.
+
+    Controlled vocabulary -- the maintainer adds new tags via admin or
+    via a seed migration. Tags are categorized so the public browse
+    page can group them, and so the maintainer can mentally separate
+    "doctrine" tags (Fourth Amendment, due process) from "procedural"
+    ones (en banc, summary judgment).
+
+    Slug is the PK so URLs stay stable even if the label changes
+    (e.g. ``/mn/tag/fourth-amendment/``). Public-facing.
+    """
+
+    class Category(models.TextChoices):
+        DOCTRINE = "doctrine", "Doctrine"
+        SUBJECT = "subject", "Subject matter"
+        PROCEDURAL = "procedural", "Procedural"
+        POSTURE = "posture", "Posture / significance"
+
+    slug = models.SlugField(
+        primary_key=True,
+        max_length=64,
+        help_text="URL-safe identifier; used in /tag/<slug>/. Stable; don't change.",
+    )
+    label = models.CharField(
+        max_length=100,
+        help_text="Display name shown in chips, browse pages, admin lists.",
+    )
+    category = models.CharField(
+        max_length=24,
+        choices=Category.choices,
+        default=Category.DOCTRINE,
+        db_index=True,
+        help_text="Groups tags on the browse page; mental scaffolding for the editor.",
+    )
+    description = models.TextField(
+        blank=True,
+        default="",
+        help_text="Brief explanation of what this tag covers. Shown on browse pages.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["category", "label"]
+        indexes = [
+            models.Index(fields=["category", "label"]),
+        ]
+
+    def __str__(self):
+        return f"{self.label} ({self.get_category_display()})"
 
 
 class QueryEmbedding(models.Model):

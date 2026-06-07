@@ -66,6 +66,20 @@
     <strong>{{ opinion.court.name }}</strong> &middot; Filed {{ opinion.release_date|date:"F j, Y" }}
   </p>
 
+  {% with tags=opinion.tags.all %}
+    {% if tags %}
+      <ul class="opinion-tags" aria-label="Editorial tags">
+        {% for tag in tags %}
+          <li>
+            <a class="opinion-tag opinion-tag--{{ tag.category }}" href="{% url 'opinions:tag_detail' slug=tag.slug %}" title="{{ tag.get_category_display }}: {{ tag.description }}">
+              {{ tag.label }}
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endwith %}
+
   {% if opinion.pdf_file or opinion.source_url %}
     <div class="opinion-actions">
       {% if opinion.pdf_file %}<a href="{{ opinion.pdf_file.url }}">Download PDF</a>{% endif %}

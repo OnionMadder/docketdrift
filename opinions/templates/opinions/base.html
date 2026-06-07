@@ -60,6 +60,7 @@ crawlers see structured data for every opinion + judge.
         <li><a href="{% url 'opinions:home' %}"{% if active_nav == 'opinions' %} aria-current="page"{% endif %}>Opinions</a></li>
         {% if request.state %}
           <li><a href="{% url 'opinions:current_judges' %}"{% if active_nav == 'judges' %} aria-current="page"{% endif %}>Judges</a></li>
+          <li><a href="{% url 'opinions:tag_index' %}"{% if active_nav == 'tags' %} aria-current="page"{% endif %}>Tags</a></li>
         {% endif %}
         <li><a href="{% url 'opinions:about' %}"{% if active_nav == 'about' %} aria-current="page"{% endif %}>About</a></li>
       </ul>
