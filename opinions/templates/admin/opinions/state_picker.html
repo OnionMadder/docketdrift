@@ -1,0 +1,111 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% comment %}
+Generic state-picker landing used by CourtAdmin + JudgeAdmin. Renders
+state tiles with per-state row counts; clicking drops into the standard
+changelist filtered to the chosen state. Caller passes ``states`` (list
+of {state, count} dicts) and optional ``quick_filters`` (label + query
+string).
+{% endcomment %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+  .state-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0.85rem;
+    margin: 1.5rem 0 2rem;
+  }
+  .state-tile {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 1.5rem 1rem;
+    background: var(--body-quiet-color, #f5f5f5);
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 6px;
+    text-decoration: none;
+    color: var(--body-fg, #333);
+    transition: background 0.15s, border-color 0.15s, transform 0.15s;
+  }
+  .state-tile:hover {
+    background: var(--object-tools-bg, #79aec8);
+    color: white;
+    border-color: var(--object-tools-bg, #79aec8);
+    transform: translateY(-1px);
+  }
+  .state-tile strong {
+    font-size: 1.6rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin-bottom: 0.25rem;
+  }
+  .state-tile .state-code {
+    font-size: 0.82rem;
+    opacity: 0.7;
+    font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.4rem;
+  }
+  .state-tile .state-count {
+    font-size: 0.95rem;
+    opacity: 0.9;
+  }
+  .state-picker-lead {
+    color: var(--body-quiet-color-fg, #666);
+    margin: 0.5rem 0 1rem;
+  }
+  .state-picker-shortcuts {
+    margin: 1.25rem 0;
+    padding: 0.85rem 1rem;
+    background: var(--message-info-bg, #e8f4f8);
+    border-left: 4px solid var(--primary, #79aec8);
+    border-radius: 4px;
+    font-size: 0.92rem;
+  }
+  .state-picker-shortcuts a {
+    margin-right: 1rem;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>{{ title|default:"Browse by state" }}</h1>
+
+{% if picker_lead %}
+  <p class="state-picker-lead">{{ picker_lead|safe }}</p>
+{% endif %}
+
+{% if quick_filters %}
+  <div class="state-picker-shortcuts">
+    <strong>Quick filters:</strong>
+    {% for f in quick_filters %}
+      <a href="{{ f.querystring }}">{{ f.label }}</a>
+    {% endfor %}
+  </div>
+{% endif %}
+
+{% if states %}
+  <div class="state-grid">
+    {% for entry in states %}
+      <a href="{{ entry.querystring }}" class="state-tile">
+        <strong>{{ entry.state.name }}</strong>
+        <span class="state-code">{{ entry.state.code }}</span>
+        <span class="state-count">{{ entry.count }} {{ row_label }}{{ entry.count|pluralize }}</span>
+      </a>
+    {% endfor %}
+  </div>
+{% else %}
+  <p>No states seeded yet.</p>
+{% endif %}
+
+<p class="state-picker-lead">
+  Want everything intermixed? Use the
+  <a href="?all=1">unfiltered list</a> instead.
+</p>
+{% endblock %}

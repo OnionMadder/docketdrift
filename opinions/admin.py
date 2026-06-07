@@ -56,18 +56,106 @@ class StateAdmin(admin.ModelAdmin):
     search_fields = ("code", "name")
 
 
+def _render_state_picker(modeladmin, request, *, title, picker_lead, row_label,
+                          state_count_relation, quick_filters=None):
+    """Shared state-picker landing for Court + Judge admins.
+
+    ``state_count_relation`` is the reverse-FK attribute on State (e.g.
+    'courts', 'judges') so we can annotate per-state counts in a single
+    aggregate query. Each tile links to the standard changelist filtered
+    to that state.
+    """
+    from django.db.models import Count
+    from django.template.response import TemplateResponse
+
+    states = list(
+        State.objects
+        .annotate(_count=Count(state_count_relation))
+        .filter(_count__gt=0)
+        .order_by("name")
+    )
+    entries = [
+        {
+            "state": s,
+            "count": s._count,
+            "querystring": f"?state__code__exact={s.code}",
+        }
+        for s in states
+    ]
+
+    context = {
+        **modeladmin.admin_site.each_context(request),
+        "title": title,
+        "picker_lead": picker_lead,
+        "row_label": row_label,
+        "opts": modeladmin.model._meta,
+        "states": entries,
+        "quick_filters": quick_filters or [],
+    }
+    return TemplateResponse(
+        request,
+        "admin/opinions/state_picker.html",
+        context,
+    )
+
+
 @admin.register(Court)
 class CourtAdmin(admin.ModelAdmin):
     list_display = ("name", "state", "level", "courtlistener_id")
     list_filter = ("state", "level")
     search_fields = ("name", "courtlistener_id")
+    list_select_related = ("state",)
+
+    def changelist_view(self, request, extra_context=None):
+        # The bare URL renders a per-state landing so the page reads as
+        # "states with courts" rather than an intermixed list. ?all=1
+        # bypasses the picker and shows the flat changelist.
+        if request.GET and "all" not in request.GET:
+            return super().changelist_view(request, extra_context=extra_context)
+        if request.GET.get("all"):
+            # Strip the all=1 marker so list_filter's GET handling stays clean.
+            return super().changelist_view(request, extra_context=extra_context)
+        return _render_state_picker(
+            self,
+            request,
+            title="Courts — browse by state",
+            picker_lead="Click a state to see its appellate courts.",
+            row_label="court",
+            state_count_relation="courts",
+        )
 
 
 @admin.register(Judge)
 class JudgeAdmin(admin.ModelAdmin):
-    list_display = ("full_name", "state", "status", "courtlistener_id")
-    list_filter = ("state", "status")
+    list_display = ("full_name", "state", "status", "is_currently_seated", "courtlistener_id")
+    list_filter = ("state", "status", "is_currently_seated")
     search_fields = ("full_name", "slug", "courtlistener_id")
+    list_select_related = ("state", "court")
+    list_per_page = 50
+
+    def changelist_view(self, request, extra_context=None):
+        # Per-state landing so the 125+ judges (24 currently-seated MN
+        # + 100+ historical) aren't all dumped intermixed on entry.
+        if request.GET and "all" not in request.GET:
+            return super().changelist_view(request, extra_context=extra_context)
+        if request.GET.get("all"):
+            return super().changelist_view(request, extra_context=extra_context)
+        return _render_state_picker(
+            self,
+            request,
+            title="Judges — browse by state",
+            picker_lead=(
+                "Click a state to see its judges. From there, filter "
+                "further by currently-seated vs. historical, or by status."
+            ),
+            row_label="judge",
+            state_count_relation="judges",
+            quick_filters=[
+                {"label": "Currently seated", "querystring": "?is_currently_seated__exact=1"},
+                {"label": "Historical only", "querystring": "?is_currently_seated__exact=0"},
+                {"label": "Without CL id", "querystring": "?courtlistener_id__exact="},
+            ],
+        )
 
 
 class PanelVoteInline(admin.TabularInline):
