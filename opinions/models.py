@@ -591,9 +591,13 @@ class QueryEmbedding(models.Model):
     """
 
     query = models.CharField(
-        max_length=512,
+        max_length=255,
         primary_key=True,
-        help_text="Lowercase-normalized search query.",
+        help_text=(
+            "Lowercase-normalized search query. Capped at 255 so the column "
+            "fits within MariaDB's unique-index key size on utf8mb4. Longer "
+            "queries bypass the cache via the semantic.QUERY_LENGTH_CAP check."
+        ),
     )
     embedding_json = models.TextField(
         help_text="JSON array of 1024 floats -- the Voyage embedding for ``query``.",

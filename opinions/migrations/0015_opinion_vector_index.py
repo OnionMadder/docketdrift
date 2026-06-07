@@ -1,37 +1,25 @@
-"""Add HNSW vector index on Opinion.embedding for fast similarity search.
+"""HNSW vector index attempt -- no-op, kept as a migration slot.
 
-Without the index, ``VEC_DISTANCE_COSINE`` across 60K opinions does a
-full table scan -- workable for one-off queries but unacceptable for
-the per-request Scan endpoint. With the HNSW index, k-nearest-neighbor
-queries land in single-digit milliseconds regardless of corpus size.
+MariaDB 11.7 requires every column in a VECTOR index to be ``NOT NULL``
+(error 1252: "All parts of a VECTOR index must be NOT NULL"). Our
+``Opinion.embedding`` is legitimately nullable -- ~5% of opinions have
+no ``raw_text`` and therefore no embedding -- so we can't add the
+index without either backfilling those NULLs with a zero-vector
+sentinel (which would pollute similarity results) or denormalizing
+embeddings into a separate non-null table.
 
-MariaDB-only: skipped silently on SQLite for local dev. The semantic
-search helper module short-circuits when the embedding column isn't
-present (vendor != mysql) so local dev still works.
+For now we run ``VEC_DISTANCE_COSINE`` without an index. At 60K rows
+* 1024-dim vectors, a full scan completes in ~30-80ms -- acceptable
+for the search latency budget. Revisit (denormalize or backfill) when
+the corpus crosses ~500K opinions or when search becomes the
+bottleneck. The migration slot is preserved so future schema work
+remains in order.
 """
 from django.db import migrations
 
 
-def add_index(apps, schema_editor):
-    if schema_editor.connection.vendor != "mysql":
-        return
-    with schema_editor.connection.cursor() as cursor:
-        # MariaDB 11.7+ VECTOR INDEX defaults to HNSW with cosine distance.
-        # If the column already has populated vectors, the index builds in
-        # the background; this ALTER TABLE returns quickly.
-        cursor.execute(
-            "ALTER TABLE opinions_opinion "
-            "ADD VECTOR INDEX opinion_embedding_idx (embedding)"
-        )
-
-
-def drop_index(apps, schema_editor):
-    if schema_editor.connection.vendor != "mysql":
-        return
-    with schema_editor.connection.cursor() as cursor:
-        cursor.execute(
-            "ALTER TABLE opinions_opinion DROP INDEX opinion_embedding_idx"
-        )
+def noop(apps, schema_editor):
+    return
 
 
 class Migration(migrations.Migration):
@@ -41,5 +29,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunPython(add_index, drop_index),
+        migrations.RunPython(noop, noop),
     ]

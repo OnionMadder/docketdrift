@@ -50,6 +50,12 @@ HOME_PAGE_SIZE = 50
 # Recent activity surface; search box is the way to go deeper.
 HOME_LANDING_SIZE = 10
 
+# Default date window for searches. ?years=all overrides to the full
+# corpus (back to 1930); ?years=N overrides to a specific window. 10
+# years is what 95% of casual users actually want -- the deep archive
+# is one click away.
+DEFAULT_SEARCH_YEARS = 10
+
 
 @cache_control(public=True, max_age=CACHE_SEC_HOME)
 def home(request):
@@ -71,6 +77,19 @@ def home(request):
     search_q = (request.GET.get("q") or "").strip()
     disp_filter = (request.GET.get("disposition") or "").strip().lower()
 
+    # Default search window: last DEFAULT_SEARCH_YEARS years. Casual
+    # visitors are almost always looking at recent appellate activity;
+    # the deep archive (1930s-present) is one click away via the
+    # "expand to full corpus" toggle (?years=all). ?years=N overrides
+    # to a specific window. Invalid input clamps to the default.
+    years_param = (request.GET.get("years") or "").strip().lower()
+    if years_param == "all":
+        years_back: int | None = None
+    elif years_param.isdigit() and 1 <= int(years_param) <= 100:
+        years_back = int(years_param)
+    else:
+        years_back = DEFAULT_SEARCH_YEARS
+
     if state is None:
         live = list(State.objects.filter(is_live=True).order_by("name"))
         for s in live:
@@ -86,6 +105,19 @@ def home(request):
         .select_related("court")
         .order_by("-release_date")
     )
+
+    # Date window applies ONLY to active searches/filters. The default
+    # landing always reflects the whole corpus so the "60K opinions
+    # indexed, going back to the 1930s" message stays honest. Computed
+    # once and reused for both the keyword qs and the semantic-search
+    # SQL filter so the two surfaces always match. We use timedelta
+    # rather than .replace(year=...) to dodge the Feb-29-in-non-leap-
+    # year edge case.
+    date_cutoff = None
+    if years_back is not None and (search_q or disp_filter):
+        from datetime import date, timedelta
+        date_cutoff = date.today() - timedelta(days=365 * years_back)
+        qs = qs.filter(release_date__gte=date_cutoff)
     if search_q:
         use_fulltext = (
             connection.vendor == "mysql"
@@ -138,7 +170,9 @@ def home(request):
         from opinions.semantic import get_query_embedding, search_similar_opinions
         embedding = get_query_embedding(search_q)
         if embedding:
-            similar_ids = search_similar_opinions(embedding, state, limit=10)
+            similar_ids = search_similar_opinions(
+                embedding, state, limit=10, date_cutoff=date_cutoff,
+            )
             if similar_ids:
                 # Preserve the cosine-distance ordering returned by the
                 # similarity query (it's not the same as release_date desc).
@@ -169,6 +203,8 @@ def home(request):
         "page_obj": page_obj,
         "total_count": total_count,
         "is_filtered": is_filtered,
+        "years_back": years_back,
+        "years_cutoff_year": date_cutoff.year if date_cutoff else None,
         "active_nav": "opinions",
         "search_q": search_q,
         "disp_filter": disp_filter,

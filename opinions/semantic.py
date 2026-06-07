@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 VOYAGE_EMBED_URL = "https://api.voyageai.com/v1/embeddings"
 VOYAGE_MODEL = "voyage-law-2"
 VOYAGE_TIMEOUT_SECONDS = 30  # Query embedding is one short doc, fast.
-QUERY_LENGTH_CAP = 512       # Skip cache for queries longer than this.
+QUERY_LENGTH_CAP = 255       # Skip cache for queries longer than this (matches QueryEmbedding.query column).
 
 
 def get_query_embedding(query: str) -> list[float] | None:
@@ -113,6 +113,7 @@ def search_similar_opinions(
     query_embedding: list[float],
     state,
     limit: int = 10,
+    date_cutoff=None,
 ) -> list[int]:
     """Return top-N Opinion IDs by cosine distance, ordered nearest first.
 
@@ -121,9 +122,13 @@ def search_similar_opinions(
     - ``query_embedding`` is falsy
     - No state given (we always state-scope semantic search)
 
-    Uses ``VEC_DISTANCE_COSINE`` against ``Opinion.embedding``. The HNSW
-    index from migration 0015 makes this O(log n) instead of O(n);
-    without it the query would still work but slowly.
+    ``date_cutoff`` (a ``datetime.date``) filters to opinions filed on
+    or after that date -- used to match the keyword/FULLTEXT search's
+    default 10-year window so the two surfaces never disagree.
+
+    Uses ``VEC_DISTANCE_COSINE`` against ``Opinion.embedding``. No
+    HNSW index (see migration 0015 docstring); at 60K rows a full
+    scan completes in ~30-80ms which is fine for current scale.
     """
     if connection.vendor != "mysql":
         return []
@@ -132,20 +137,24 @@ def search_similar_opinions(
 
     query_vec_text = json.dumps(query_embedding)
 
+    sql = [
+        "SELECT o.id,",
+        "       VEC_DISTANCE_COSINE(o.embedding, Vec_FromText(%s)) AS dist",
+        "FROM opinions_opinion o",
+        "JOIN opinions_court c ON c.id = o.court_id",
+        "WHERE c.state_id = %s",
+        "  AND o.embedding IS NOT NULL",
+    ]
+    params = [query_vec_text, state.code]
+    if date_cutoff is not None:
+        sql.append("  AND o.release_date >= %s")
+        params.append(date_cutoff)
+    sql.append("ORDER BY dist")
+    sql.append("LIMIT %s")
+    params.append(limit)
+
     with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT o.id,
-                   VEC_DISTANCE_COSINE(o.embedding, Vec_FromText(%s)) AS dist
-            FROM opinions_opinion o
-            JOIN opinions_court c ON c.id = o.court_id
-            WHERE c.state_id = %s
-              AND o.embedding IS NOT NULL
-            ORDER BY dist
-            LIMIT %s
-            """,
-            [query_vec_text, state.code, limit],
-        )
+        cursor.execute("\n".join(sql), params)
         return [row[0] for row in cursor.fetchall()]
 
 

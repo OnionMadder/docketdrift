@@ -13,7 +13,7 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name='QueryEmbedding',
             fields=[
-                ('query', models.CharField(help_text='Lowercase-normalized search query.', max_length=512, primary_key=True, serialize=False)),
+                ('query', models.CharField(help_text='Lowercase-normalized search query. Capped at 255 so the column fits within MariaDBs unique-index key size on utf8mb4. Longer queries bypass the cache via the semantic.QUERY_LENGTH_CAP check.', max_length=255, primary_key=True, serialize=False)),
                 ('embedding_json', models.TextField(help_text='JSON array of 1024 floats -- the Voyage embedding for ``query``.')),
                 ('hit_count', models.PositiveIntegerField(default=1, help_text='How many times this cached embedding has been served.')),
                 ('created_at', models.DateTimeField(auto_now_add=True)),

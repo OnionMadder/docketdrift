@@ -447,6 +447,32 @@
   border-radius: 3px;
 }
 
+.active-filters-window {
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  padding: 0.2rem 0.55rem;
+  border: 1px solid rgba(148, 140, 161, 0.35);
+  border-radius: 3px;
+  background: rgba(148, 140, 161, 0.06);
+  white-space: nowrap;
+}
+
+.active-filters-expand {
+  font-size: 0.75rem;
+  color: var(--neon-cyan);
+  text-decoration: none;
+  border-bottom: 1px dashed rgba(38, 255, 230, 0.4);
+  transition: color var(--transition), border-color var(--transition);
+}
+
+.active-filters-expand:hover,
+.active-filters-expand:focus-visible {
+  color: var(--text);
+  border-bottom-color: var(--neon-cyan);
+}
+
 .active-filters-clear {
   margin-left: auto;
   color: var(--text-dim);
