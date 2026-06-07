@@ -212,6 +212,44 @@ def mark_ai_only(modeladmin, request, queryset):
     modeladmin.message_user(request, f"{n} opinion(s) reverted to AI-processed.")
 
 
+@admin.action(description="Re-run parser on selected (fill missing disposition + bucket)")
+def rerun_parser(modeladmin, request, queryset):
+    """Run the state parser on selected opinions to fill missing
+    ``disposition`` / ``disposition_bucket``.
+
+    Only touches rows where disposition is currently empty -- never
+    overwrites a human-entered or previously-parsed value. The bulk
+    backfill management command exists for the corpus-wide pass; this
+    action is for one-off cleanup while reading individual opinions.
+    """
+    from opinions.parsing import parse as parse_opinion
+    from opinions.utils import compute_disposition_bucket as _bucket
+
+    filled = skipped = 0
+    qs = queryset.select_related("court__state")
+    for op in qs:
+        if op.disposition:
+            skipped += 1
+            continue
+        if not op.raw_text:
+            skipped += 1
+            continue
+        result = parse_opinion(op.court.state_id, op.raw_text)
+        if result is None or not result.disposition:
+            skipped += 1
+            continue
+        Opinion.objects.filter(pk=op.pk).update(
+            disposition=result.disposition[:128],
+            disposition_bucket=_bucket(result.disposition),
+        )
+        filled += 1
+    modeladmin.message_user(
+        request,
+        f"Re-ran parser: {filled} disposition(s) filled; {skipped} skipped "
+        "(already populated, no raw_text, or no parser match).",
+    )
+
+
 @admin.action(description="Auto-flag ALL pre-1849 opinions (data-quality triage)")
 def flag_pre_1849(modeladmin, request, queryset):
     """One-shot data-quality triage: anything released before MN Territory
@@ -315,7 +353,7 @@ class OpinionAdmin(admin.ModelAdmin):
     readonly_fields = ("reviewed_at",)
     filter_horizontal = ("tags",)
     inlines = [PanelVoteInline, OpinionHoldingInline, ParseLogInline]
-    actions = [mark_reviewed, mark_flagged, mark_ai_only, flag_pre_1849]
+    actions = [mark_reviewed, mark_flagged, mark_ai_only, rerun_parser, flag_pre_1849]
     # 60K opinions in the corpus -- without these, the changelist tries
     # to count + render too much per request.
     list_per_page = 50
