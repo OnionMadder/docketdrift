@@ -7,6 +7,21 @@
    and add detail-page chrome.
    ============================================================ */
 
+/* ----------  Self-hosted fonts  ----------
+   We self-host Chakra Petch instead of pulling from Google Fonts so
+   visitors aren't making a cross-origin request to fonts.googleapis.com
+   on every page load (and so the brand renders consistently behind a
+   strict CSP later). JetBrains Mono falls back to system mono fonts
+   (ui-monospace / SF Mono / Consolas) which are perfectly serviceable
+   for the file-number + tag-cloud usage. */
+@font-face {
+  font-family: 'Chakra Petch';
+  src: url('../fonts/ChakraPetch-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* ----------  Sidebar brand block  ---------- */
 
 .site-header .brand {
