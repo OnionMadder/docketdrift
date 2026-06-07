@@ -312,7 +312,7 @@ def privacy(request):
     because the privacy posture itself is short and stark: we don't log,
     don't track, don't share."""
     return render(request, "opinions/privacy.html", {
-        "active_nav": "about",
+        "active_nav": "privacy",
     })
 
 
