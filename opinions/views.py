@@ -59,36 +59,21 @@ DEFAULT_SEARCH_YEARS = 10
 
 @cache_control(public=True, max_age=CACHE_SEC_HOME)
 def home(request):
-    """Apex state-picker when no subdomain matches; per-state landing otherwise.
+    """Apex state-picker OR per-state landing page.
 
-    The state landing has two display modes:
+    Three branches:
 
-    - DEFAULT (no filter/search): shows ``HOME_LANDING_SIZE`` most recent
-      opinions, no pagination, with a "use search to dig deeper" prompt.
-      Mirrors how casual visitors actually use the site -- they want to
-      see what's new, then search for the specific thing they're after.
-    - FILTERED/SEARCHED (``?q=`` or ``?disposition=``): full pagination
-      at ``HOME_PAGE_SIZE`` per page. This is the power-user view.
-
-    Switching modes only on the presence of a query param keeps the
-    contract simple -- one URL grammar, two render modes.
+    - ``request.state is None`` (no subdomain match): render the apex
+      state picker.
+    - State subdomain root with NO search/filter params: render the
+      state landing page (hero + stats + recent activity + browse cards).
+      This is what visitors hitting ``mn.docketdrift.com`` see -- a
+      brand-forward landing, not a raw opinion list.
+    - State subdomain root WITH search/filter params: redirect to
+      ``/opinions/?...`` so the landing URL stays the landing URL even
+      as the search box submits from any page.
     """
     state = getattr(request, "state", None)
-    search_q = (request.GET.get("q") or "").strip()
-    disp_filter = (request.GET.get("disposition") or "").strip().lower()
-
-    # Default search window: last DEFAULT_SEARCH_YEARS years. Casual
-    # visitors are almost always looking at recent appellate activity;
-    # the deep archive (1930s-present) is one click away via the
-    # "expand to full corpus" toggle (?years=all). ?years=N overrides
-    # to a specific window. Invalid input clamps to the default.
-    years_param = (request.GET.get("years") or "").strip().lower()
-    if years_param == "all":
-        years_back: int | None = None
-    elif years_param.isdigit() and 1 <= int(years_param) <= 100:
-        years_back = int(years_param)
-    else:
-        years_back = DEFAULT_SEARCH_YEARS
 
     if state is None:
         live = list(State.objects.filter(is_live=True).order_by("name"))
@@ -97,8 +82,73 @@ def home(request):
         return render(request, "opinions/apex.html", {
             "states": live,
             "active_nav": "opinions",
-            "search_q": search_q,
+            "search_q": (request.GET.get("q") or "").strip(),
         })
+
+    # Search/filter params bypass the landing -- redirect to the
+    # opinion-list view with the same querystring.
+    if any(p in request.GET for p in ("q", "disposition", "page", "years")):
+        from django.urls import reverse
+        return redirect(f"{reverse('opinions:opinion_list')}?{request.GET.urlencode()}")
+
+    # State landing.
+    state_opinions = Opinion.objects.filter(court__state=state)
+    total_opinions = state_opinions.count()
+    judges_qs = Judge.objects.filter(state=state)
+    total_judges = judges_qs.count()
+    currently_seated = judges_qs.filter(is_currently_seated=True).count()
+
+    date_range = state_opinions.aggregate(
+        first=models.Min("release_date"),
+        last=models.Max("release_date"),
+    )
+
+    latest_opinions = list(
+        state_opinions.select_related("court").order_by("-release_date")[:5]
+    )
+
+    total_tags_used = Tag.objects.filter(
+        opinions__court__state=state,
+    ).distinct().count()
+    total_tags_available = Tag.objects.count()
+
+    return render(request, "opinions/state_landing.html", {
+        "state": state,
+        "total_opinions": total_opinions,
+        "total_judges": total_judges,
+        "currently_seated": currently_seated,
+        "latest_opinions": latest_opinions,
+        "date_range": date_range,
+        "total_tags_used": total_tags_used,
+        "total_tags_available": total_tags_available,
+        "active_nav": "home",
+    })
+
+
+@cache_control(public=True, max_age=CACHE_SEC_HOME)
+def opinion_list(request):
+    """The full opinion browse/search view. State-scoped.
+
+    What was previously the state landing -- the keyword + semantic
+    search results, the dig-deeper prompt, the pagination. Moved here
+    so the bare state URL can be a proper landing page and ``/opinions/``
+    is the explicit "show me the actual list" URL the search box
+    submits to.
+    """
+    state = getattr(request, "state", None)
+    if state is None:
+        return redirect("/")
+
+    search_q = (request.GET.get("q") or "").strip()
+    disp_filter = (request.GET.get("disposition") or "").strip().lower()
+
+    years_param = (request.GET.get("years") or "").strip().lower()
+    if years_param == "all":
+        years_back: int | None = None
+    elif years_param.isdigit() and 1 <= int(years_param) <= 100:
+        years_back = int(years_param)
+    else:
+        years_back = DEFAULT_SEARCH_YEARS
 
     qs = (
         Opinion.objects.filter(court__state=state)
@@ -209,6 +259,7 @@ def home(request):
         "search_q": search_q,
         "disp_filter": disp_filter,
         "disp_label": disp_label,
+        "from_opinion_list": True,
     })
 
 

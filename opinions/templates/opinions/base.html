@@ -57,17 +57,19 @@ crawlers see structured data for every opinion + judge.
 
     <nav class="site-nav" aria-label="Primary">
       <ul>
-        <li><a href="{% url 'opinions:home' %}"{% if active_nav == 'opinions' %} aria-current="page"{% endif %}>Opinions</a></li>
         {% if request.state %}
+          <li><a href="{% url 'opinions:opinion_list' %}"{% if active_nav == 'opinions' %} aria-current="page"{% endif %}>Opinions</a></li>
           <li><a href="{% url 'opinions:current_judges' %}"{% if active_nav == 'judges' %} aria-current="page"{% endif %}>Judges</a></li>
           <li><a href="{% url 'opinions:tag_index' %}"{% if active_nav == 'tags' %} aria-current="page"{% endif %}>Tags</a></li>
+        {% else %}
+          <li><a href="{% url 'opinions:home' %}"{% if active_nav == 'opinions' %} aria-current="page"{% endif %}>Opinions</a></li>
         {% endif %}
         <li><a href="{% url 'opinions:about' %}"{% if active_nav == 'about' %} aria-current="page"{% endif %}>About</a></li>
       </ul>
     </nav>
 
     <div class="search-module">
-      <form action="{% url 'opinions:home' %}" method="get" role="search">
+      <form action="{% if request.state %}{% url 'opinions:opinion_list' %}{% else %}{% url 'opinions:home' %}{% endif %}" method="get" role="search">
         <input type="text" name="q" placeholder="Search opinions…" value="{{ search_q|default:'' }}" aria-label="Search opinions">
         <button type="submit" class="scan-button">Scan</button>
       </form>

@@ -1,0 +1,117 @@
+{% extends "opinions/base.html" %}
+{% block title %}{{ state.name }} &middot; DocketDrift{% endblock %}
+{% block description %}DocketDrift {{ state.name }} &mdash; public-records analysis of {{ state.name }} appellate courts. {{ total_opinions }} opinions, {{ total_judges }} judges, indexed and searchable.{% endblock %}
+
+{% block og_title %}DocketDrift &middot; {{ state.name }}{% endblock %}
+{% block og_description %}Public-records analysis of {{ state.name }} appellate courts &mdash; {{ total_opinions }} opinions{% if date_range.first %} from {{ date_range.first|date:"Y" }} to present{% endif %}, with editorial review.{% endblock %}
+
+{% block content %}
+<div class="glossy-frame landing-hero">
+  <span class="status-pill status-pill--beta">Beta &middot; {{ state.name }}</span>
+  <h1>{{ state.name }}</h1>
+  <p class="lede">Public-records analysis of {{ state.name }} appellate courts.</p>
+  {% if date_range.first %}
+    <p class="lede-secondary">
+      Opinions of the {{ state.name }} Supreme Court and Court of Appeals, {{ date_range.first|date:"Y" }}&ndash;present.
+    </p>
+  {% endif %}
+</div>
+
+<div class="glossy-frame landing-stats-frame">
+  <ul class="landing-stats">
+    <li>
+      <strong>{{ total_opinions }}</strong>
+      <span>opinion{{ total_opinions|pluralize }} indexed</span>
+    </li>
+    <li>
+      <strong>{{ total_judges }}</strong>
+      <span>judge{{ total_judges|pluralize }} ({{ currently_seated }} currently seated)</span>
+    </li>
+    {% if date_range.first %}
+      <li>
+        <strong>{{ date_range.first|date:"Y" }}&ndash;{{ date_range.last|date:"Y" }}</strong>
+        <span>date range</span>
+      </li>
+    {% endif %}
+    <li>
+      <strong>{{ total_tags_used }}<small>/{{ total_tags_available }}</small></strong>
+      <span>editorial tags applied</span>
+    </li>
+  </ul>
+</div>
+
+{% if latest_opinions %}
+  <div class="glossy-frame">
+    <div class="landing-section-header">
+      <h2>Most recent activity</h2>
+      <a class="inspect-link" href="{% url 'opinions:opinion_list' %}">All opinions &rarr;</a>
+    </div>
+    <table class="doc-table">
+      <thead>
+        <tr>
+          <th>Docket</th>
+          <th>Court</th>
+          <th>Filed</th>
+          <th>Disposition</th>
+          <th>Case</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for op in latest_opinions %}
+        <tr>
+          <td class="case-number-cell"><span class="file-number">{{ op.case_number }}</span></td>
+          <td class="doc-court-cell"><span class="court-pill court-pill--{{ op.court.level_slug }}" title="{{ op.court.name }}">{{ op.court.short_label }}</span></td>
+          <td class="doc-date-cell">{{ op.release_date|date:"Y-m-d" }}</td>
+          <td>
+            {% if op.disposition %}
+              <span class="case-status disposition-{{ op.disposition_class }}">{{ op.disposition }}</span>
+            {% else %}
+              <span class="doc-date-cell is-tbd">&mdash;</span>
+            {% endif %}
+          </td>
+          <td class="title-cell">
+            <span class="review-dot review-dot--{{ op.review_status }}" title="{{ op.get_review_status_display }}"></span>
+            <a href="{% url 'opinions:detail' case_number=op.case_number %}">{{ op.title|truncatechars:90 }}</a>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+
+<div class="glossy-frame">
+  <h2>Browse the {{ state.name }} corpus</h2>
+  <div class="landing-browse-grid">
+    <a href="{% url 'opinions:opinion_list' %}" class="landing-browse-card">
+      <strong>Opinions</strong>
+      <span>Search + filter the {{ total_opinions }} opinions in the corpus. Keyword search via MariaDB FULLTEXT; semantic search via voyage-law-2 embeddings.</span>
+    </a>
+    <a href="{% url 'opinions:current_judges' %}" class="landing-browse-card">
+      <strong>Judges</strong>
+      <span>{{ currently_seated }} currently-seated justice{{ currently_seated|pluralize:",s" }} + judges, with per-judge dossiers covering opinion history, court split, dissent rate, and co-panelists.</span>
+    </a>
+    <a href="{% url 'opinions:tag_index' %}" class="landing-browse-card">
+      <strong>Tags</strong>
+      <span>Browse opinions by editorial subject-matter tag. {{ total_tags_available }} controlled-vocabulary tags across doctrine, subject, procedural, and posture categories.</span>
+    </a>
+  </div>
+</div>
+
+<div class="glossy-frame">
+  <h2>About this corpus</h2>
+  <p>
+    DocketDrift {{ state.name }} collates published opinions from the
+    {{ state.name }} appellate courts, normalizes them into a structured
+    archive, and surfaces patterns for human review. Source material is
+    in the public record; our role is collation, not interpretation.
+  </p>
+  <p>
+    Each opinion shows whether it has been reviewed by an editor
+    (cyan dot) or only machine-processed (amber dot). Filtered date
+    defaults to the last 10 years &mdash; expand to the full archive
+    via the toggle on the search page.
+  </p>
+  <p><a href="{% url 'opinions:about' %}">Read more about methodology &rarr;</a></p>
+</div>
+{% endblock %}

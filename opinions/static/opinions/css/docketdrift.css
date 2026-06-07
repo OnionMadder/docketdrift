@@ -1043,6 +1043,157 @@ button.cta-primary {
 }
 
 /* ============================================================
+   State landing page (mn.docketdrift.com root)
+   ============================================================
+   The proper "Minnesota homepage" -- brand-forward hero, key
+   numbers, recent activity preview, big card links into the
+   actual surfaces (opinions, judges, tags). What casual visitors
+   see when they hit a state subdomain.
+   ============================================================ */
+
+.landing-hero {
+  text-align: center;
+  padding-top: 1.5rem;
+  padding-bottom: 1.5rem;
+}
+
+.landing-hero h1 {
+  font-size: clamp(2.4rem, 6vw, 3.6rem);
+  margin: 1rem 0 0.85rem;
+  letter-spacing: 0.05em;
+}
+
+.landing-hero .status-pill {
+  margin-bottom: 0.5rem;
+}
+
+.landing-hero .lede {
+  font-size: 1.15rem;
+  color: var(--text-primary);
+  max-width: 620px;
+  margin: 0 auto 0.5rem;
+  line-height: 1.5;
+}
+
+.landing-hero .lede-secondary {
+  font-size: 0.95rem;
+  color: var(--text-dim);
+  max-width: 620px;
+  margin: 0 auto;
+  font-style: italic;
+}
+
+.landing-stats-frame {
+  padding: 1.2rem 1.4rem;
+}
+
+.landing-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  gap: 1.1rem;
+}
+
+.landing-stats li {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 0.85rem 1rem;
+  background: rgba(20, 0, 30, 0.5);
+  border: var(--border-soft);
+  border-left: 3px solid var(--neon-pink);
+  border-radius: var(--radius-sm);
+}
+
+.landing-stats li:nth-child(2) { border-left-color: var(--neon-cyan); }
+.landing-stats li:nth-child(3) { border-left-color: #ffbf3d; }
+.landing-stats li:nth-child(4) { border-left-color: #b394ff; }
+
+.landing-stats strong {
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  font-size: 1.85rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.landing-stats strong small {
+  font-size: 0.7em;
+  color: var(--text-dim);
+}
+
+.landing-stats span {
+  margin-top: 0.4rem;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.landing-section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.landing-section-header h2 {
+  margin: 0;
+}
+
+.landing-browse-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.landing-browse-card {
+  display: flex;
+  flex-direction: column;
+  padding: 1.2rem 1.25rem;
+  background: rgba(20, 0, 30, 0.5);
+  border: var(--border-soft);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color var(--transition), background var(--transition), transform var(--transition);
+}
+
+.landing-browse-card:hover,
+.landing-browse-card:focus-visible {
+  border-color: var(--neon-cyan);
+  background: rgba(38, 255, 230, 0.05);
+  transform: translateY(-2px);
+}
+
+.landing-browse-card strong {
+  font-family: "Chakra Petch", system-ui, sans-serif;
+  font-size: 1.4rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--neon-pink);
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+}
+
+.landing-browse-card span {
+  font-size: 0.9rem;
+  color: var(--text-dim);
+  line-height: 1.55;
+}
+
+.landing-browse-card:hover strong,
+.landing-browse-card:focus-visible strong {
+  color: var(--neon-cyan);
+}
+
+/* ============================================================
    Judge dossier stats (J3 -- per-judge opinion infographic)
    ============================================================
    The judge detail page now has real per-judge data: stat cards for
