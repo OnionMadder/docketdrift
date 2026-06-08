@@ -27,6 +27,13 @@ DEFAULT_PAGE_SIZE = 50
 MAX_RETRIES_ON_429 = 3
 RETRY_AFTER_FALLBACK = 60  # seconds when Retry-After header is missing
 
+# Network-level retry config (separate from 429): ReadTimeout /
+# ConnectionError / SSL drops mid-request. CL occasionally stalls past
+# the 60s socket read budget, especially during throttle. We retry the
+# whole request a bounded number of times with a short cooldown.
+MAX_RETRIES_ON_NETERR = 5
+NETERR_BACKOFF_SECONDS = 30
+
 
 class CourtListenerError(RuntimeError):
     """Raised when the API returns an error we can't recover from."""
@@ -91,27 +98,56 @@ class CourtListenerClient:
         else:
             url = urljoin(self._base_url, url_or_path.lstrip("/"))
 
-        for attempt in range(MAX_RETRIES_ON_429 + 1):
-            response = self._session.get(
-                url, params=params or {}, timeout=DEFAULT_TIMEOUT
-            )
-            if response.status_code != 429:
-                response.raise_for_status()
-                return response.json()
-            if attempt >= MAX_RETRIES_ON_429:
-                raise CourtListenerError(
-                    f"Rate limited after {attempt} retries on {url}"
-                )
-            retry_after = response.headers.get("Retry-After")
+        # Outer loop handles transport-level failures (ReadTimeout,
+        # ConnectionError, SSL drops). CL occasionally stalls mid-response
+        # past the 60s socket read budget, and the inner 429 retry can't
+        # see those because they raise before the response object exists.
+        # Without this outer retry, the management command sees an
+        # unhandled requests.exceptions.ReadTimeout and aborts the whole
+        # ingest -- which is exactly what killed three NH+AZ runs today.
+        for net_attempt in range(MAX_RETRIES_ON_NETERR + 1):
             try:
-                wait = int(retry_after) if retry_after else RETRY_AFTER_FALLBACK
-            except ValueError:
-                wait = RETRY_AFTER_FALLBACK
-            logger.warning(
-                "courtlistener: 429 on %s, sleeping %ss (attempt %s/%s)",
-                url, wait, attempt + 1, MAX_RETRIES_ON_429,
-            )
-            self._sleep(wait)
+                for attempt in range(MAX_RETRIES_ON_429 + 1):
+                    response = self._session.get(
+                        url, params=params or {}, timeout=DEFAULT_TIMEOUT
+                    )
+                    if response.status_code != 429:
+                        response.raise_for_status()
+                        return response.json()
+                    if attempt >= MAX_RETRIES_ON_429:
+                        raise CourtListenerError(
+                            f"Rate limited after {attempt} retries on {url}"
+                        )
+                    retry_after = response.headers.get("Retry-After")
+                    try:
+                        wait = int(retry_after) if retry_after else RETRY_AFTER_FALLBACK
+                    except ValueError:
+                        wait = RETRY_AFTER_FALLBACK
+                    logger.warning(
+                        "courtlistener: 429 on %s, sleeping %ss (attempt %s/%s)",
+                        url, wait, attempt + 1, MAX_RETRIES_ON_429,
+                    )
+                    self._sleep(wait)
+                # Inner loop fell through without return -- shouldn't
+                # happen given the explicit raise on exhausted retries.
+                raise CourtListenerError("Unreachable inner retry loop exit")
+            except requests.exceptions.RequestException as exc:
+                # ReadTimeout / ConnectionError / SSL hiccup. Backoff
+                # and retry. Final attempt raises through so the caller
+                # sees a CourtListenerError, not an arbitrary
+                # requests.* exception type.
+                if net_attempt >= MAX_RETRIES_ON_NETERR:
+                    raise CourtListenerError(
+                        f"Transport failure after {net_attempt} retries on {url}: "
+                        f"{type(exc).__name__}: {exc}"
+                    ) from exc
+                logger.warning(
+                    "courtlistener: %s on %s, backing off %ss (net attempt %s/%s)",
+                    type(exc).__name__, url, NETERR_BACKOFF_SECONDS,
+                    net_attempt + 1, MAX_RETRIES_ON_NETERR,
+                )
+                self._sleep(NETERR_BACKOFF_SECONDS)
+                continue
 
         raise CourtListenerError("Unreachable retry loop exit")
 
