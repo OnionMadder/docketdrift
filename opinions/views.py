@@ -635,9 +635,14 @@ def judge_detail(request, slug):
         .order_by("-n")
     )
 
-    # Recent opinions list -- 15 most recent we have a panel-vote for
+    # Recent opinions list -- 15 most recent we have a panel-vote for.
+    # ``.defer("raw_text", "html_content")`` keeps the two giant TEXT
+    # columns out of the list payload -- pulling raw_text on 15 rows
+    # could be 1MB+ of wire bytes for a list view that doesn't render
+    # the body. (Same trap statute_detail learned a few hours back.)
     recent_opinions = list(
-        opinions_qs.select_related("court")
+        opinions_qs.defer("raw_text", "html_content")
+        .select_related("court")
         .order_by("-release_date")[:15]
     )
 
