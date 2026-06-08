@@ -193,11 +193,53 @@ class CourtAdmin(admin.ModelAdmin):
 
 @admin.register(Judge)
 class JudgeAdmin(admin.ModelAdmin):
-    list_display = ("full_name", "state", "status", "is_currently_seated", "courtlistener_id")
+    # courtlistener_id is editable inline so blank rows can be filled in
+    # without opening each change-form -- pair it with the cl_search_link
+    # column for a click-out-then-paste-back workflow.
+    list_display = ("full_name", "state", "status", "is_currently_seated",
+                    "courtlistener_id", "cl_search_link", "view_on_site_link")
+    list_editable = ("courtlistener_id",)
     list_filter = ("state", "status", "is_currently_seated")
     search_fields = ("full_name", "slug", "courtlistener_id")
     list_select_related = ("state", "court")
     list_per_page = 50
+
+    @admin.display(description="lookup")
+    def cl_search_link(self, obj):
+        """Per-row link to CourtListener's people-search prefilled with
+        this judge's name. Click -> CL opens in a new tab with the
+        relevant person results -> grab the numeric id from the URL
+        and paste into the inline courtlistener_id cell."""
+        from django.utils.html import format_html
+        from urllib.parse import quote_plus
+        if obj.courtlistener_id:
+            return format_html(
+                '<span style="color:#888">resolved</span>'
+            )
+        return format_html(
+            '<a href="https://www.courtlistener.com/person/?q={}" '
+            'target="_blank" rel="noopener" '
+            'title="Search CourtListener for {}">'
+            'search CL &rarr;</a>',
+            quote_plus(obj.full_name or ""),
+            obj.full_name,
+        )
+
+    @admin.display(description="live page")
+    def view_on_site_link(self, obj):
+        """Per-row link to the public dossier on the state subdomain.
+        Same destination as the top-right "View on site" button on the
+        change form, but accessible from the changelist without opening
+        the form -- useful when scrubbing a list of judges and just
+        wanting to spot-check each live page."""
+        from django.utils.html import format_html
+        if not obj.slug or not obj.state_id:
+            return ""
+        return format_html(
+            '<a href="https://{}.docketdrift.com/judge/{}/" '
+            'target="_blank" rel="noopener">view &rarr;</a>',
+            obj.state.slug, obj.slug,
+        )
 
     def changelist_view(self, request, extra_context=None):
         # Per-state landing so the 125+ judges (24 currently-seated MN

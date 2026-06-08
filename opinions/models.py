@@ -204,6 +204,21 @@ class Judge(models.Model):
     def __str__(self):
         return f"{self.full_name} ({self.state_id})"
 
+    def get_absolute_url(self) -> str:
+        """Public URL for this judge's dossier.
+
+        Powers the Django admin "View on site" link in the change-form
+        header, so the editor can hop from /admin/opinions/judge/N/change/
+        on the apex straight to /judge/<slug>/ on the correct state
+        subdomain. Returned as an absolute https URL with the state
+        subdomain baked in because:
+        - the admin lives on docketdrift.com (apex)
+        - the public dossier lives on <state>.docketdrift.com
+        - Judge.Meta.unique_together = (state, slug), so the same slug
+          can recur across states -- the subdomain disambiguates.
+        """
+        return f"https://{self.state.slug}.docketdrift.com/judge/{self.slug}/"
+
 
 def _opinion_pdf_upload_path(instance, filename):
     """Where uploaded opinion PDFs live under MEDIA_ROOT.
@@ -332,6 +347,19 @@ class Opinion(models.Model):
 
     def __str__(self):
         return f"{self.case_number}: {self.title[:60]}"
+
+    def get_absolute_url(self) -> str:
+        """Public URL for this opinion -- powers admin "View on site".
+
+        State subdomain baked in for the same reason as Judge: the
+        admin sits on the apex, the dossier lives on the per-state
+        subdomain, and (court, case_number) uniqueness is per-court
+        so the subdomain disambiguates.
+        """
+        return (
+            f"https://{self.court.state.slug}.docketdrift.com"
+            f"/opinion/{self.case_number}/"
+        )
 
     @property
     def disposition_class(self) -> str:
