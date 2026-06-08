@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import time
 from datetime import date, timedelta
 
 from django.conf import settings
@@ -31,6 +32,12 @@ from opinions.utils import normalize_docket_number
 logger = logging.getLogger(__name__)
 
 DEFAULT_LOOKBACK_DAYS = 7
+
+# DB write retry config -- NFSN's MariaDB drops idle SSL connections
+# during the 30-60s CL rate-limit sleeps inside this command. Same
+# pattern + tunings embed_opinions uses.
+DB_MAX_RETRIES = 5
+DB_RETRY_SLEEP_SECONDS = 5
 
 
 class Command(BaseCommand):
@@ -157,19 +164,59 @@ class Command(BaseCommand):
                     self.stderr.write("    skipping: missing/invalid date_filed")
                     opinions_skipped += 1
                 else:
-                    _, created = Opinion.objects.update_or_create(
-                        court=court,
-                        case_number=case_number,
-                        defaults={
-                            "title": case_name,
-                            "release_date": parsed_date,
-                            "is_precedential": precedential_status == "published",
-                            "raw_text": raw_text,
-                            "source_url": absolute_url,
-                            "courtlistener_id": str(cluster_id),
-                            "sha256": sha256,
-                        },
-                    )
+                    # CL throttle sleeps of 30-60s give MariaDB's idle
+                    # connection timeout time to drop our socket. The first
+                    # write after a long sleep would then explode with
+                    # OperationalError (2013, "Lost connection to MySQL
+                    # server during query"). Retry-with-reconnect handles
+                    # it: close the broken connection (Django auto-
+                    # establishes on next use), wait a moment, retry. Same
+                    # pattern embed_opinions uses for the same root cause.
+                    from django.db import connection as _db, OperationalError as _DBErr
+                    for db_attempt in range(1, DB_MAX_RETRIES + 1):
+                        try:
+                            _, created = Opinion.objects.update_or_create(
+                                court=court,
+                                case_number=case_number,
+                                defaults={
+                                    "title": case_name,
+                                    "release_date": parsed_date,
+                                    "is_precedential": precedential_status == "published",
+                                    "raw_text": raw_text,
+                                    "source_url": absolute_url,
+                                    "courtlistener_id": str(cluster_id),
+                                    "sha256": sha256,
+                                },
+                            )
+                            break
+                        except (_DBErr, BaseException) as db_exc:
+                            # BaseException not Exception: NFSN's SSL socket
+                            # raises KeyboardInterrupt on EINTR during long
+                            # sleeps, which would otherwise terminate the
+                            # whole run. Real SIGTERM/SIGKILL still take
+                            # the process down because the outer signal
+                            # arrives after this catch returns.
+                            if db_attempt >= DB_MAX_RETRIES:
+                                self.stderr.write(self.style.ERROR(
+                                    f"    DB failed {DB_MAX_RETRIES}x for "
+                                    f"{case_number}; skipping. "
+                                    f"Last error: {type(db_exc).__name__}: {db_exc}"
+                                ))
+                                opinions_skipped += 1
+                                break
+                            self.stderr.write(self.style.WARNING(
+                                f"    DB error (attempt {db_attempt}/{DB_MAX_RETRIES}) "
+                                f"{type(db_exc).__name__}; reconnecting..."
+                            ))
+                            try:
+                                _db.close()  # Django reconnects on next use
+                            except BaseException:
+                                pass
+                            time.sleep(DB_RETRY_SLEEP_SECONDS)
+                    else:
+                        # Loop completed without break -- shouldn't happen
+                        # given the inner break on success, but be defensive.
+                        continue
                     if created:
                         opinions_created += 1
                     else:
