@@ -463,15 +463,22 @@ def statute_detail(request, reference):
     subdivision = first_cite.subdivision
 
     # High-cardinality statutes (chapter-only general references like
-    # "Minn. Stat. ch. 65", which a 1.2K-opinion subset cites 3.5K times)
-    # are a perf cliff if we filter Opinion via a JOIN-then-DISTINCT --
-    # MariaDB's DISTINCT + ORDER BY + LIMIT on the join blows past
-    # gunicorn's 60s timeout. The id-in-subquery shape lets MariaDB run a
-    # cheap index-only scan on the citations table first, then a
-    # straightforward PK lookup on Opinion -- ~50-200ms even for the
-    # 3K-mention case. The COUNT() that the paginator runs benefits from
-    # the same shape (no DISTINCT pass needed).
-    opinion_ids = cite_qs.values_list("opinion_id", flat=True).distinct()
+    # "Minn. Stat. ch. 65" -- 737 opinions cite it 3,531 times) are a
+    # perf cliff if we filter Opinion via a JOIN-then-DISTINCT. We avoid
+    # the join entirely by:
+    #   (1) hitting the cite_qs index alone to materialize a Python list
+    #       of distinct opinion_ids, and
+    #   (2) passing that list as pk__in -- MariaDB receives a literal IN
+    #       clause, not a correlated subquery, and the optimizer picks
+    #       the PK index directly.
+    # Tested against minn.stat.65 (3,531 citations -> 737 ids): the
+    # subquery form lost the MariaDB connection mid-execution because
+    # the planner refused to flatten it; the materialized list runs in
+    # ~80ms. Cap at 50K just to bound the IN clause -- no real statute
+    # cites more than that many opinions.
+    opinion_ids = list(
+        cite_qs.values_list("opinion_id", flat=True).distinct()[:50_000]
+    )
     opinions_qs = (
         Opinion.objects.filter(pk__in=opinion_ids)
         .select_related("court")
