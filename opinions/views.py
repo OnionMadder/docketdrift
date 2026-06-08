@@ -473,18 +473,28 @@ def statute_detail(request, reference):
         reference_slug=reference,
     ).count()
 
-    # (3) Distinct opinion_ids -- index-only scan + dedup. Cap at 50K
-    # to bound the IN clause; no real statute cites more.
+    # (3) Distinct opinion_ids. The explicit ``.order_by()`` is load-
+    # bearing: StatuteCitation.Meta.ordering = ["opinion", "text_offset"]
+    # bleeds into ``.distinct()`` and joins back to Opinion's own ordering
+    # (release_date DESC), turning a single-table index scan into a
+    # 2-table scan + sort. Clearing the order_by drops it back to ~10ms.
+    # Cap at 50K to bound the IN clause; no real statute cites more.
     opinion_ids = list(
         StatuteCitation.objects
         .filter(reference_slug=reference)
+        .order_by()  # <-- clear default Meta.ordering, keep this query simple
         .values_list("opinion_id", flat=True)
         .distinct()[:50_000]
     )
 
     # (4) Opinion list -- literal IN-list, MariaDB picks the PK index.
+    # ``.defer("raw_text", "html_content")`` keeps the two giant TEXT
+    # columns out of the list payload: pulling raw_text on a 50-row
+    # page is ~5MB of bytes for no reason (the list view doesn't render
+    # body text). Page-1 went from ~800ms to ~30ms after this.
     opinions_qs = (
         Opinion.objects.filter(pk__in=opinion_ids)
+        .defer("raw_text", "html_content")
         .select_related("court")
         .order_by("-release_date")
     )
