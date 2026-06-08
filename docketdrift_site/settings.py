@@ -167,6 +167,15 @@ if _db_backend == "mariadb":
             # gunicorn's preforking model because each worker has its own
             # connection pool, not a shared one.
             "CONN_MAX_AGE": 60,
+            # CONN_HEALTH_CHECKS makes Django do a cheap SELECT 1 against
+            # the pooled connection before reusing it. NFSN's shared
+            # MariaDB occasionally drops SSL sockets mid-pool (especially
+            # under contention from concurrent management commands like
+            # ingest_court running in parallel) -- without this, the next
+            # request fails with OperationalError (2013, "Lost connection
+            # to MySQL server during query"). Tiny per-request cost,
+            # eliminates the whole class of mid-query disconnect 500s.
+            "CONN_HEALTH_CHECKS": True,
             "OPTIONS": {
                 "charset": "utf8mb4",
             },
