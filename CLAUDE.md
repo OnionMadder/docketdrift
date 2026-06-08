@@ -3,6 +3,14 @@
 Concise survival kit for any Claude session working on this repo. Read once,
 re-read whenever a recurring gotcha bites.
 
+## When asked to bring a new state online
+
+Read `docs/STATE_ROLLOUT.md` first. It's a 12-phase end-to-end runbook
+distilled from the MN/NH/AZ rollouts with explicit commands and gates
+for each phase. Don't improvise a new sequence — the runbook captures
+the failure modes (CL API 21-hour-cooldown trap, alias-cert timing,
+parser scope split) and the universal-vs-per-state matrix.
+
 ## The repo and its shape
 
 - Django 5.2 + PyMySQL + MariaDB 11.7 on NFSN. Local dev defaults to SQLite.
