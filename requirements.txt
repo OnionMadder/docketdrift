@@ -6,6 +6,10 @@ gunicorn>=21.0
 whitenoise>=6.0
 pypdf>=4.0
 beautifulsoup4>=4.12
+# (no numpy -- the FreeBSD wheels on NFSN miss cblas_sdot from the
+# system BLAS, both 2.x and 1.x. suggest_tags uses MariaDB's native
+# VEC_DISTANCE_COSINE against the Opinion.embedding VECTOR column
+# instead, which is the same primitive semantic search already uses.)
 # (no voyageai SDK -- we hit Voyage's REST API directly with requests
 # because the SDK transitively requires orjson>=3.11 which needs
 # rustc>=1.95, and NFSN's FreeBSD has rustc 1.89. The API is simple.)
