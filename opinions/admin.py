@@ -12,6 +12,7 @@ from opinions.models import (
     State,
     StateRequest,
     Tag,
+    TagSuggestion,
 )
 
 
@@ -32,6 +33,71 @@ class TagAdmin(admin.ModelAdmin):
     @admin.display(description="opinions", ordering=None)
     def opinion_count(self, obj):
         return obj.opinions.count()
+
+
+@admin.register(TagSuggestion)
+class TagSuggestionAdmin(admin.ModelAdmin):
+    """Stopgap list view of tag suggestions emitted by suggest_tags.
+
+    Sprint 1C replaces this with a high-throughput HTMX review surface
+    (one-click accept/reject, in-place row swap). For now this gives
+    the editor a way to inspect what the cosine math is surfacing --
+    sort by confidence to find the borderline calls, filter by status
+    to focus on the pending queue.
+    """
+    list_display = (
+        "opinion_link",
+        "tag",
+        "confidence",
+        "status",
+        "reviewed_at",
+        "reviewed_by",
+        "created_at",
+    )
+    list_filter = ("status", "tag__category", "tag")
+    search_fields = ("opinion__case_number", "opinion__title", "tag__slug", "tag__label")
+    list_select_related = ("opinion", "opinion__court", "tag")
+    ordering = ("-confidence",)
+    readonly_fields = ("opinion", "tag", "confidence", "created_at")
+    # Don't compute the full count -- the table grows to ~300K rows.
+    show_full_result_count = False
+    actions = ["accept_selected", "reject_selected"]
+
+    @admin.display(description="opinion", ordering="opinion__case_number")
+    def opinion_link(self, obj):
+        from django.utils.html import format_html
+        from django.urls import reverse
+        url = reverse("admin:opinions_opinion_change", args=[obj.opinion_id])
+        return format_html(
+            '<a href="{}">{}</a> <small style="color:#888">{}</small>',
+            url,
+            obj.opinion.case_number,
+            (obj.opinion.title or "")[:60],
+        )
+
+    @admin.action(description="Accept selected (attach tag to opinion)")
+    def accept_selected(self, request, queryset):
+        from django.utils import timezone
+        now = timezone.now()
+        accepted = 0
+        for sug in queryset.select_related("opinion", "tag"):
+            sug.opinion.tags.add(sug.tag)
+            sug.status = TagSuggestion.Status.ACCEPTED
+            sug.reviewed_at = now
+            sug.reviewed_by = request.user.username
+            sug.save(update_fields=["status", "reviewed_at", "reviewed_by"])
+            accepted += 1
+        self.message_user(request, f"Accepted {accepted} suggestion(s).")
+
+    @admin.action(description="Reject selected")
+    def reject_selected(self, request, queryset):
+        from django.utils import timezone
+        n = queryset.update(
+            status=TagSuggestion.Status.REJECTED,
+            reviewed_at=timezone.now(),
+            reviewed_by=request.user.username,
+        )
+        self.message_user(request, f"Rejected {n} suggestion(s).")
 
 
 @admin.register(QueryEmbedding)

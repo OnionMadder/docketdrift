@@ -689,6 +689,22 @@ class Tag(models.Model):
         default="",
         help_text="Brief explanation of what this tag covers. Shown on browse pages.",
     )
+    embedding = models.JSONField(
+        null=True,
+        blank=True,
+        help_text=(
+            "voyage-law-2 embedding of (label + description), input_type='document'. "
+            "1024 floats, stored as JSON because the Tag table is tiny (~30-200 rows) "
+            "and indexed similarity search isn't needed -- we cosine-compare in Python "
+            "against opinion embeddings during suggest_tags. Null until embed_tags has "
+            "embedded this tag; suggestion logic skips unembedded tags silently."
+        ),
+    )
+    embedded_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When this tag was last embedded. Used by embed_tags to skip re-embedding.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -699,6 +715,69 @@ class Tag(models.Model):
 
     def __str__(self):
         return f"{self.label} ({self.get_category_display()})"
+
+
+class TagSuggestion(models.Model):
+    """A computed candidate (Opinion, Tag) pair from semantic similarity.
+
+    Each opinion -> tag suggestion is scored by cosine similarity of their
+    embeddings. The maintainer reviews pending suggestions in the bulk-review
+    admin (Sprint 1C) and either accepts (which adds the tag to the opinion)
+    or rejects (which records the negative so we don't re-suggest).
+
+    Above ``TAG_SUGGESTION_AUTO_APPLY_THRESHOLD`` the suggestion is applied
+    automatically and recorded as ``AUTO_APPLIED`` (visible in the admin so
+    the maintainer can audit if confidence calibration drifts).
+
+    Unique constraint on (opinion, tag) keeps suggest_tags idempotent --
+    re-runs find existing suggestions and skip them; rejected suggestions
+    are recorded with status=REJECTED and stay that way.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending review"
+        ACCEPTED = "accepted", "Accepted (tag applied)"
+        REJECTED = "rejected", "Rejected"
+        AUTO_APPLIED = "auto_applied", "Auto-applied (high confidence)"
+
+    opinion = models.ForeignKey(
+        Opinion,
+        on_delete=models.CASCADE,
+        related_name="tag_suggestions",
+    )
+    tag = models.ForeignKey(
+        Tag,
+        on_delete=models.CASCADE,
+        related_name="suggestions",
+    )
+    confidence = models.FloatField(
+        help_text="Cosine similarity 0.0-1.0 between opinion + tag embeddings at scoring time.",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.CharField(
+        max_length=120,
+        blank=True,
+        default="",
+        help_text="Username of the editor who accepted/rejected this suggestion.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("opinion", "tag")]
+        ordering = ["-confidence"]
+        indexes = [
+            models.Index(fields=["status", "-confidence"]),
+            models.Index(fields=["tag", "status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.opinion_id} -> {self.tag_id} ({self.confidence:.2f}, {self.status})"
 
 
 class QueryEmbedding(models.Model):

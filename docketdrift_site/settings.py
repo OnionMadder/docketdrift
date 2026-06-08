@@ -260,3 +260,14 @@ COURTLISTENER_TOKEN = os.environ.get("COURTLISTENER_TOKEN", "")
 # and a tell-a-friend fallback). Set to a GitHub Sponsors / Ko-fi /
 # Stripe Payment Link URL when ready.
 DONATE_URL = os.environ.get("DONATE_URL", "")
+
+
+# --- Tag suggestion thresholds --------------------------------------------
+# Cosine similarity bands for the suggest_tags command. The bands are
+# deliberately wide on the cautious side: it's cheap to surface a
+# suggestion for human review and expensive to auto-apply a wrong tag
+# (un-tagging is awkward UX). Recalibrate after a few weeks of review
+# data when we know what the score distribution actually looks like.
+TAG_SUGGESTION_AUTO_APPLY_THRESHOLD = 0.85  # above this -> auto-tag
+TAG_SUGGESTION_REVIEW_THRESHOLD = 0.65       # below this -> drop, don't even surface
+TAG_SUGGESTION_TOP_N = 5                     # max candidates per opinion
