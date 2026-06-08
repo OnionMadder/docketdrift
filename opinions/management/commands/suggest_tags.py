@@ -75,8 +75,32 @@ class Command(BaseCommand):
             action="store_true",
             help="Compute suggestions + counts but don't write or auto-apply tags.",
         )
+        parser.add_argument(
+            "--review-threshold",
+            type=float,
+            default=None,
+            help=(
+                "Override TAG_SUGGESTION_REVIEW_THRESHOLD for this run. Useful for "
+                "calibration sweeps without editing settings + restarting gunicorn."
+            ),
+        )
+        parser.add_argument(
+            "--auto-apply-threshold",
+            type=float,
+            default=None,
+            help=(
+                "Override TAG_SUGGESTION_AUTO_APPLY_THRESHOLD for this run."
+            ),
+        )
+        parser.add_argument(
+            "--top-n",
+            type=int,
+            default=None,
+            help="Override TAG_SUGGESTION_TOP_N for this run.",
+        )
 
-    def handle(self, *args, limit, rescore_all, dry_run, **options):
+    def handle(self, *args, limit, rescore_all, dry_run, review_threshold,
+               auto_apply_threshold, top_n, **options):
         if connection.vendor != "mysql":
             raise CommandError(
                 f"suggest_tags requires MariaDB / MySQL "
@@ -85,9 +109,13 @@ class Command(BaseCommand):
                 "Run this command on production."
             )
 
-        review_threshold = getattr(settings, "TAG_SUGGESTION_REVIEW_THRESHOLD", 0.65)
-        auto_apply_threshold = getattr(settings, "TAG_SUGGESTION_AUTO_APPLY_THRESHOLD", 0.85)
-        top_n = getattr(settings, "TAG_SUGGESTION_TOP_N", 5)
+        # CLI flags override settings; settings provide defaults.
+        if review_threshold is None:
+            review_threshold = getattr(settings, "TAG_SUGGESTION_REVIEW_THRESHOLD", 0.25)
+        if auto_apply_threshold is None:
+            auto_apply_threshold = getattr(settings, "TAG_SUGGESTION_AUTO_APPLY_THRESHOLD", 0.40)
+        if top_n is None:
+            top_n = getattr(settings, "TAG_SUGGESTION_TOP_N", 5)
 
         if not (0.0 <= review_threshold <= auto_apply_threshold <= 1.0):
             raise CommandError(

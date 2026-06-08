@@ -263,11 +263,22 @@ DONATE_URL = os.environ.get("DONATE_URL", "")
 
 
 # --- Tag suggestion thresholds --------------------------------------------
-# Cosine similarity bands for the suggest_tags command. The bands are
-# deliberately wide on the cautious side: it's cheap to surface a
-# suggestion for human review and expensive to auto-apply a wrong tag
-# (un-tagging is awkward UX). Recalibrate after a few weeks of review
-# data when we know what the score distribution actually looks like.
-TAG_SUGGESTION_AUTO_APPLY_THRESHOLD = 0.85  # above this -> auto-tag
-TAG_SUGGESTION_REVIEW_THRESHOLD = 0.65       # below this -> drop, don't even surface
+# Cosine similarity bands for the suggest_tags command. Calibrated to the
+# actual voyage-law-2 distribution we observe between long-form opinion
+# documents and short tag descriptions -- they cluster much lower than
+# opinion-vs-opinion or query-vs-opinion scores (top matches land around
+# 0.30-0.45, not the 0.7+ you'd see in the brief's example). The signal
+# is in the relative ordering, not the absolute value.
+#
+# Auto-apply only when a match is unambiguously dominant (e.g. an
+# explicit "ineffective assistance of counsel" opinion correctly
+# scoring 0.42 against the ineffective-assistance tag). Review band
+# surfaces the next tier where a human eye is the cheapest disambiguator.
+# Below review: not worth a review-queue slot.
+#
+# Recalibrate after the first few hundred review decisions are in --
+# we'll have empirical data on where the precision/recall knee actually
+# sits for this corpus.
+TAG_SUGGESTION_AUTO_APPLY_THRESHOLD = 0.40  # above this -> auto-tag
+TAG_SUGGESTION_REVIEW_THRESHOLD = 0.25       # below this -> drop, don't even surface
 TAG_SUGGESTION_TOP_N = 5                     # max candidates per opinion
