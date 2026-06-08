@@ -462,14 +462,21 @@ def statute_detail(request, reference):
     section = first_cite.section
     subdivision = first_cite.subdivision
 
+    # High-cardinality statutes (chapter-only general references like
+    # "Minn. Stat. ch. 65", which a 1.2K-opinion subset cites 3.5K times)
+    # are a perf cliff if we filter Opinion via a JOIN-then-DISTINCT --
+    # MariaDB's DISTINCT + ORDER BY + LIMIT on the join blows past
+    # gunicorn's 60s timeout. The id-in-subquery shape lets MariaDB run a
+    # cheap index-only scan on the citations table first, then a
+    # straightforward PK lookup on Opinion -- ~50-200ms even for the
+    # 3K-mention case. The COUNT() that the paginator runs benefits from
+    # the same shape (no DISTINCT pass needed).
+    opinion_ids = cite_qs.values_list("opinion_id", flat=True).distinct()
     opinions_qs = (
-        Opinion.objects.filter(statute_citations__reference_slug=reference)
+        Opinion.objects.filter(pk__in=opinion_ids)
         .select_related("court")
-        .distinct()
         .order_by("-release_date")
     )
-    if state is not None:
-        opinions_qs = opinions_qs.filter(court__state=state)
 
     paginator = Paginator(opinions_qs, HOME_PAGE_SIZE)
     page_obj = paginator.get_page(request.GET.get("page", 1))
