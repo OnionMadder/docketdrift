@@ -1210,6 +1210,57 @@ button.cta-primary {
   margin: 1.25rem 0 0.5rem;
 }
 
+/* Collapsible biography panel. Default state is a single line so the
+   stat cards + judicial record sections sit close to the page top
+   instead of being buried under a multi-paragraph wall of bio text.
+   Click the summary to reveal the full official bio in-place. */
+.judge-bio-toggle {
+  margin: 0.5rem 0 1rem;
+  border: var(--border-soft);
+  border-left: 3px solid var(--neon-magenta);
+  border-radius: var(--radius-sm);
+  background: rgba(20, 0, 30, 0.35);
+  overflow: hidden;
+}
+.judge-bio-toggle > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 0.75rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--neon-magenta);
+  user-select: none;
+}
+.judge-bio-toggle > summary::-webkit-details-marker { display: none; }
+.judge-bio-toggle > summary::marker { content: ""; }
+.judge-bio-toggle > summary:hover {
+  background: rgba(255, 60, 180, 0.08);
+}
+.judge-bio-toggle__chevron {
+  font-size: 0.9rem;
+  transition: transform 0.18s ease;
+  color: var(--neon-magenta);
+}
+.judge-bio-toggle[open] .judge-bio-toggle__chevron {
+  transform: rotate(90deg);
+}
+.judge-bio-toggle__body {
+  padding: 0.5rem 1.1rem 1rem;
+  border-top: var(--border-soft);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+.judge-bio-toggle__body p {
+  margin: 0 0 0.85rem;
+}
+.judge-bio-toggle__body p:last-child { margin-bottom: 0; }
+
 .judge-stat-card {
   display: flex;
   flex-direction: column;

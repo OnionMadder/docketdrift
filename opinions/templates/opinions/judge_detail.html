@@ -67,7 +67,15 @@
   {% endif %}
 
   {% if judge.bio_summary %}
-    <p>{{ judge.bio_summary }}</p>
+    <details class="judge-bio-toggle">
+      <summary>
+        <span class="judge-bio-toggle__label">Read official biography</span>
+        <span class="judge-bio-toggle__chevron" aria-hidden="true">&#9656;</span>
+      </summary>
+      <div class="judge-bio-toggle__body">
+        {{ judge.bio_summary|linebreaks }}
+      </div>
+    </details>
   {% else %}
     <p class="glitch-line">Biography pending scraper ingestion.</p>
   {% endif %}
