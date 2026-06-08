@@ -1,0 +1,14 @@
+{% load i18n admin_urls %}
+{% comment %}
+Django default emits a same-tab "View on site" link, which kicks the
+editor out of the admin form mid-edit. We override the partial to
+open the live page in a new tab so the public-facing dossier sits
+side-by-side with the admin form Onion's editing. Behaviour is
+identical otherwise -- same href, same i18n string, same fallback
+when has_absolute_url is False.
+{% endcomment %}
+{% if has_absolute_url %}
+  <li><a href="{{ absolute_url }}" class="viewsitelink" target="_blank" rel="noopener">
+    {% translate "View on site" %}
+  </a></li>
+{% endif %}
