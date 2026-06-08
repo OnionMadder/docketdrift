@@ -1,5 +1,7 @@
-{# A single suggestion row. Rendered once at page load, then replaced
-   in-place via HTMX once the editor clicks Accept or Reject. #}
+{% comment %}
+A single suggestion row. Rendered once at page load, then replaced
+in-place via HTMX once the editor clicks Accept or Reject.
+{% endcomment %}
 <div class="tr-row" id="tr-row-{{ sug.pk }}">
   <div class="tr-confidence">
     <div class="tr-confidence-bar" style="--unfilled: {{ sug.confidence|floatformat:2|stringformat:'s' }};"></div>

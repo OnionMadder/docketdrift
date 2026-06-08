@@ -1,6 +1,8 @@
-{# Row-replacement fragment swapped in by HTMX after the editor clicks
-   Accept or Reject. Keeps the row visible (so the maintainer can see
-   what they just decided) but greyed out and without the action buttons. #}
+{% comment %}
+Row-replacement fragment swapped in by HTMX after the editor clicks
+Accept or Reject. Keeps the row visible (so the maintainer can see
+what they just decided) but greyed out and without the action buttons.
+{% endcomment %}
 <div class="tr-row tr-done {% if action == 'reject' %}tr-rejected{% endif %}">
   <div class="tr-confidence">
     <div class="tr-confidence-num">{{ suggestion.confidence|floatformat:3 }}</div>
