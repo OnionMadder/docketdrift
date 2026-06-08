@@ -44,6 +44,19 @@ SECRET_KEY = os.environ.get(
     "dev-only-secret-do-not-use-in-production",
 )
 DEBUG = _env_bool("DJANGO_DEBUG", default=True)
+
+# Fail-loud guard: refuse to boot a production process with the dev
+# placeholder secret. If DJANGO_DEBUG=False is set, DJANGO_SECRET_KEY must
+# be a real value. Better to crash at startup than to silently sign
+# session cookies + password-reset tokens with a public string that lives
+# in the repo. The guard is intentionally string-prefix-based so any
+# accidental copy of the placeholder also trips it.
+if not DEBUG and SECRET_KEY.startswith("dev-only-"):
+    raise RuntimeError(
+        "DJANGO_SECRET_KEY is unset (or still the dev placeholder) but "
+        "DJANGO_DEBUG=False. Set a real secret in /home/private/.env."
+    )
+
 ALLOWED_HOSTS = _env_list(
     "DJANGO_ALLOWED_HOSTS",
     default=["localhost", "127.0.0.1", "docketdrift.com", ".docketdrift.com"],
@@ -66,6 +79,21 @@ CSRF_TRUSTED_ORIGINS = _env_list(
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 
+# --- Security headers (emitted by django.middleware.security.SecurityMiddleware)
+# Nosniff + Referrer-Policy are safe in dev too. HSTS is gated on
+# DEBUG=False so local browsers don't get pinned to HTTPS for
+# 127.0.0.1.
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
+if not DEBUG:
+    # 1 year, all subdomains (mn., nh., ...), preload-list eligible.
+    # Once a browser sees this header, it refuses HTTP for the next
+    # year — safe to enable now since the apex + every state subdomain
+    # is already HTTPS via the NFSN-managed certs.
+    SECURE_HSTS_SECONDS = 31_536_000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -82,6 +110,12 @@ MIDDLEWARE = [
     # SecurityMiddleware so static asset requests short-circuit out of the
     # middleware stack before anything heavier runs.
     "whitenoise.middleware.WhiteNoiseMiddleware",
+    # gzip dynamic responses (HTML, XML sitemaps, JSON). WhiteNoise already
+    # gzips static assets via its compressed-manifest store; GZipMiddleware
+    # covers everything else. Sits before SessionMiddleware so it sees the
+    # full final body. BREACH-style attacks aren't a concern here -- we
+    # don't echo unmasked CSRF tokens or session secrets in response bodies.
+    "django.middleware.gzip.GZipMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -126,6 +160,13 @@ if _db_backend == "mariadb":
             "NAME": os.environ.get("DOCKETDRIFT_DB_NAME", "docketdrift"),
             "USER": os.environ.get("DOCKETDRIFT_DB_USER", ""),
             "PASSWORD": os.environ.get("DOCKETDRIFT_DB_PASSWORD", ""),
+            # Persistent connections: each gunicorn worker holds an open
+            # MariaDB connection for up to 60s instead of three-way
+            # handshaking per request. Saves ~5-15ms of warm-request
+            # latency; the per-worker memory cost is trivial. Safe with
+            # gunicorn's preforking model because each worker has its own
+            # connection pool, not a shared one.
+            "CONN_MAX_AGE": 60,
             "OPTIONS": {
                 "charset": "utf8mb4",
             },
