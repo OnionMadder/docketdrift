@@ -23,15 +23,25 @@
 
   <h2>Data sources</h2>
   <ul>
-    <li><strong>CourtListener</strong> (Free Law Project) &mdash; backfill and historical archive. CourtListener lags real-time by roughly 30 days but covers Minnesota appellate opinions back to 1996.</li>
-    <li><strong>Direct upload</strong> &mdash; opinions are uploaded same-day on the Monday/Wednesday release schedules, ahead of CourtListener's ingestion.</li>
+    <li><strong>CourtListener</strong> (Free Law Project) &mdash; historical backfill and the standing source for ongoing ingestion. CourtListener typically lags real-time by a few weeks; for Minnesota that backfill reaches the founding-era 1851 opinions of the territorial supreme court forward.</li>
+    <li><strong>Direct upload</strong> &mdash; new opinions are uploaded same-day on Minnesota's Monday/Wednesday release schedules, ahead of CourtListener's ingestion. State subdomains refresh weekly via the scheduled ingest job.</li>
   </ul>
+
+  <h2>Editorial review</h2>
+  <p>Every opinion in the corpus is currently being reviewed and tagged by a human editor. Until that pass is complete, individual records carry a status indicator showing whether the opinion is <em>processed</em> (machine-parsed, awaiting review), <em>flagged</em> (queued for re-review), or <em>human-reviewed</em>. The intent is that machine extraction does the bulk-work part (case number, disposition, panel composition, statute citations) while the editorial pass curates the doctrinal tags, catches parser misses, and flags edge cases. Both signals stay public; you can see at a glance which records have been read by a human.</p>
 
   <h2>Status</h2>
   <p>
     <span class="status-pill status-pill--beta">Beta &middot; Minnesota</span>
+    <span class="status-pill status-pill--beta">Beta &middot; New Hampshire</span>
+    <span class="status-pill status-pill--beta">Beta &middot; Arizona</span>
   </p>
-  <p>Full Minnesota appellate corpus going back to 1930 (60,000+ opinions) is loaded and searchable. Judge dossiers, outcome categorization, and the editorial review pipeline are live. Semantic search via embeddings is currently being computed across the corpus. Tagging, citation graph, and additional states are next.</p>
+  <ul>
+    <li><strong>Minnesota</strong> &mdash; full appellate corpus loaded: <strong>60,000+ opinions</strong> spanning <strong>1851 to current</strong>, refreshed weekly as new opinions are released. Judge dossiers, outcome categorization, statute citation graph, semantic search, and tag-suggestion review pipeline are all live. Editorial review of the corpus is in progress.</li>
+    <li><strong>New Hampshire</strong> &mdash; initial seed loaded (NH Supreme Court); deeper backfill is paused on the CourtListener daily request budget and will resume on the next budget cycle. New opinions land via the weekly scheduled ingest job either way.</li>
+    <li><strong>Arizona</strong> &mdash; initial seed loaded (Arizona Supreme Court + Court of Appeals); same posture as New Hampshire while the deeper backfill queues up.</li>
+  </ul>
+  <p>Don't see your state? <a href="{% url 'opinions:request_state' %}">Request it &rarr;</a></p>
 
   <h2>Open source</h2>
   <p>DocketDrift is open source on GitHub at <a href="https://github.com/OnionMadder/docketdrift" target="_blank" rel="noopener">OnionMadder/docketdrift</a>. The parser rules, ingestion logic, and infrastructure are all readable, auditable, and forkable.</p>
