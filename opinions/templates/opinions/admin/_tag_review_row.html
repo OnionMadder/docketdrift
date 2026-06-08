@@ -1,0 +1,50 @@
+{# A single suggestion row. Rendered once at page load, then replaced
+   in-place via HTMX once the editor clicks Accept or Reject. #}
+<div class="tr-row" id="tr-row-{{ sug.pk }}">
+  <div class="tr-confidence">
+    <div class="tr-confidence-bar" style="--unfilled: {{ sug.confidence|floatformat:2|stringformat:'s' }};"></div>
+    <div class="tr-confidence-num">{{ sug.confidence|floatformat:3 }}</div>
+  </div>
+
+  <div class="tr-opinion">
+    <h4>
+      <a href="/opinion/{{ sug.opinion.case_number }}/" target="_blank" rel="noopener">{{ sug.opinion.title|truncatechars:100 }}</a>
+    </h4>
+    <div class="tr-meta">
+      {{ sug.opinion.case_number }} &middot;
+      {{ sug.opinion.court.short_label|default:sug.opinion.court.name }} &middot;
+      {{ sug.opinion.release_date|date:"Y-m-d" }}
+    </div>
+    <div class="tr-existing-tags">
+      {% for t in sug.opinion.tags.all %}
+        <span class="tr-existing-tag">{{ t.label }}</span>
+      {% empty %}
+        <span style="font-size: 0.72rem; color: #aaa;">no tags yet</span>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div>
+    <span class="tr-suggested-tag">
+      {{ sug.tag.label }}
+      <small>{{ sug.tag.get_category_display }}</small>
+    </span>
+  </div>
+
+  <div class="tr-actions">
+    <button class="tr-btn tr-btn-accept"
+            hx-post="{% url 'admin_tag_review_action' suggestion_id=sug.pk action='accept' %}"
+            hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+            hx-target="#tr-row-{{ sug.pk }}"
+            hx-swap="outerHTML">
+      Accept
+    </button>
+    <button class="tr-btn tr-btn-reject"
+            hx-post="{% url 'admin_tag_review_action' suggestion_id=sug.pk action='reject' %}"
+            hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+            hx-target="#tr-row-{{ sug.pk }}"
+            hx-swap="outerHTML">
+      Reject
+    </button>
+  </div>
+</div>

@@ -1,0 +1,25 @@
+{# Row-replacement fragment swapped in by HTMX after the editor clicks
+   Accept or Reject. Keeps the row visible (so the maintainer can see
+   what they just decided) but greyed out and without the action buttons. #}
+<div class="tr-row tr-done {% if action == 'reject' %}tr-rejected{% endif %}">
+  <div class="tr-confidence">
+    <div class="tr-confidence-num">{{ suggestion.confidence|floatformat:3 }}</div>
+  </div>
+  <div class="tr-opinion">
+    <h4>{{ suggestion.opinion.title|truncatechars:100 }}</h4>
+    <div class="tr-meta">
+      {{ suggestion.opinion.case_number }} &middot;
+      {{ suggestion.opinion.court.short_label|default:suggestion.opinion.court.name }}
+    </div>
+  </div>
+  <div>
+    <span class="tr-suggested-tag">{{ suggestion.tag.label }}</span>
+  </div>
+  <div class="tr-actions">
+    {% if action == "accept" %}
+      <strong style="color: #229954; text-transform: uppercase; font-size: 0.82rem; letter-spacing: 0.05em;">&#10003; Accepted</strong>
+    {% else %}
+      <strong style="color: #c0392b; text-transform: uppercase; font-size: 0.82rem; letter-spacing: 0.05em;">&#10007; Rejected</strong>
+    {% endif %}
+  </div>
+</div>
