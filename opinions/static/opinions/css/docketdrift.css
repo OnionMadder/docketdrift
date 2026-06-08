@@ -1210,6 +1210,39 @@ button.cta-primary {
   margin: 1.25rem 0 0.5rem;
 }
 
+/* Two-column hero row on the judge page: bio card on the left,
+   judicial record card on the right. Below the row, the deeper-dive
+   cards (by court / by disposition / cohort / recent opinions) keep
+   the original full-width stacked layout. At mobile widths the grid
+   collapses to one column, bio stacks above record. */
+.judge-top-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  margin: 0 0 1.5rem;
+  align-items: stretch;
+}
+.judge-top-row > .glossy-frame {
+  margin: 0;             /* override the default vertical card spacing */
+  height: 100%;
+}
+@media (max-width: 880px) {
+  .judge-top-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Compact portrait inside the narrower bio card. The earlier 260px
+   was sized for a full-width card; halving the card width means we
+   need a smaller photo or it eats the whole column. */
+.judge-bio-card__photo {
+  display: block;
+  max-width: 180px;
+  height: auto;
+  margin: 0 0 1.25rem;
+  border-radius: var(--radius-sm);
+}
+
 /* Collapsible biography panel. Default state is a single line so the
    stat cards + judicial record sections sit close to the page top
    instead of being buried under a multi-paragraph wall of bio text.

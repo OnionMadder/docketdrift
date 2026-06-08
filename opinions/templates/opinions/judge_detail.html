@@ -44,91 +44,109 @@
   </ol>
 </nav>
 
-<div class="glossy-frame">
-  <div class="opinion-header">
-    <span class="role-chip judicial">{{ judge.get_role_display|default:"Judge" }}</span>
-    {% if judge.is_currently_seated %}<span class="case-status">Currently Seated</span>{% endif %}
-    {% if judge.status == 'SENIOR' %}<span class="role-chip court-admin">Senior</span>{% endif %}
-    {% if judge.status == 'RETIRED' %}<span class="role-chip institution">Retired</span>{% endif %}
+{# Bio + judicial record sit side-by-side in a 2-col row at desktop;
+   stack at mobile. Below the row, the deeper-dive cards (by court /
+   by disposition / cohort / recent opinions) keep the full-width
+   stacked layout. #}
+<div class="judge-top-row">
+  <div class="glossy-frame judge-bio-card">
+    <div class="opinion-header">
+      <span class="role-chip judicial">{{ judge.get_role_display|default:"Judge" }}</span>
+      {% if judge.is_currently_seated %}<span class="case-status">Currently Seated</span>{% endif %}
+      {% if judge.status == 'SENIOR' %}<span class="role-chip court-admin">Senior</span>{% endif %}
+      {% if judge.status == 'RETIRED' %}<span class="role-chip institution">Retired</span>{% endif %}
+    </div>
+
+    <h1>{{ judge.full_name }}</h1>
+
+    {% if judge.court or judge.appointment_date %}
+      <p class="opinion-meta">
+        {% if judge.court %}<strong>{{ judge.court.name }}</strong>{% endif %}
+        {% if judge.court and judge.appointment_date %} &middot; {% endif %}
+        {% if judge.appointment_date %}Appointed {{ judge.appointment_date|date:"F j, Y" }}{% endif %}
+      </p>
+    {% endif %}
+
+    {% if judge.photo_url %}
+      <img src="{{ judge.photo_url }}" alt="Portrait of {{ judge.full_name }}" class="cast-thumb judge-bio-card__photo" loading="lazy">
+    {% endif %}
+
+    {% if judge.bio_summary %}
+      <details class="judge-bio-toggle">
+        <summary>
+          <span class="judge-bio-toggle__label">Education and employment</span>
+          <span class="judge-bio-toggle__chevron" aria-hidden="true">&#9656;</span>
+        </summary>
+        <div class="judge-bio-toggle__body">
+          {{ judge.bio_summary|linebreaks }}
+        </div>
+      </details>
+    {% else %}
+      <p class="glitch-line">Biography pending scraper ingestion.</p>
+    {% endif %}
+
+    {% if judge.bio_url %}
+      <div class="opinion-actions">
+        <a href="{{ judge.bio_url }}" target="_blank" rel="noopener">Official Biography</a>
+      </div>
+    {% endif %}
   </div>
 
-  <h1>{{ judge.full_name }}</h1>
+  <div class="glossy-frame judge-record-card">
+    {% if total_opinions %}
+      <h2>Judicial record</h2>
+      <p class="subtle-lead">
+        <strong>{{ total_opinions }}</strong> opinion{{ total_opinions|pluralize }}
+        where {{ judge.full_name }} sat on the panel{% if date_range.first %},
+        spanning {{ date_range.first|date:"Y" }}&ndash;{{ date_range.last|date:"Y" }}{% endif %}.
+      </p>
 
-  {% if judge.court or judge.appointment_date %}
-    <p class="opinion-meta">
-      {% if judge.court %}<strong>{{ judge.court.name }}</strong>{% endif %}
-      {% if judge.court and judge.appointment_date %} &middot; {% endif %}
-      {% if judge.appointment_date %}Appointed {{ judge.appointment_date|date:"F j, Y" }}{% endif %}
-    </p>
-  {% endif %}
-
-  {% if judge.photo_url %}
-    <img src="{{ judge.photo_url }}" alt="Portrait of {{ judge.full_name }}" class="cast-thumb" style="max-width: 260px; height: auto; margin: 0 0 1.5rem;" loading="lazy">
-  {% endif %}
-
-  {% if judge.bio_summary %}
-    <details class="judge-bio-toggle">
-      <summary>
-        <span class="judge-bio-toggle__label">Read official biography</span>
-        <span class="judge-bio-toggle__chevron" aria-hidden="true">&#9656;</span>
-      </summary>
-      <div class="judge-bio-toggle__body">
-        {{ judge.bio_summary|linebreaks }}
+      <div class="judge-stat-grid">
+        {% if role_summary.authored_majority %}
+          <div class="judge-stat-card">
+            <strong>{{ role_summary.authored_majority }}</strong>
+            <span>Majority authored</span>
+          </div>
+        {% endif %}
+        {% if role_summary.joined_majority %}
+          <div class="judge-stat-card">
+            <strong>{{ role_summary.joined_majority }}</strong>
+            <span>Joined majority</span>
+          </div>
+        {% endif %}
+        {% if role_summary.authored_concurrence or role_summary.joined_concurrence %}
+          <div class="judge-stat-card">
+            <strong>{{ role_summary.authored_concurrence|add:role_summary.joined_concurrence }}</strong>
+            <span>Concurrences</span>
+          </div>
+        {% endif %}
+        {% if role_summary.authored_dissent or role_summary.joined_dissent %}
+          <div class="judge-stat-card judge-stat-card--accent">
+            <strong>{{ role_summary.authored_dissent|add:role_summary.joined_dissent }}</strong>
+            <span>Dissents</span>
+          </div>
+        {% endif %}
+        {% if role_summary.recused %}
+          <div class="judge-stat-card">
+            <strong>{{ role_summary.recused }}</strong>
+            <span>Recused</span>
+          </div>
+        {% endif %}
       </div>
-    </details>
-  {% else %}
-    <p class="glitch-line">Biography pending scraper ingestion.</p>
-  {% endif %}
-
-  {% if judge.bio_url %}
-    <div class="opinion-actions">
-      <a href="{{ judge.bio_url }}" target="_blank" rel="noopener">Official Biography</a>
-    </div>
-  {% endif %}
+    {% else %}
+      <h2>Judicial record</h2>
+      <p class="glitch-line">
+        No opinion panel data linked to {{ judge.full_name }} yet. This usually
+        means CourtListener's panel data didn't include this judge for the
+        opinions in our corpus &mdash; common for historical judges where
+        panel composition was recorded as free-text rather than structured.
+        Coverage improves as we add manual panel-vote ingestion.
+      </p>
+    {% endif %}
+  </div>
 </div>
 
 {% if total_opinions %}
-  <div class="glossy-frame">
-    <h2>Judicial record</h2>
-    <p class="subtle-lead">
-      <strong>{{ total_opinions }}</strong> opinion{{ total_opinions|pluralize }}
-      where {{ judge.full_name }} sat on the panel{% if date_range.first %},
-      spanning {{ date_range.first|date:"Y" }}&ndash;{{ date_range.last|date:"Y" }}{% endif %}.
-    </p>
-
-    <div class="judge-stat-grid">
-      {% if role_summary.authored_majority %}
-        <div class="judge-stat-card">
-          <strong>{{ role_summary.authored_majority }}</strong>
-          <span>Majority authored</span>
-        </div>
-      {% endif %}
-      {% if role_summary.joined_majority %}
-        <div class="judge-stat-card">
-          <strong>{{ role_summary.joined_majority }}</strong>
-          <span>Joined majority</span>
-        </div>
-      {% endif %}
-      {% if role_summary.authored_concurrence or role_summary.joined_concurrence %}
-        <div class="judge-stat-card">
-          <strong>{{ role_summary.authored_concurrence|add:role_summary.joined_concurrence }}</strong>
-          <span>Concurrences</span>
-        </div>
-      {% endif %}
-      {% if role_summary.authored_dissent or role_summary.joined_dissent %}
-        <div class="judge-stat-card judge-stat-card--accent">
-          <strong>{{ role_summary.authored_dissent|add:role_summary.joined_dissent }}</strong>
-          <span>Dissents</span>
-        </div>
-      {% endif %}
-      {% if role_summary.recused %}
-        <div class="judge-stat-card">
-          <strong>{{ role_summary.recused }}</strong>
-          <span>Recused</span>
-        </div>
-      {% endif %}
-    </div>
-  </div>
 
   {% if court_breakdown %}
     <div class="glossy-frame">
@@ -220,16 +238,5 @@
       </table>
     </div>
   {% endif %}
-{% else %}
-  <div class="glossy-frame">
-    <h2>Judicial record</h2>
-    <p class="glitch-line">
-      No opinion panel data linked to {{ judge.full_name }} yet. This usually means
-      CourtListener's panel data didn't include this judge for the opinions in our
-      corpus &mdash; common for historical judges where panel composition was
-      recorded as free-text rather than structured. Coverage improves as we add
-      manual panel-vote ingestion.
-    </p>
-  </div>
 {% endif %}
 {% endblock %}
