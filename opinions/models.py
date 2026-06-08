@@ -87,6 +87,11 @@ class Court(models.Model):
         if self.state_id == "NH":
             if self.level == self.Level.SUPREME:
                 return "N.H."
+        if self.state_id == "AZ":
+            if self.level == self.Level.SUPREME:
+                return "Ariz."
+            if self.level == self.Level.APPEALS:
+                return "Ariz. Ct. App."
         return self.name
 
     @property
