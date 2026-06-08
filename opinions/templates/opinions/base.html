@@ -20,10 +20,19 @@ favicon -- a brand image swap is a v1.1 task.
 <meta property="og:description" content="{% block og_description %}{{ self.description|default:'Real-time tracking of state judicial trends.' }}{% endblock %}">
 <meta property="og:type" content="{% block og_type %}website{% endblock %}">
 <meta property="og:url" content="https://{{ request.get_host }}{{ request.path }}">
-<meta property="og:image" content="{% block og_image %}https://{{ request.get_host }}{% static 'opinions/favi/apple-touch-icon.png' %}{% endblock %}">
-<meta name="twitter:card" content="summary">
+{# Both og:image and twitter:image default to the same cover. Detail pages
+   that want a custom preview (e.g. a judge photo) override og_image AND
+   re-state twitter_image to the same value -- Twitter's tag is separate
+   from Open Graph and doesn't fall through. summary_large_image renders
+   the cover full-width on Twitter / X and on LinkedIn previews. #}
+<meta property="og:image" content="{% block og_image %}https://{{ request.get_host }}{% static 'opinions/og/cover.jpg' %}{% endblock %}">
+<meta property="og:image:width" content="1556">
+<meta property="og:image:height" content="876">
+<meta property="og:image:alt" content="DocketDrift">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="{% block twitter_title %}{{ self.og_title|default:'DocketDrift' }}{% endblock %}">
 <meta name="twitter:description" content="{% block twitter_description %}{{ self.og_description|default:'Public records, treated as public.' }}{% endblock %}">
+<meta name="twitter:image" content="{% block twitter_image %}https://{{ request.get_host }}{% static 'opinions/og/cover.jpg' %}{% endblock %}">
 
 <link rel="icon" type="image/png" sizes="32x32" href="{% static 'opinions/favi/favicon-32x32.png' %}">
 <link rel="icon" type="image/png" sizes="16x16" href="{% static 'opinions/favi/favicon-16x16.png' %}">
