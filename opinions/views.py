@@ -442,64 +442,69 @@ def statute_detail(request, reference):
     ``minn.stat.609.185.subd.1``). The slug uses dots, which is why the URL
     pattern is ``<str:reference>`` not ``<slug:reference>``.
 
-    The display form (``Minn. Stat. § 609.185``) is read off the first
-    citation row so the page header can render the canonical text without
-    a separate lookup table -- the extractor already normalized both
-    forms in lockstep.
+    Perf strategy (learned the hard way against the production 60K corpus):
+    - Read citation metadata (display form, chapter, section, mention
+      count) via a single index-only scan on (reference_slug). NO joins.
+      Joining cite_qs through ``opinion__court__state`` added a 700ms
+      pre-filter that was redundant for a single-state corpus.
+    - Materialize distinct opinion_ids in Python so the Opinion query
+      becomes a literal ``WHERE id IN (...)``, which MariaDB optimizes
+      cleanly. (The correlated-SELECT form lost the connection
+      mid-query against the chapter-only references like
+      ``minn.stat.65`` with 3.5K mentions across 737 opinions.)
+    - Skip Paginator's default ``COUNT(*)`` pass by hard-coding the
+      total to ``len(opinion_ids)``. The COUNT(*) over a join was
+      doubling the page-render budget; the list length is already known.
     """
     state = getattr(request, "state", None)
 
-    cite_qs = StatuteCitation.objects.filter(reference_slug=reference)
-    if state is not None:
-        cite_qs = cite_qs.filter(opinion__court__state=state)
-
-    first_cite = cite_qs.order_by("pk").first()
-    if first_cite is None:
+    # (1) Citation metadata -- single row, no joins, ~5ms.
+    cite_meta = (
+        StatuteCitation.objects
+        .filter(reference_slug=reference)
+        .values("reference_display", "chapter", "section", "subdivision")
+        .first()
+    )
+    if cite_meta is None:
         raise Http404("Statute not cited in corpus")
 
-    reference_display = first_cite.reference_display
-    chapter = first_cite.chapter
-    section = first_cite.section
-    subdivision = first_cite.subdivision
+    # (2) Mention-level tally -- index-only count, ~10ms.
+    mention_count = StatuteCitation.objects.filter(
+        reference_slug=reference,
+    ).count()
 
-    # High-cardinality statutes (chapter-only general references like
-    # "Minn. Stat. ch. 65" -- 737 opinions cite it 3,531 times) are a
-    # perf cliff if we filter Opinion via a JOIN-then-DISTINCT. We avoid
-    # the join entirely by:
-    #   (1) hitting the cite_qs index alone to materialize a Python list
-    #       of distinct opinion_ids, and
-    #   (2) passing that list as pk__in -- MariaDB receives a literal IN
-    #       clause, not a correlated subquery, and the optimizer picks
-    #       the PK index directly.
-    # Tested against minn.stat.65 (3,531 citations -> 737 ids): the
-    # subquery form lost the MariaDB connection mid-execution because
-    # the planner refused to flatten it; the materialized list runs in
-    # ~80ms. Cap at 50K just to bound the IN clause -- no real statute
-    # cites more than that many opinions.
+    # (3) Distinct opinion_ids -- index-only scan + dedup. Cap at 50K
+    # to bound the IN clause; no real statute cites more.
     opinion_ids = list(
-        cite_qs.values_list("opinion_id", flat=True).distinct()[:50_000]
+        StatuteCitation.objects
+        .filter(reference_slug=reference)
+        .values_list("opinion_id", flat=True)
+        .distinct()[:50_000]
     )
+
+    # (4) Opinion list -- literal IN-list, MariaDB picks the PK index.
     opinions_qs = (
         Opinion.objects.filter(pk__in=opinion_ids)
         .select_related("court")
         .order_by("-release_date")
     )
+    if state is not None:
+        opinions_qs = opinions_qs.filter(court__state=state)
 
+    # (5) Paginate, but pre-fill the count from the id-list length so
+    # Paginator never runs its own SELECT COUNT(*). Django's Paginator
+    # caches .count via cached_property, which stores its value in
+    # __dict__ -- we pre-populate that slot to short-circuit the property.
     paginator = Paginator(opinions_qs, HOME_PAGE_SIZE)
+    paginator.__dict__["count"] = len(opinion_ids)
     page_obj = paginator.get_page(request.GET.get("page", 1))
-
-    # Mention-level tally: how many *occurrences* across the corpus,
-    # not just how many opinions. Lets the page header report
-    # "47 opinions / 112 mentions" -- the gap is what makes the data
-    # feel alive vs. "this looks like a list of links".
-    mention_count = cite_qs.count()
 
     return render(request, "opinions/statute_detail.html", {
         "reference_slug": reference,
-        "reference_display": reference_display,
-        "chapter": chapter,
-        "section": section,
-        "subdivision": subdivision,
+        "reference_display": cite_meta["reference_display"],
+        "chapter": cite_meta["chapter"],
+        "section": cite_meta["section"],
+        "subdivision": cite_meta["subdivision"],
         "opinions": page_obj.object_list,
         "page_obj": page_obj,
         "total_count": paginator.count,
