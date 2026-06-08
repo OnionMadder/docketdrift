@@ -1,0 +1,128 @@
+{% extends "opinions/base.html" %}
+{% block title %}{{ reference_display }} &middot; Statute &middot; DocketDrift{% endblock %}
+{% block description %}Every appellate opinion in our {% if request.state %}{{ request.state.name }}{% endif %} corpus citing {{ reference_display }} -- ranked by recency, paginated.{% endblock %}
+
+{% block jsonld %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Legislation",
+  "name": "{{ reference_display|escapejs }}",
+  "url": "https://{{ request.get_host }}{{ request.path }}",
+  "legislationJurisdiction": "{% if request.state %}{{ request.state.name|escapejs }}{% else %}United States{% endif %}",
+  "isPartOf": {
+    "@type": "Legislation",
+    "name": "Minnesota Statutes",
+    "url": "https://www.revisor.mn.gov/statutes/"
+  }
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+  <ol>
+    <li><a href="https://docketdrift.com/">DocketDrift</a></li>
+    {% if request.state %}<li><a href="{% url 'opinions:home' %}">{{ request.state.name }}</a></li>{% endif %}
+    <li aria-current="page">{{ reference_display }}</li>
+  </ol>
+</nav>
+
+<div class="glossy-frame">
+  <div class="opinion-header">
+    <span class="role-chip institution">Statute</span>
+    {% if section %}
+      <span class="role-chip court-admin">Ch. {{ chapter }} &middot; § {{ chapter }}.{{ section }}</span>
+    {% else %}
+      <span class="role-chip court-admin">Ch. {{ chapter }}</span>
+    {% endif %}
+    {% if subdivision %}
+      <span class="role-chip court-admin">subd. {{ subdivision }}</span>
+    {% endif %}
+  </div>
+
+  <h1>{{ reference_display }}</h1>
+
+  <p class="subtle-lead">
+    {% if section %}
+      Minnesota statute &mdash; chapter {{ chapter }}, section {{ chapter }}.{{ section }}{% if subdivision %}, subdivision {{ subdivision }}{% endif %}.
+    {% else %}
+      Minnesota statute &mdash; chapter {{ chapter }} in full.
+    {% endif %}
+  </p>
+
+  <p class="opinion-meta">
+    <strong>{{ total_count }}</strong> opinion{{ total_count|pluralize }}
+    {% if mention_count > total_count %}
+      with <strong>{{ mention_count }}</strong> mentions
+    {% endif %}
+    {% if request.state %} in {{ request.state.name }}{% endif %}.
+  </p>
+
+  <div class="opinion-actions">
+    <a href="https://www.revisor.mn.gov/statutes/cite/{{ chapter }}{% if section %}.{{ section }}{% endif %}"
+       target="_blank" rel="noopener">Read the statute on revisor.mn.gov</a>
+  </div>
+</div>
+
+{% if opinions %}
+  <div class="glossy-frame">
+    <h2>Opinions citing this statute</h2>
+    <table class="doc-table">
+      <thead>
+        <tr>
+          <th>Docket</th>
+          <th>Court</th>
+          <th>Filed</th>
+          <th>Disposition</th>
+          <th>Case</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for op in opinions %}
+        <tr>
+          <td class="case-number-cell"><span class="file-number">{{ op.case_number }}</span></td>
+          <td class="doc-court-cell"><span class="court-pill court-pill--{{ op.court.level_slug }}" title="{{ op.court.name }}">{{ op.court.short_label }}</span></td>
+          <td class="doc-date-cell">{{ op.release_date|date:"Y-m-d" }}</td>
+          <td>
+            {% if op.disposition %}
+              <span class="case-status disposition-{{ op.disposition_class }}">{{ op.disposition }}</span>
+            {% else %}
+              <span class="doc-date-cell is-tbd">&mdash;</span>
+            {% endif %}
+          </td>
+          <td class="title-cell">
+            <span class="review-dot review-dot--{{ op.review_status }}" title="{{ op.get_review_status_display }}"></span>
+            <a href="{% url 'opinions:detail' case_number=op.case_number %}">{{ op.title|truncatechars:90 }}</a>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+    {% if page_obj.has_other_pages %}
+      <nav class="pagination" aria-label="Statute opinion pagination">
+        <div class="pagination-prev">
+          {% if page_obj.has_previous %}
+            <a href="?page=1" aria-label="First page">&laquo; First</a>
+            <a href="?page={{ page_obj.previous_page_number }}" rel="prev">&lsaquo; Prev</a>
+          {% endif %}
+        </div>
+        <div class="pagination-state">
+          <span class="pagination-current">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+        </div>
+        <div class="pagination-next">
+          {% if page_obj.has_next %}
+            <a href="?page={{ page_obj.next_page_number }}" rel="next">Next &rsaquo;</a>
+            <a href="?page={{ page_obj.paginator.num_pages }}" aria-label="Last page">Last &raquo;</a>
+          {% endif %}
+        </div>
+      </nav>
+    {% endif %}
+  </div>
+{% else %}
+  <div class="glossy-frame">
+    <p class="glitch-line">No opinions cite this statute{% if request.state %} in {{ request.state.name }}{% endif %} yet.</p>
+  </div>
+{% endif %}
+{% endblock %}

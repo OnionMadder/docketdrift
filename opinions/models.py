@@ -577,6 +577,78 @@ class OpinionHolding(models.Model):
         return f"Holding on opinion {self.opinion_id}: {self.holding_text[:60]}"
 
 
+class StatuteCitation(models.Model):
+    """One reference to a Minnesota (or other-state) statute within an opinion.
+
+    Opinions routinely cite the same statute multiple times -- each
+    occurrence gets its own row, with ``text_offset`` recording the
+    character position. Lets the public statute page show every citing
+    opinion AND lets us pull surrounding-text context for each hit. Query-
+    time dedup (DISTINCT or .distinct()) collapses to "one row per
+    opinion" when the editor just wants the list of opinions, not the
+    list of every individual mention.
+
+    ``reference_slug`` is the URL-safe normalized form used in
+    ``/statute/<reference>/``. Stable across reruns of the extractor as
+    long as the parser produces the same canonical form for the same
+    citation -- which is why the slug is dot-separated rather than
+    label-derived (`minn.stat.609.185` instead of `minn-stat-609-185`).
+    """
+
+    opinion = models.ForeignKey(
+        "Opinion",
+        on_delete=models.CASCADE,
+        related_name="statute_citations",
+    )
+    reference_slug = models.CharField(
+        max_length=64,
+        db_index=True,
+        help_text=(
+            "Normalized lowercase statute reference, URL-safe. "
+            "e.g. 'minn.stat.609.185' or 'minn.stat.ch.169'."
+        ),
+    )
+    reference_display = models.CharField(
+        max_length=128,
+        help_text="Display form as it appears in the opinion (e.g. 'Minn. Stat. § 609.185').",
+    )
+    chapter = models.CharField(
+        max_length=16,
+        db_index=True,
+        help_text="Chapter number portion of the citation. Always set.",
+    )
+    section = models.CharField(
+        max_length=16,
+        blank=True,
+        default="",
+        help_text="Section portion (the digits after '.' in 609.185). Blank for chapter-only cites.",
+    )
+    subdivision = models.CharField(
+        max_length=16,
+        blank=True,
+        default="",
+        help_text="Subdivision (subd. 1, subd. 2a, ...). Blank when absent.",
+    )
+    text_offset = models.IntegerField(
+        default=0,
+        help_text=(
+            "Character offset in opinion.raw_text where this citation "
+            "starts. Used to pull surrounding context for the statute page."
+        ),
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["reference_slug"]),
+            models.Index(fields=["chapter", "section"]),
+        ]
+        ordering = ["opinion", "text_offset"]
+
+    def __str__(self):
+        return f"{self.reference_display} in opinion {self.opinion_id}"
+
+
 class Tag(models.Model):
     """Editorial tag applied to opinions.
 

@@ -19,7 +19,7 @@ from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.cache import cache_control
 
-from opinions.models import Judge, Opinion, State, Tag
+from opinions.models import Judge, Opinion, State, StatuteCitation, Tag
 
 
 # Cache-Control max-age budgets, in seconds. Set on views below via the
@@ -433,6 +433,68 @@ def tag_index(request):
 
 
 @cache_control(public=True, max_age=CACHE_SEC_DOSSIER_LIST)
+def statute_detail(request, reference):
+    """All opinions citing a given statute reference, state-scoped, paginated.
+
+    URL grammar: ``/statute/<reference>/`` where ``<reference>`` is the
+    normalized slug produced by ``opinions.parsing.statutes.extract_statutes``
+    (e.g. ``minn.stat.609.185``, ``minn.stat.ch.169``,
+    ``minn.stat.609.185.subd.1``). The slug uses dots, which is why the URL
+    pattern is ``<str:reference>`` not ``<slug:reference>``.
+
+    The display form (``Minn. Stat. § 609.185``) is read off the first
+    citation row so the page header can render the canonical text without
+    a separate lookup table -- the extractor already normalized both
+    forms in lockstep.
+    """
+    state = getattr(request, "state", None)
+
+    cite_qs = StatuteCitation.objects.filter(reference_slug=reference)
+    if state is not None:
+        cite_qs = cite_qs.filter(opinion__court__state=state)
+
+    first_cite = cite_qs.order_by("pk").first()
+    if first_cite is None:
+        raise Http404("Statute not cited in corpus")
+
+    reference_display = first_cite.reference_display
+    chapter = first_cite.chapter
+    section = first_cite.section
+    subdivision = first_cite.subdivision
+
+    opinions_qs = (
+        Opinion.objects.filter(statute_citations__reference_slug=reference)
+        .select_related("court")
+        .distinct()
+        .order_by("-release_date")
+    )
+    if state is not None:
+        opinions_qs = opinions_qs.filter(court__state=state)
+
+    paginator = Paginator(opinions_qs, HOME_PAGE_SIZE)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
+
+    # Mention-level tally: how many *occurrences* across the corpus,
+    # not just how many opinions. Lets the page header report
+    # "47 opinions / 112 mentions" -- the gap is what makes the data
+    # feel alive vs. "this looks like a list of links".
+    mention_count = cite_qs.count()
+
+    return render(request, "opinions/statute_detail.html", {
+        "reference_slug": reference,
+        "reference_display": reference_display,
+        "chapter": chapter,
+        "section": section,
+        "subdivision": subdivision,
+        "opinions": page_obj.object_list,
+        "page_obj": page_obj,
+        "total_count": paginator.count,
+        "mention_count": mention_count,
+        "active_nav": "statutes",
+    })
+
+
+@cache_control(public=True, max_age=CACHE_SEC_DOSSIER_LIST)
 def tag_detail(request, slug):
     """Opinions carrying a specific tag, state-scoped, paginated."""
     state = getattr(request, "state", None)
@@ -750,6 +812,11 @@ def sitemap_index(request):
     else:
         lines.append(f"  <sitemap><loc>{host}/sitemap-static.xml</loc></sitemap>")
         lines.append(f"  <sitemap><loc>{host}/sitemap-judges.xml</loc></sitemap>")
+        # Only advertise the statutes sitemap when at least one citation
+        # has been extracted -- otherwise it serves an empty <urlset> and
+        # wastes a crawl budget round-trip.
+        if StatuteCitation.objects.filter(opinion__court__state=state).exists():
+            lines.append(f"  <sitemap><loc>{host}/sitemap-statutes.xml</loc></sitemap>")
         opinion_count = Opinion.objects.filter(court__state=state).count()
         num_chunks = max(1, (opinion_count + SITEMAP_CHUNK_SIZE - 1) // SITEMAP_CHUNK_SIZE)
         for i in range(1, num_chunks + 1):
@@ -787,6 +854,32 @@ def sitemap_judges(request):
         slugs = Judge.objects.filter(state=state).values_list("slug", flat=True)
         for slug in slugs:
             lines.append(f"  <url><loc>{host}/judge/{slug}/</loc></url>")
+    lines.extend(_sitemap_xml_footer())
+    return HttpResponse("\n".join(lines), content_type="application/xml; charset=utf-8")
+
+
+@cache_control(public=True, max_age=CACHE_SEC_SITEMAP)
+def sitemap_statutes(request):
+    """All unique statute references cited by opinions in this state.
+
+    One URL per ``reference_slug`` -- deduped at the DB level so the
+    sitemap stays compact even when a single statute is cited thousands
+    of times. Apex serves an empty <urlset> (statute pages are per-state
+    only) so crawlers never see a 404 when this URL is discovered.
+    """
+    state = getattr(request, "state", None)
+    host = f"https://{request.get_host()}"
+
+    lines = _sitemap_xml_header()
+    if state is not None:
+        slugs = (
+            StatuteCitation.objects.filter(opinion__court__state=state)
+            .values_list("reference_slug", flat=True)
+            .distinct()
+            .order_by("reference_slug")
+        )
+        for slug in slugs:
+            lines.append(f"  <url><loc>{host}/statute/{slug}/</loc></url>")
     lines.extend(_sitemap_xml_footer())
     return HttpResponse("\n".join(lines), content_type="application/xml; charset=utf-8")
 

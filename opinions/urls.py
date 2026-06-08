@@ -18,10 +18,14 @@ urlpatterns = [
     path("judge/<slug:slug>/", views.judge_detail, name="judge_detail"),
     path("tag/", views.tag_index, name="tag_index"),
     path("tag/<slug:slug>/", views.tag_detail, name="tag_detail"),
+    # Statute reference is a dot-separated slug (minn.stat.609.185), so the
+    # URL pattern uses <str:> rather than <slug:>, which would reject dots.
+    path("statute/<str:reference>/", views.statute_detail, name="statute_detail"),
     path("robots.txt", views.robots_txt, name="robots_txt"),
     path("llms.txt", views.llms_txt, name="llms_txt"),
     path("sitemap.xml", views.sitemap_index, name="sitemap_index"),
     path("sitemap-static.xml", views.sitemap_static, name="sitemap_static"),
     path("sitemap-judges.xml", views.sitemap_judges, name="sitemap_judges"),
+    path("sitemap-statutes.xml", views.sitemap_statutes, name="sitemap_statutes"),
     path("sitemap-opinions-<int:chunk>.xml", views.sitemap_opinions, name="sitemap_opinions"),
 ]

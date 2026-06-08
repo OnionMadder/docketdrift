@@ -9,7 +9,9 @@ into something a reader actually wants to spend time with:
 - Blank-line-separated chunks -> ``<p>`` blocks
 - All-caps standalone lines (1-5 words) -> ``<h3>`` section headings
   (FACTS, ANALYSIS, DECISION, BACKGROUND, OPINION, etc.)
-- ``Minn. Stat. § N.NN`` -> linked to revisor.mn.gov
+- ``Minn. Stat. § N.NN`` -> linked to our /statute/<slug>/ aggregator page,
+  which itself deep-links out to revisor.mn.gov. Internal-first because
+  the value-add is the per-statute opinion list, not the statute text.
 - ``Name v. Name, NNN Reporter NNN`` -> wrapped in ``<cite>``
 
 The filter is HTML-safe -- it escapes the input before injecting
@@ -52,20 +54,29 @@ def _is_heading(text: str) -> bool:
     return stripped == stripped.upper() and any(c.isalpha() for c in stripped)
 
 
-# Minn. Stat. § N.NN (with optional subdivisions) -- link to revisor.mn.gov.
-# We capture just the statute number so we can build the canonical URL.
+# Minn. Stat. § N.NN with optional letter suffix on the chapter
+# (e.g. ``609A.005``) -- chapter.section is captured separately so we
+# can build the canonical /statute/<slug>/ URL on the DocketDrift side.
+# Subdivisions are intentionally NOT captured here -- they live on a
+# subpage we don't have yet, and rolling the link to the section page
+# is the right granularity for in-text browsing.
 _STATUTE_RE = re.compile(
-    r"(Minn\.?\s+Stat\.?\s*§?\s*)(\d+[A-Z]?\.\d+)",
+    r"(Minn\.?\s+Stat\.?\s*§?\s*)(?P<chapter>\d+[A-Z]?)\.(?P<section>\d+[a-zA-Z]?)",
 )
 
 
 def _linkify_statute(match: re.Match) -> str:
     prefix = match.group(1)
-    statute_num = match.group(2)
-    url = f"https://www.revisor.mn.gov/statutes/cite/{statute_num}"
+    chapter = match.group("chapter")
+    section = match.group("section")
+    statute_num = f"{chapter}.{section}"
+    # /statute/<slug>/ is the internal aggregator that itself links out
+    # to revisor.mn.gov via its header button. Lowercase-only slug to
+    # match what the StatuteCitation extractor stores.
+    slug = f"minn.stat.{chapter}.{section}".lower()
+    href = f"/statute/{slug}/"
     return (
-        f'{prefix}<a class="op-statute" href="{url}" '
-        f'target="_blank" rel="noopener noreferrer">{statute_num}</a>'
+        f'{prefix}<a class="op-statute" href="{href}">{statute_num}</a>'
     )
 
 
