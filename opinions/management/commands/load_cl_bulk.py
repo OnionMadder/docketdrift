@@ -51,6 +51,7 @@ DEFAULT_SUBSET_DIR = str(Path.home() / "courtlistener-bulk" / "mn-subset")
 STATE_COURT_CL_IDS = {
     "MN": {"minn", "minnctapp"},
     "NH": {"nh"},
+    "AZ": {"ariz", "arizctapp"},
 }
 
 # Opinion-type preferences for picking which CL Opinion's text becomes the

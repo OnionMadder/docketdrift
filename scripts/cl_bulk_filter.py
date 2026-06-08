@@ -30,19 +30,47 @@ files are read-only and never modified.
 
 Run from project root:
 
+    # Default (MN, backwards compatible with the original behavior)
     .venv/Scripts/python scripts/cl_bulk_filter.py
+
+    # NH -- one CL court (nh = NH Supreme Court)
+    .venv/Scripts/python scripts/cl_bulk_filter.py --state NH
+
+    # AZ -- two CL courts
+    .venv/Scripts/python scripts/cl_bulk_filter.py --state AZ
+
+    # Custom: arbitrary court list + explicit out dir
+    .venv/Scripts/python scripts/cl_bulk_filter.py \\
+        --court-ids cal,calctapp --out-dir C:\\path\\to\\ca-subset
+
+Output for each run is a single subset directory ready to be tarred,
+SCPed to NFSN, and consumed by ``manage.py load_cl_bulk --subset-dir``.
 """
 
+import argparse
 import bz2
 import csv
 import sys
 import time
 from pathlib import Path
 
-BULK_DIR = Path(r"C:\Users\kelly\courtlistener-bulk")
-OUT_DIR = BULK_DIR / "mn-subset"
-SNAPSHOT = "2026-03-31"
-MN_COURT_IDS = {"minn", "minnctapp"}
+DEFAULT_BULK_DIR = Path(r"C:\Users\kelly\courtlistener-bulk")
+DEFAULT_SNAPSHOT = "2026-03-31"
+
+# Per-state default CL court IDs. Pass --court-ids to override.
+STATE_COURT_DEFAULTS = {
+    "MN": ["minn", "minnctapp"],
+    "NH": ["nh"],
+    "AZ": ["ariz", "arizctapp"],
+}
+
+# Mutated by main() from CLI args; helpers (src, dst, filter_stream, ...)
+# read these as module globals to keep the filter functions clean.
+BULK_DIR: Path = DEFAULT_BULK_DIR
+OUT_DIR: Path = DEFAULT_BULK_DIR / "mn-subset"
+SNAPSHOT: str = DEFAULT_SNAPSHOT
+COURT_IDS: set[str] = set(STATE_COURT_DEFAULTS["MN"])
+STATE_LABEL: str = "MN"
 
 # CL's quoted plain_text rows can be megabytes; raise the stdlib cap.
 csv.field_size_limit(sys.maxsize)
@@ -167,18 +195,76 @@ def copy_stream(table: str, out_name: str):
     print(f"  [{table}] copied {rows:,} rows -> {out.name} ({time.time()-t0:.1f}s)")
 
 
+def _parse_args():
+    p = argparse.ArgumentParser(
+        description="Filter a CourtListener bulk dump down to one state's subset.",
+    )
+    p.add_argument(
+        "--state",
+        default="MN",
+        help="USPS 2-letter state code. Selects default court IDs from "
+             "STATE_COURT_DEFAULTS unless --court-ids is also passed.",
+    )
+    p.add_argument(
+        "--court-ids",
+        default=None,
+        help="Comma-separated CL court slugs (e.g. 'nh' or 'ariz,arizctapp'). "
+             "Overrides the state-default court list.",
+    )
+    p.add_argument(
+        "--out-dir",
+        default=None,
+        help="Where to write the subset CSVs. Default: <bulk-dir>/<state-lower>-subset/",
+    )
+    p.add_argument(
+        "--bulk-dir",
+        default=str(DEFAULT_BULK_DIR),
+        help=f"Path to the CourtListener bulk dump directory "
+             f"(default: {DEFAULT_BULK_DIR}).",
+    )
+    p.add_argument(
+        "--snapshot",
+        default=DEFAULT_SNAPSHOT,
+        help=f"Snapshot date suffix on the bulk files "
+             f"(default: {DEFAULT_SNAPSHOT}).",
+    )
+    return p.parse_args()
+
+
 def main():
+    global BULK_DIR, OUT_DIR, SNAPSHOT, COURT_IDS, STATE_LABEL
+    args = _parse_args()
+
+    BULK_DIR = Path(args.bulk_dir)
+    SNAPSHOT = args.snapshot
+    STATE_LABEL = args.state.upper()
+    if args.court_ids:
+        COURT_IDS = {c.strip() for c in args.court_ids.split(",") if c.strip()}
+    else:
+        if STATE_LABEL not in STATE_COURT_DEFAULTS:
+            sys.exit(
+                f"No default court list for state {STATE_LABEL!r}. "
+                f"Add one to STATE_COURT_DEFAULTS or pass --court-ids."
+            )
+        COURT_IDS = set(STATE_COURT_DEFAULTS[STATE_LABEL])
+    if args.out_dir:
+        OUT_DIR = Path(args.out_dir)
+    else:
+        OUT_DIR = BULK_DIR / f"{STATE_LABEL.lower()}-subset"
+
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    print(f"Output: {OUT_DIR}")
-    print(f"MN courts: {sorted(MN_COURT_IDS)}")
-    print(f"Snapshot:  {SNAPSHOT}\n")
+    print(f"State:     {STATE_LABEL}")
+    print(f"Courts:    {sorted(COURT_IDS)}")
+    print(f"Snapshot:  {SNAPSHOT}")
+    print(f"Bulk dir:  {BULK_DIR}")
+    print(f"Output:    {OUT_DIR}\n")
     grand_t0 = time.time()
 
     # ----- 1. dockets ---------------------------------------------------------
     print("=== 1/12  dockets ===")
     mn_docket_ids = filter_stream(
         "dockets", "dockets",
-        predicate=lambda r: r.get("court_id") in MN_COURT_IDS,
+        predicate=lambda r: r.get("court_id") in COURT_IDS,
         collect_field="id",
     )
     print(f"  -> {len(mn_docket_ids):,} MN docket ids\n")
@@ -216,7 +302,7 @@ def main():
     print("=== 5/12  people-db-positions ===")
     pos_judge_ids = filter_stream(
         "people-db-positions", "positions",
-        predicate=lambda r: r.get("court_id") in MN_COURT_IDS,
+        predicate=lambda r: r.get("court_id") in COURT_IDS,
         collect_field="person_id",
         progress_every=200_000,
     )
@@ -290,14 +376,15 @@ def main():
     print("=" * 60)
     print(f"DONE in {grand_elapsed/60:.1f} min")
     print("-" * 60)
-    print(f"  MN dockets:           {len(mn_docket_ids):>8,}")
-    print(f"  MN clusters:          {len(mn_cluster_ids):>8,}")
-    print(f"  MN opinions:          {len(mn_opinion_ids):>8,}")
-    print(f"  MN judges (unique):   {len(mn_judge_ids):>8,}")
+    print(f"  {STATE_LABEL} dockets:           {len(mn_docket_ids):>8,}")
+    print(f"  {STATE_LABEL} clusters:          {len(mn_cluster_ids):>8,}")
+    print(f"  {STATE_LABEL} opinions:          {len(mn_opinion_ids):>8,}")
+    print(f"  {STATE_LABEL} judges (unique):   {len(mn_judge_ids):>8,}")
     print(f"  schools referenced:   {len(mn_school_ids):>8,}")
     print()
     print(f"Output: {OUT_DIR}")
-    print("Next: SCP mn-subset/ to NFSN + run manage.py load_cl_bulk")
+    print(f"Next: tar + SCP {OUT_DIR.name}/ to NFSN, then on NFSN run:")
+    print(f"      python manage.py load_cl_bulk --subset-dir ~/courtlistener-bulk/{OUT_DIR.name} --state {STATE_LABEL}")
 
 
 if __name__ == "__main__":
