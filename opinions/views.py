@@ -720,6 +720,33 @@ Allow: /
 User-agent: CCBot
 Allow: /
 
+# Blocked: aggressive SEO crawlers that hammer per-page URLs without
+# providing search-discovery value to our users. We're not a commercial
+# SEO target; their crawl just saturates our single gunicorn worker
+# and degrades real-user response times. (Caught SemrushBot doing 4
+# RPM sustained against /opinion/ on 2026-06-08, blocking real
+# /opinions/ list requests behind it.)
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+
+User-agent: SeznamBot
+Disallow: /
+
+User-agent: BLEXBot
+Disallow: /
+
+User-agent: PetalBot
+Disallow: /
+
 User-agent: *
 Crawl-delay: 5
 Disallow: /admin/

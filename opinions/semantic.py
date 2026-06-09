@@ -164,27 +164,50 @@ def similar_to_opinion(opinion, limit: int = 5) -> list[int]:
     Used by the "Similar opinions" widget on detail pages. Doesn't touch
     Voyage at all -- we already have ``opinion.embedding`` stored, so this
     is a pure DB-side cosine-distance lookup.
+
+    Performance gate: this query is an O(N) full scan over the state's
+    opinion embeddings because MariaDB's VECTOR INDEX requires NOT NULL
+    and our embedding column allows null until the embedding backfill
+    finishes. At 60K MN rows the scan was ~500ms-2s; after NH+AZ landed
+    (tripling the live-state corpus) some scans cross 20s, which then
+    saturates the single gunicorn worker. Until we backfill all
+    embeddings and migrate the column to NOT NULL + index, this widget
+    is gated on a date_cutoff that limits the scan to recent opinions.
     """
     if connection.vendor != "mysql":
         return []
     if not opinion or not opinion.court_id:
         return []
 
+    # Limit the candidate set to the trailing ~3 years of the opinion's
+    # state corpus -- still gives a useful similar-opinions surface for
+    # 95%+ of pages, and keeps the scan footprint bounded as the corpus
+    # grows. Subqueries are kept simple so the optimizer picks the
+    # release_date btree index first.
+    from datetime import timedelta
+    date_cutoff = None
+    if opinion.release_date is not None:
+        date_cutoff = opinion.release_date - timedelta(days=3 * 365)
+
+    sql = [
+        "SELECT o.id,",
+        "       VEC_DISTANCE_COSINE(o.embedding, src.embedding) AS dist",
+        "FROM opinions_opinion o",
+        "JOIN opinions_court c ON c.id = o.court_id",
+        "JOIN opinions_opinion src ON src.id = %s",
+        "WHERE c.state_id = (SELECT state_id FROM opinions_court WHERE id = %s)",
+        "  AND o.id != %s",
+        "  AND o.embedding IS NOT NULL",
+        "  AND src.embedding IS NOT NULL",
+    ]
+    params: list = [opinion.id, opinion.court_id, opinion.id]
+    if date_cutoff is not None:
+        sql.append("  AND o.release_date >= %s")
+        params.append(date_cutoff)
+    sql.append("ORDER BY dist")
+    sql.append("LIMIT %s")
+    params.append(limit)
+
     with connection.cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT o.id,
-                   VEC_DISTANCE_COSINE(o.embedding, src.embedding) AS dist
-            FROM opinions_opinion o
-            JOIN opinions_court c ON c.id = o.court_id
-            JOIN opinions_opinion src ON src.id = %s
-            WHERE c.state_id = (SELECT state_id FROM opinions_court WHERE id = %s)
-              AND o.id != %s
-              AND o.embedding IS NOT NULL
-              AND src.embedding IS NOT NULL
-            ORDER BY dist
-            LIMIT %s
-            """,
-            [opinion.id, opinion.court_id, opinion.id, limit],
-        )
+        cursor.execute("\n".join(sql), params)
         return [row[0] for row in cursor.fetchall()]
