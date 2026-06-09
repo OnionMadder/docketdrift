@@ -72,23 +72,34 @@ _ROLE_SUFFIX_RE = re.compile(
 # panel is treated as per-curiam (all-join, no distinct author).
 # ----------------------------------------------------------------------
 
-# Uppercase-surname token: letters, hyphens, apostrophes, optional inline
-# spaces (rare like "VAN BUREN"). 3+ chars to avoid matching abbreviations.
-_SURNAME = r"[A-Z][A-Z\-']{2,}"
+# Surname token: starts with an uppercase letter (or accented uppercase
+# letter to handle names like "VÁSQUEZ" / "Vásquez"), 3+ chars total,
+# allows internal mixed case so both "MACDONALD" (NH all-caps style) and
+# "Pelander" (AZ mixed-case style) match. Hyphens and apostrophes
+# permitted for names like "O'Brien" / "Smith-Jones".
+#
+# `À-ÿ` covers Latin-1 supplement (À-ÿ) which catches the
+# common accented characters in justice surnames (Vásquez, Núñez, etc.)
+# without dragging in arbitrary unicode.
+_SURNAME = r"[A-ZÀ-ß][A-Za-zÀ-ÿ\-']{2,}"
 
-# Run of "<S1>, <S2>, and <S3>, JJ.,"  or "<S>, J.," patterns near the
+# Run of "<S1>, <S2>, and <S3>, JJ.," or "<S>, J.," patterns near the
 # disposition footer. Captures the comma-separated surname list before
 # the role suffix. The optional ``chief`` prefix catches "<X>, C.J., and"
 # at the start of a mixed signoff like:
 #   MACDONALD, C.J., and COUNTWAY and GOULD, JJ., concurred.
 # where the Chief Justice has their own inline C.J. marker before the
-# remaining JJ.-tagged panel members. Without the prefix capture, the
-# main regex would only latch onto "COUNTWAY and GOULD, JJ., concurred"
-# and silently drop MACDONALD.
+# remaining JJ.-tagged panel members.
+#
+# Also accepts AZ-style "concurring" (Court of Appeals convention) and
+# "joined" (rare older formats) as alternatives to "concurred".
 _PANEL_GROUP_RE = re.compile(
-    rf"(?:\b(?P<chief>{_SURNAME}),\s*C\.J\.,\s*and\s+)?"
+    # Inline chief / presiding signer at the start of the byline:
+    # NH style: "MACDONALD, C.J., and ..."
+    # AZ-CtApp style: "Vasquez, P.J., and ..."   (Presiding Judge)
+    rf"(?:\b(?P<chief>{_SURNAME}),\s*(?:C\.J\.|P\.J\.),\s*and\s+)?"
     rf"\b(?P<panel>(?:{_SURNAME})(?:\s*,?\s*(?:and\s+)?(?:{_SURNAME}))*)"
-    rf",?\s+(?P<role>C\.J\.|JJ?\.)\s*,?\s*concurred"
+    rf",?\s+(?P<role>C\.J\.|P\.J\.|JJ?\.)\s*,?\s*(?:concurred|concurring|join(?:ed)?)\b"
 )
 
 
@@ -135,9 +146,9 @@ def _extract_generic_byline(raw_text: str) -> GenericByline:
         names = re.split(r",\s*(?:and\s+)?|\s+and\s+", names_blob)
         names = [n.strip() for n in names if n.strip() and "." not in n]
         # Fallback author detection when no explicit chief prefix was
-        # found: a single surname tagged C.J. or a single-name J. signoff
-        # is the author by convention.
-        if author_last is None and role == "C.J." and names:
+        # found: a single surname tagged C.J. / P.J. or a single-name J.
+        # signoff is the author by convention.
+        if author_last is None and role in ("C.J.", "P.J.") and names:
             author_last = names[0].lower()
         elif author_last is None and role == "J." and len(names) == 1:
             author_last = names[0].lower()
