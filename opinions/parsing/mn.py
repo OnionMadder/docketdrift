@@ -86,14 +86,30 @@ DISPOSITION_RE = re.compile(
 # Judge byline -- a line like ``Larson, Judge`` after the disposition.
 # We require the comma + role suffix to avoid catching unrelated
 # capitalized phrases. Allows hyphenated and apostrophe'd surnames.
+#
+# Whitespace between name words is `[ \t]+` (horizontal only) so the
+# regex doesn't slurp the preceding "Affirmed" line into the captured
+# name. `\s+` would match newlines and a multi-line byline page like
+#     Filed February 2, 2015
+#                 Affirmed
+#               Smith, Judge
+# would greedily capture "Affirmed\n... Smith" as a 2-word name.
 JUDGE_BYLINE_RE = re.compile(
-    r"^\s*([A-Z][A-Za-z'\-]+(?:\s+[A-Z][A-Za-z'\-]+){0,3}),\s*"
-    r"(Chief\s+Justice|Justice|Chief\s+Judge|Judge|J\.|C\.J\.)\.?\s*$",
+    r"^[ \t]*([A-Z][A-Za-z'\-]+(?:[ \t]+[A-Z][A-Za-z'\-]+){0,3}),[ \t]*"
+    r"(Chief[ \t]+Justice|Justice|Chief[ \t]+Judge|Presiding[ \t]+Judge|Judge|J\.|C\.J\.)\.?[ \t]*$",
     re.MULTILINE,
 )
 
 # Panel intro: ``Considered and decided by [judges].``. We split the
-# trailing blob into per-judge chunks separately.
+# trailing blob into per-judge chunks on semicolons (MN's canonical
+# separator), optionally preceded by " and " before the last name:
+#     "Smith, Presiding Judge; Ross, Judge; and Schellhas, Judge"
+# A previous version also split on "<NAME>, <Title>" via a
+# `,\s+(?=[A-Z][a-z])` lookahead -- that was eager and split off
+# "Smith" from "Smith, Presiding Judge", losing real panel members and
+# fabricating "Presiding Judge" as a separate "name". Semicolons are
+# the reliable separator; comma is the name/role delimiter within one
+# panel member, not between members.
 PANEL_INTRO_RE = re.compile(
     r"Considered\s+and\s+decided\s+by\s+(.+?)(?:\.\s|$)",
     re.IGNORECASE | re.DOTALL,
@@ -201,14 +217,19 @@ class MinnesotaParser(StateParser):
         m_panel = PANEL_INTRO_RE.search(raw_text)
         if m_panel:
             blob = m_panel.group(1)
-            # The blob is something like "Larson, Judge; Bjorkman, Judge; and
-            # Wheelock, Judge". Split on commas/semicolons that introduce a
-            # new capitalized surname.
-            chunks = re.split(r"\s*(?:;\s*|,\s*and\s+|,\s+(?=[A-Z][a-z]))", blob)
+            # The blob is something like:
+            #   "Larson, Judge; Bjorkman, Judge; and Wheelock, Judge"
+            #   "Smith, Presiding Judge; Ross, Judge; and Schellhas, Judge"
+            # Split on semicolons only -- they're MN's reliable separator
+            # between panel members. Each chunk is then "<surname>, <role>".
+            # `(?:and\s+)?` consumes the "and " before the last name when
+            # present.
+            chunks = re.split(r"\s*;\s*(?:and\s+)?", blob)
             for chunk in chunks:
                 m2 = re.match(
-                    r"\s*([A-Z][A-Za-z'\-]+(?:\s+[A-Z][A-Za-z'\-]+){0,3}),?\s*"
-                    r"(Chief\s+Justice|Justice|Chief\s+Judge|Judge|J\.|C\.J\.)?",
+                    r"\s*([A-Z][A-Za-z'\-]+(?:[ \t]+[A-Z][A-Za-z'\-]+){0,3})"
+                    r",[ \t]*(Chief[ \t]+Justice|Justice|Chief[ \t]+Judge"
+                    r"|Presiding[ \t]+Judge|Judge|J\.|C\.J\.)?",
                     chunk,
                 )
                 if m2:
