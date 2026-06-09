@@ -214,10 +214,17 @@ class Command(BaseCommand):
         if limit:
             scraped = scraped[:limit]
 
-        # Build a last-name -> [Judge,...] lookup over existing AZ Supreme
-        # Court rows so we can match-and-update instead of duplicating.
+        # Build a last-name -> [Judge,...] lookup over ALL existing AZ
+        # Judge rows so we can match-and-update instead of duplicating.
+        # Crucially we do NOT filter to court=supreme_court here: CL bulk
+        # loads people-table rows without a Court FK (they sat on multiple
+        # courts over time), and byline-learned rows from resolve_judges
+        # also have court=NULL. Filtering to court=supreme_court would
+        # have missed both, which is what produced the duplicate pairs on
+        # the first run. We set court=supreme_court on the matched-update
+        # path below.
         last_name_map: dict[str, list[Judge]] = defaultdict(list)
-        existing = Judge.objects.filter(state=state, court=supreme_court)
+        existing = Judge.objects.filter(state=state)
         for j in existing:
             tokens = (j.full_name or "").strip().split()
             if not tokens:
