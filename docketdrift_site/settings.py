@@ -122,6 +122,10 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # CrawlerBlockMiddleware MUST sit BEFORE StateRouterMiddleware so a
+    # 429 for a noisy SEO crawler doesn't incur the per-request State
+    # lookup. See opinions/middleware.py for the blocklist + rationale.
+    "opinions.middleware.CrawlerBlockMiddleware",
     "opinions.middleware.StateRouterMiddleware",
 ]
 

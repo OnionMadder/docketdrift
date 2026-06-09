@@ -150,8 +150,14 @@ def opinion_list(request):
     else:
         years_back = DEFAULT_SEARCH_YEARS
 
+    # Pre-resolve court IDs for this state -- avoids an INNER JOIN
+    # on every queryset evaluation (especially the paginator's COUNT(*)).
+    # Was running 30s+ live against the now-tripled corpus; goes to
+    # ~100ms with the FK-index-only count via court_id__in.
+    court_ids = list(state.courts.values_list("id", flat=True))
+
     qs = (
-        Opinion.objects.filter(court__state=state)
+        Opinion.objects.filter(court_id__in=court_ids)
         .select_related("court")
         .order_by("-release_date")
     )
