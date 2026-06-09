@@ -18,19 +18,20 @@ import logging
 from django.core.management.base import BaseCommand, CommandError
 
 from opinions.models import Court, Judge, State
+from opinions.scrapers.az_supreme import AZSupremeJudgeScraper
 from opinions.scrapers.mn_judges import MNJudgeScraper
 
 logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    help = "Scrape currently-seated MN appellate judges from mncourts.gov."
+    help = "Scrape currently-seated appellate judges from the state's judicial site."
 
     def add_arguments(self, parser):
         parser.add_argument(
             "state_code",
             type=str,
-            help="USPS 2-letter state code. Only 'mn' is supported in this version.",
+            help="USPS 2-letter state code. Supported: 'mn', 'az' (Supreme Court only).",
         )
         parser.add_argument(
             "--dry-run",
@@ -46,9 +47,9 @@ class Command(BaseCommand):
 
     def handle(self, *args, state_code, dry_run, limit, **options):
         state_code = (state_code or "").upper()
-        if state_code != "MN":
+        if state_code not in ("MN", "AZ"):
             raise CommandError(
-                f"Only MN is supported in this scraper version, got {state_code!r}."
+                f"Supported state_codes: 'MN', 'AZ'. Got {state_code!r}."
             )
 
         try:
@@ -57,6 +58,9 @@ class Command(BaseCommand):
             raise CommandError(
                 f"State {state_code} not found -- run migrations first."
             )
+
+        if state_code == "AZ":
+            return self._handle_az(state, dry_run, limit)
 
         try:
             sct_court = Court.objects.get(state=state, courtlistener_id="minn")
@@ -174,3 +178,139 @@ class Command(BaseCommand):
             f"marked-no-longer-seated={stale_marked}"
             + (" (dry-run; no DB changes)" if dry_run else "")
         ))
+
+    def _handle_az(self, state, dry_run, limit):
+        """Scrape AZ Supreme Court roster and reconcile against existing
+        AZ Judge rows. Unlike MN (where the roster scraper is the source
+        of truth and rows are uniquely keyed by source_id), AZ has 120+
+        Judge rows already populated from the CL bulk dump's people
+        table -- we don't want to create duplicates. So persistence is:
+
+        1. Try to match each scraped justice against an existing AZ
+           Judge row by last-name (state=AZ, court=ariz). If found,
+           UPDATE that row's bio/photo/role/source_id in place.
+        2. If not found, CREATE a new Judge row. Slug derived from full
+           name; conflicts auto-suffixed.
+
+        Last-name matching mirrors what resolve_judges does for byline
+        resolution. Only the Supreme Court is in scope for this scraper
+        version; AZ Court of Appeals Div 1 + Div 2 sit on a different
+        DNN host and would need separate scrapers.
+        """
+        try:
+            supreme_court = Court.objects.get(state=state, courtlistener_id="ariz")
+        except Court.DoesNotExist:
+            raise CommandError(
+                "Required Court row missing for AZ Supreme. Run migrations."
+            )
+
+        from django.utils.text import slugify
+        from collections import defaultdict
+
+        scraper = AZSupremeJudgeScraper()
+        self.stdout.write("Fetching AZ Supreme Court roster from azcourts.gov...")
+        scraped = scraper.fetch_roster()
+        self.stdout.write(f"  found {len(scraped)} justices on the listing page")
+        if limit:
+            scraped = scraped[:limit]
+
+        # Build a last-name -> [Judge,...] lookup over existing AZ Supreme
+        # Court rows so we can match-and-update instead of duplicating.
+        last_name_map: dict[str, list[Judge]] = defaultdict(list)
+        existing = Judge.objects.filter(state=state, court=supreme_court)
+        for j in existing:
+            tokens = (j.full_name or "").strip().split()
+            if not tokens:
+                continue
+            ln = tokens[-1].lower().strip(",.;:")
+            last_name_map[ln].append(j)
+
+        created = matched_updated = ambiguous_skipped = 0
+        for row in scraped:
+            tokens = row.full_name.split()
+            if not tokens:
+                continue
+            last_lower = tokens[-1].lower().strip(",.;:")
+            matches = last_name_map.get(last_lower, [])
+
+            if dry_run:
+                tag = (
+                    "MATCH(unique)" if len(matches) == 1
+                    else f"MATCH(amb x{len(matches)})" if matches
+                    else "NEW"
+                )
+                self.stdout.write(
+                    f"    DRY [{tag}] {row.full_name} -- bio_len={len(row.bio_summary)} "
+                    f"photo={'yes' if row.photo_url else 'no'}"
+                )
+                continue
+
+            if len(matches) > 1:
+                ambiguous_skipped += 1
+                self.stderr.write(self.style.WARNING(
+                    f"  ambiguous match for {row.full_name!r} "
+                    f"({len(matches)} existing Judges share last name); skipping"
+                ))
+                continue
+
+            if len(matches) == 1:
+                # Update the existing CL-bulk-loaded row in place. Don't
+                # touch slug (URLs would break) or full_name (CL bulk
+                # form may be canonical; we won't second-guess).
+                j = matches[0]
+                j.court = supreme_court
+                j.role = row.role
+                j.status = Judge.Status.ACTIVE
+                j.is_currently_seated = True
+                j.bio_url = row.bio_url
+                j.photo_url = row.photo_url
+                j.bio_summary = row.bio_summary
+                j.source_id = row.source_id
+                j.save(update_fields=[
+                    "court", "role", "status", "is_currently_seated",
+                    "bio_url", "photo_url", "bio_summary", "source_id",
+                ])
+                matched_updated += 1
+            else:
+                # No existing row -- create one. Slug from full name with
+                # numeric suffix on collision.
+                base_slug = slugify(row.full_name) or row.source_id
+                slug = base_slug
+                n = 2
+                while Judge.objects.filter(state=state, slug=slug).exists():
+                    slug = f"{base_slug}-{n}"
+                    n += 1
+                Judge.objects.create(
+                    state=state,
+                    court=supreme_court,
+                    full_name=row.full_name,
+                    slug=slug,
+                    role=row.role,
+                    status=Judge.Status.ACTIVE,
+                    is_currently_seated=True,
+                    bio_url=row.bio_url,
+                    photo_url=row.photo_url,
+                    bio_summary=row.bio_summary,
+                    source_id=row.source_id,
+                )
+                # Index the new row so subsequent scraped justices with the
+                # same last name (sibling first-names) match correctly.
+                last_name_map[last_lower].append(_LazyJudge(slug))
+                created += 1
+
+        self.stdout.write(self.style.SUCCESS(
+            f"Done. scraped={len(scraped)} matched-updated={matched_updated} "
+            f"created={created} ambiguous-skipped={ambiguous_skipped}"
+            + (" (dry-run; no DB changes)" if dry_run else "")
+        ))
+
+
+class _LazyJudge:
+    """Sentinel used only to make the last_name_map count include
+    just-created rows so subsequent matches don't double-create. We
+    don't need the Judge object itself, just a placeholder for length
+    counting in the ambiguity check."""
+    __slots__ = ("slug",)
+
+    def __init__(self, slug: str) -> None:
+        self.slug = slug
