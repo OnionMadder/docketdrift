@@ -35,9 +35,11 @@ from __future__ import annotations
 import re
 import time
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import date
 
 from django.core.management.base import BaseCommand
+from django.utils.text import slugify
 
 from opinions.models import Judge, Opinion, PanelVote
 
@@ -47,6 +49,119 @@ _ROLE_SUFFIX_RE = re.compile(
     r",\s*(?:Chief\s+)?(?:Judge|Justice|J\.|C\.J\.)\.?\s*$",
     re.IGNORECASE,
 )
+
+
+# ----------------------------------------------------------------------
+# Generic fallback byline extractor.
+#
+# For states without a registered state-specific parser, we still want
+# to learn who authored + sat on the panel for each opinion. NH and AZ
+# (and any future state that doesn't have a parser yet) hit this path
+# until their state-specific parser is built.
+#
+# Pattern that catches the bulk of NH appellate opinions:
+#   MACDONALD, C.J., and COUNTWAY and GOULD, JJ., concurred.
+#   DONOVAN, COUNTWAY, and GOULD, JJ., concurred.
+#   COUNTWAY and GOULD, JJ., concurred; TEMPLE, J., specially assigned ...
+#
+# Heuristic: scan the LAST ~2KB of raw_text (opinions sign off at the
+# bottom) for the surnames immediately preceding "C.J.", "J.", or "JJ.,"
+# tags followed by "concurred". The first surname tagged "C.J." (Chief
+# Justice) is treated as the author if present -- that's the convention
+# in single-author opinions where the chief signs first. Otherwise the
+# panel is treated as per-curiam (all-join, no distinct author).
+# ----------------------------------------------------------------------
+
+# Uppercase-surname token: letters, hyphens, apostrophes, optional inline
+# spaces (rare like "VAN BUREN"). 3+ chars to avoid matching abbreviations.
+_SURNAME = r"[A-Z][A-Z\-']{2,}"
+
+# Run of "<S1>, <S2>, and <S3>, JJ.,"  or "<S>, J.," patterns near the
+# disposition footer. Captures the comma-separated surname list before
+# the role suffix. The optional ``chief`` prefix catches "<X>, C.J., and"
+# at the start of a mixed signoff like:
+#   MACDONALD, C.J., and COUNTWAY and GOULD, JJ., concurred.
+# where the Chief Justice has their own inline C.J. marker before the
+# remaining JJ.-tagged panel members. Without the prefix capture, the
+# main regex would only latch onto "COUNTWAY and GOULD, JJ., concurred"
+# and silently drop MACDONALD.
+_PANEL_GROUP_RE = re.compile(
+    rf"(?:\b(?P<chief>{_SURNAME}),\s*C\.J\.,\s*and\s+)?"
+    rf"\b(?P<panel>(?:{_SURNAME})(?:\s*,?\s*(?:and\s+)?(?:{_SURNAME}))*)"
+    rf",?\s+(?P<role>C\.J\.|JJ?\.)\s*,?\s*concurred"
+)
+
+
+@dataclass(frozen=True)
+class GenericByline:
+    """Output of the generic byline extractor."""
+    author_last: str | None
+    panel_last: list[str]
+    raw_matches: list[str]  # for debug / log inspection
+
+
+def _extract_generic_byline(raw_text: str) -> GenericByline:
+    """Extract author + panel last-names from any-state opinion text.
+
+    Returns lowercased last-names ready to match against last_name_map.
+    Falls back gracefully (empty author + empty panel) on text that
+    doesn't follow the "<NAMES>, JJ., concurred" convention.
+    """
+    if not raw_text:
+        return GenericByline(None, [], [])
+
+    # Concentrate the search on the last 2KB -- panel lists are at the
+    # footer, never the body. This drops false positives from majority
+    # text that contains uppercase party names ("ROBERTS sued LARSON").
+    tail = raw_text[-2000:]
+
+    author_last: str | None = None
+    all_panel: list[str] = []
+    raw_matches: list[str] = []
+    for m in _PANEL_GROUP_RE.finditer(tail):
+        raw_matches.append(m.group(0))
+        chief = m.group("chief")
+        names_blob = m.group("panel")
+        role = m.group("role")
+        # The inline Chief Justice (when present) is the signer/author of
+        # the opinion -- record + remember separately from the panel.
+        if chief:
+            author_last = chief.lower()
+        # Split on " and " and "," to enumerate panel surnames. The
+        # _SURNAME regex requires uppercase + 3+ letters, so role
+        # abbreviations like "C.J." can't sneak through this token split,
+        # but defensive: drop any leftover tokens that don't look like a
+        # surname after lowercasing (period-containing tokens like "c.j.").
+        names = re.split(r",\s*(?:and\s+)?|\s+and\s+", names_blob)
+        names = [n.strip() for n in names if n.strip() and "." not in n]
+        # Fallback author detection when no explicit chief prefix was
+        # found: a single surname tagged C.J. or a single-name J. signoff
+        # is the author by convention.
+        if author_last is None and role == "C.J." and names:
+            author_last = names[0].lower()
+        elif author_last is None and role == "J." and len(names) == 1:
+            author_last = names[0].lower()
+        all_panel.extend(n.lower() for n in names)
+
+    # Dedupe + drop the author from panel (author already counted via PV)
+    seen = set()
+    panel: list[str] = []
+    for n in all_panel:
+        if n in seen:
+            continue
+        if author_last is not None and n == author_last:
+            continue
+        seen.add(n)
+        panel.append(n)
+    return GenericByline(author_last=author_last, panel_last=panel, raw_matches=raw_matches)
+
+
+# Title-case for display when we create new Judge rows from a byline-
+# only last name -- "MACDONALD" -> "Macdonald" reads better in the
+# admin + on dossier pages. Editors can rename later to the canonical
+# capitalization (e.g. "MacDonald").
+def _titlecase_surname(upper: str) -> str:
+    return upper[:1] + upper[1:].lower() if upper else upper
 
 
 def _last_name(name: str) -> str:
@@ -86,8 +201,20 @@ class Command(BaseCommand):
             "--dry-run", action="store_true",
             help="Compute matches + counts but don't create PanelVote rows.",
         )
+        parser.add_argument(
+            "--create-missing", action="store_true",
+            help=(
+                "Create Judge rows for byline + panel last-names that "
+                "don't match an existing roster. Use for states whose "
+                "judges weren't seeded by a roster scraper -- byline-"
+                "learned Judges get status=UNKNOWN + "
+                "is_currently_seated=False so an editor can review + "
+                "promote them later. Idempotent across re-runs via the "
+                "(state, slug) unique constraint."
+            ),
+        )
 
-    def handle(self, *args, state, limit, since, dry_run, **options):
+    def handle(self, *args, state, limit, since, dry_run, create_missing, **options):
         # Local import: parsing module loads the state-parser registry
         from opinions.parsing import parse as parse_opinion
 
@@ -110,7 +237,63 @@ class Command(BaseCommand):
             f"{len(judges)} judges, "
             f"{unique_names} unique-last-name lookups, "
             f"{ambiguous_names} ambiguous (skipped)"
+            + ("  [--create-missing ON]" if create_missing else "")
         ))
+
+        # Cache State row -- needed when --create-missing forges new Judges.
+        from opinions.models import State as _State
+        state_obj = _State.objects.get(code=state_code)
+
+        # Counter for byline-learned Judges (only meaningful when
+        # create_missing is on). Tracks per-name first-create so we can
+        # log a single summary at the end.
+        forged_judges: int = 0
+
+        def _get_or_create_byline_judge(last_lower: str) -> Judge | None:
+            """Return Judge for ``last_lower`` (state-scoped), creating one
+            when --create-missing is on and no roster row exists.
+
+            Updates ``last_name_map`` in place so subsequent opinions in
+            the same run hit the cache instead of re-querying. Skips
+            the create path when last_lower is ambiguous against the
+            existing roster -- we'd rather miss than mint a duplicate.
+            """
+            nonlocal forged_judges
+            existing = last_name_map.get(last_lower, [])
+            if len(existing) == 1:
+                return existing[0]
+            if len(existing) > 1:
+                # Ambiguous against roster -- caller decides what to do
+                # (currently: skip + increment the ambiguous counter).
+                return None
+            if not create_missing:
+                return None
+            # Forge a Judge from the byline last-name only. Editor can
+            # rename + upgrade status later via admin.
+            display_name = _titlecase_surname(last_lower.upper())
+            base_slug = slugify(display_name) or last_lower
+            # (state, slug) is unique_together; suffix with -<n> if needed.
+            slug = base_slug
+            n = 2
+            while Judge.objects.filter(state=state_obj, slug=slug).exists():
+                slug = f"{base_slug}-{n}"
+                n += 1
+            if dry_run:
+                # Synthesize a fake row so downstream logic doesn't crash;
+                # don't hit the DB.
+                new_j = Judge(state=state_obj, full_name=display_name, slug=slug)
+            else:
+                new_j = Judge.objects.create(
+                    state=state_obj,
+                    full_name=display_name,
+                    slug=slug,
+                    status=Judge.Status.UNKNOWN,
+                    is_currently_seated=False,
+                    source_id=f"byline:{state_code}:{last_lower}",
+                )
+            last_name_map[last_lower].append(new_j)
+            forged_judges += 1
+            return new_j
 
         opinion_qs = (
             Opinion.objects.filter(court__state__code=state_code)
@@ -159,20 +342,33 @@ class Command(BaseCommand):
                     ending="\n",
                 )
 
+            # Try the state-specific parser first; fall back to the
+            # generic byline extractor when no parser is registered.
+            # The fallback gives author_last + panel_last directly (lowercased
+            # last names) instead of a full ParsedOpinion -- normalise both
+            # paths into the same (author_last, panel_lasts) shape.
             result = parse_opinion(state_code, opinion.raw_text)
             if result is None:
-                continue
+                generic = _extract_generic_byline(opinion.raw_text)
+                author_last = generic.author_last
+                panel_lasts = generic.panel_last
+            else:
+                author_last = (
+                    _last_name(result.author).lower() if result.author else None
+                )
+                panel_lasts = [_last_name(p).lower() for p in result.panel]
+                panel_lasts = [p for p in panel_lasts if p]
 
             # ---- Pass 1: Author ----
             author_judge: Judge | None = None
-            if result.author:
-                author_last = _last_name(result.author).lower()
-                matches = last_name_map.get(author_last, [])
-                if len(matches) == 1:
-                    author_judge = matches[0]
-                    author_resolved += 1
-                elif len(matches) > 1:
+            if author_last:
+                pre_existing = last_name_map.get(author_last, [])
+                if len(pre_existing) > 1:
                     author_ambiguous += 1
+                else:
+                    author_judge = _get_or_create_byline_judge(author_last)
+                    if author_judge is not None:
+                        author_resolved += 1
 
             if author_judge and not dry_run:
                 pv, created = PanelVote.objects.get_or_create(
@@ -190,16 +386,15 @@ class Command(BaseCommand):
                     upgraded_votes += 1
 
             # ---- Pass 2: Panel members ----
-            for panel_entry in result.panel:
-                panel_last = _last_name(panel_entry).lower()
-                matches = last_name_map.get(panel_last, [])
-                if not matches:
-                    continue
-                if len(matches) > 1:
+            for panel_last in panel_lasts:
+                pre_existing = last_name_map.get(panel_last, [])
+                if len(pre_existing) > 1:
                     panel_ambiguous += 1
                     continue
 
-                panel_judge = matches[0]
+                panel_judge = _get_or_create_byline_judge(panel_last)
+                if panel_judge is None:
+                    continue
                 if author_judge is not None and panel_judge.pk == author_judge.pk:
                     # Already counted as author; don't downgrade to "joined".
                     continue
@@ -228,5 +423,9 @@ class Command(BaseCommand):
             f"  new author votes:  {new_author_votes:>7,}\n"
             f"  new joined votes:  {new_join_votes:>7,}\n"
             f"  upgraded (J->A):   {upgraded_votes:>7,}"
+            + (
+                f"\n  byline-learned judges (status=UNKNOWN): {forged_judges:>7,}"
+                if create_missing else ""
+            )
             + ("\n  (DRY RUN -- nothing saved)" if dry_run else "")
         )
