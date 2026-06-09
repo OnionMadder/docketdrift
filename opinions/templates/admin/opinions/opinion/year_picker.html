@@ -8,7 +8,36 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
     gap: 0.75rem;
-    margin: 1.5rem 0 2rem;
+    margin: 1rem 0 1.75rem;
+  }
+  .state-section {
+    margin: 1.5rem 0 2.5rem;
+    padding: 1rem 1.25rem 1.5rem;
+    background: var(--body-bg, #fff);
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 8px;
+  }
+  .state-section-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.4rem;
+    border-bottom: 1px solid var(--border-color, #eee);
+  }
+  .state-section-header h2 {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--body-fg, #333);
+  }
+  .state-section-header .state-section-meta {
+    font-size: 0.85rem;
+    color: var(--body-quiet-color-fg, #888);
+  }
+  .state-section-header .state-section-meta a {
+    margin-left: 0.85rem;
+    font-weight: 600;
   }
   .year-tile {
     display: flex;
@@ -59,12 +88,13 @@
 {% endblock %}
 
 {% block content %}
-<h1>Opinions — browse by year</h1>
+<h1>Opinions — browse by state and year</h1>
 
 <p class="year-picker-lead">
   <strong>{{ total|default:0 }}</strong> opinion{{ total|pluralize }} indexed across
-  <strong>{{ years|length }}</strong> year{{ years|length|pluralize }}.
-  Click a year to drill into the normal list view, filtered to that year.
+  <strong>{{ states|length }}</strong> state{{ states|length|pluralize }}.
+  Click a year tile to drill into the normal list view, filtered to that
+  (state, year) pair.
 </p>
 
 <div class="year-picker-shortcuts">
@@ -82,15 +112,27 @@
   <a href="?body=none">Missing body text</a>
 </div>
 
-{% if years %}
-  <div class="year-grid">
-    {% for y in years %}
-      <a href="?release_date__year={{ y.year }}" class="year-tile">
-        <strong>{{ y.year }}</strong>
-        <span>{{ y.count }} opinion{{ y.count|pluralize }}</span>
-      </a>
-    {% endfor %}
-  </div>
+{% if states %}
+  {% for s in states %}
+    <section class="state-section">
+      <header class="state-section-header">
+        <h2>{{ s.name }} ({{ s.code }})</h2>
+        <span class="state-section-meta">
+          <strong>{{ s.total }}</strong> opinion{{ s.total|pluralize }}
+          across <strong>{{ s.years|length }}</strong> year{{ s.years|length|pluralize }}
+          <a href="?court__state__code__exact={{ s.code }}">all {{ s.code }} opinions &rarr;</a>
+        </span>
+      </header>
+      <div class="year-grid">
+        {% for y in s.years %}
+          <a href="?court__state__code__exact={{ s.code }}&release_date__year={{ y.year }}" class="year-tile">
+            <strong>{{ y.year }}</strong>
+            <span>{{ y.count }} opinion{{ y.count|pluralize }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    </section>
+  {% endfor %}
 {% else %}
   <p>No opinions indexed yet.</p>
 {% endif %}

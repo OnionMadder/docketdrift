@@ -477,18 +477,18 @@ class OpinionAdmin(admin.ModelAdmin):
         )
 
     def changelist_view(self, request, extra_context=None):
-        """Year-picker landing when no filter is active.
+        """State-then-year picker landing when no filter is active.
 
-        With 60K opinions, hitting /admin/opinions/opinion/ raw is slow
-        AND useless -- there's nothing meaningful to do with a 60K-row
-        list. So when there are no query params, we render a year-grid
-        instead: each year is a clickable tile that drops into the
-        normal changelist filtered to that year. Once filtered to
-        ~1-3K opinions per year, the changelist renders fast and the
-        editorial review workflow has natural drill-down.
+        With 60K (MN) + 38K (AZ) + 20K (NH) opinions in the corpus, the
+        bare changelist is unusably slow AND useless -- there's nothing
+        meaningful to do with 120K rows. So when there are no query
+        params, render a per-state year-grid: each state section lists
+        its years as clickable tiles, each tile filters the changelist
+        to (state, year). One click lands on a tight ~1-5K-row view.
 
-        Clicking ANY filter or year in date_hierarchy keeps the normal
-        changelist behavior (the redirect only fires on the bare URL).
+        Clicking ANY filter / year in date_hierarchy / etc keeps the
+        normal changelist behavior (the redirect only fires on the bare
+        URL).
         """
         if request.GET:
             return super().changelist_view(request, extra_context=extra_context)
@@ -497,23 +497,43 @@ class OpinionAdmin(admin.ModelAdmin):
         from django.db.models.functions import ExtractYear
         from django.template.response import TemplateResponse
 
-        years = list(
+        rows = list(
             Opinion.objects
             .filter(release_date__isnull=False)
             .annotate(year=ExtractYear("release_date"))
-            .values("year")
+            .values("court__state__code", "court__state__name", "year")
             .annotate(count=Count("id"))
-            .order_by("-year")
+            .order_by("court__state__code", "-year")
         )
-        total = sum(y["count"] for y in years)
+
+        # Group rows by state for the template; preserve state ordering
+        # by code, year ordering by recency.
+        states: list[dict] = []
+        by_code: dict[str, dict] = {}
+        for r in rows:
+            code = r["court__state__code"]
+            entry = by_code.get(code)
+            if entry is None:
+                entry = {
+                    "code": code,
+                    "name": r["court__state__name"],
+                    "years": [],
+                    "total": 0,
+                }
+                by_code[code] = entry
+                states.append(entry)
+            entry["years"].append({"year": r["year"], "count": r["count"]})
+            entry["total"] += r["count"]
+
+        grand_total = sum(s["total"] for s in states)
 
         context = {
             **self.admin_site.each_context(request),
-            "title": "Opinions — browse by year",
+            "title": "Opinions — browse by state and year",
             "opts": self.model._meta,
-            "years": years,
-            "total": total,
-            "has_unfiltered_data": bool(years),
+            "states": states,
+            "total": grand_total,
+            "has_unfiltered_data": bool(states),
         }
         return TemplateResponse(
             request,
