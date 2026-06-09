@@ -238,6 +238,21 @@ official site. Spot-check 2-3 judges' bios.
 Backfill in the admin via the "search CL →" links in JudgeAdmin's
 changelist (see admin polish from 2026-06-08).
 
+**No public roster? Skip the scraper, use byline-learned judges.**
+After Phase 7 + Phase 8 land, run:
+```bash
+python manage.py resolve_judges --state <CODE> --create-missing
+```
+The command parses every opinion's byline + panel footer with a
+generic last-name-only extractor (handles common patterns like
+`MACDONALD, C.J., and COUNTWAY and GOULD, JJ., concurred.`), and
+when a surname doesn't match any existing roster row, creates a
+`Judge` with `status=UNKNOWN`, `is_currently_seated=False`, and
+`source_id="byline:<state>:<lastname>"`. Editor can rename to the
+canonical capitalization later. Coverage is partial (no photo, no
+bio, no appointment date) but it gives you a real panel-vote graph
+without a scraper.
+
 ---
 
 ## Phase 7 — Bulk corpus ingest
