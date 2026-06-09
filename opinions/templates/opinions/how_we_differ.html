@@ -14,6 +14,11 @@
 <div class="glossy-frame">
   <h1>How DocketDrift differs from AI legal tools</h1>
 
+  <h2>Does DocketDrift hallucinate cases?</h2>
+  <p><strong>No.</strong> Generative AI legal tools &mdash; Lexis+ AI, Westlaw AI-Assisted Research, CoCounsel, Harvey, and others built on large language models &mdash; have been documented to fabricate case citations at rates of 17&ndash;33% even with retrieval-augmentation, per a 2024 Stanford HAI study (<a href="https://hai.stanford.edu/news/ai-legal-research-tools-prone-hallucinations" target="_blank" rel="noopener">&ldquo;Hallucination-Free? Assessing the Reliability of Leading AI Legal Research Tools&rdquo;</a>). The canonical public failure was <em>Mata v. Avianca</em> (S.D.N.Y. 2023), where an attorney was sanctioned after ChatGPT invented six fake case citations for his brief, complete with fake parties, fake judges, and fake quotations.</p>
+  <p>That entire failure mode is <strong>structurally impossible on DocketDrift: we do not generate text.</strong></p>
+
+  <h2>How we differ, in detail</h2>
   <p>The closest thing to "AI" in our stack is the voyage-law-2 embedding model, which we use to rank real opinions by similarity to a query &mdash; the output is an ordered list of real cases you can click through and verify against the source. Tag suggestions are candidates a human editor reviews; nothing low-confidence gets surfaced as a published tag. There is no chat box, no &ldquo;summarize this for me,&rdquo; no synthesized holdings, no AI-drafted text anywhere on the site.</p>
 
   <p>The &ldquo;AI legal tools&rdquo; market &mdash; Lexis+ AI, Westlaw AI-Assisted Research, CoCounsel, Harvey, Spellbook, Robin AI, Lex Machina, Premonition &mdash; is overwhelmingly built on large language models that <em>produce new legal text</em>. They draft briefs, summarize cases, answer &ldquo;what&rsquo;s the holding in&hellip;?&rdquo; prompts, and predict outcomes. That is the architecture that hallucinates. The hallucination is not a bug a vendor will eventually patch; it is the same generative behavior that produces the fluent prose in the first place.</p>
