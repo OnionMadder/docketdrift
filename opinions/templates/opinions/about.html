@@ -12,7 +12,14 @@
 <div class="glossy-frame">
   <h1>About DocketDrift</h1>
 
-  <p>DocketDrift is a public-record analysis tool for state appellate courts. We collate published opinions from official sources, normalize them into a structured archive, and make patterns in judicial decisions easier to read together.</p>
+  <p><strong>DocketDrift is a navigator for the public record</strong> &mdash; specifically, state appellate court opinions. We collate published opinions from official sources, normalize them into a structured archive, and make patterns in judicial decisions easier to find and read together. <strong>We are explicitly not an AI legal assistant.</strong> Every record on the site is a real opinion published by a real court, with a working link to the source. We do not generate legal text.</p>
+
+  <div class="ai-disclosure">
+    <h2>Does DocketDrift hallucinate cases?</h2>
+    <p><strong>No.</strong> Generative AI legal tools &mdash; Lexis+ AI, Westlaw AI-Assisted Research, CoCounsel, Harvey, and others built on large language models &mdash; have been documented to fabricate case citations at rates of 17&ndash;33% even with retrieval-augmentation, per a 2024 Stanford HAI study (<a href="https://hai.stanford.edu/news/ai-legal-research-tools-prone-hallucinations" target="_blank" rel="noopener">&ldquo;Hallucination-Free? Assessing the Reliability of Leading AI Legal Research Tools&rdquo;</a>). The canonical public failure was <em>Mata v. Avianca</em> (S.D.N.Y. 2023), where an attorney was sanctioned after ChatGPT invented six fake case citations for his brief, complete with fake parties, fake judges, and fake quotations.</p>
+    <p>That entire failure mode is <strong>structurally impossible on DocketDrift: we do not generate text.</strong> The closest thing to "AI" in our stack is the voyage-law-2 embedding model, which we use to rank real opinions by similarity to a query &mdash; the output is an ordered list of real cases you can click through and verify against the source. Tag suggestions are candidates a human editor reviews; nothing low-confidence gets surfaced as a published tag. There is no chat box, no &ldquo;summarize this for me,&rdquo; no synthesized holdings, no AI-drafted text anywhere on the site.</p>
+    <p>See <a href="#how-we-differ">How DocketDrift differs from AI legal tools</a> below for the full breakdown.</p>
+  </div>
 
   <h2>Who DocketDrift is for</h2>
   <p>DocketDrift is built for appellate attorneys, journalists, academic researchers, and self-represented litigants. State appellate research has historically been dominated by paid databases. DocketDrift treats the public record as what it is: public.</p>
@@ -30,6 +37,40 @@
   <h2>Editorial review</h2>
   <p>Every opinion in the corpus is currently being reviewed and tagged by a human editor. Until that pass is complete, individual records carry a status indicator showing whether the opinion is <em>processed</em> (machine-parsed, awaiting review), <em>flagged</em> (queued for re-review), or <em>human-reviewed</em>. The intent is that machine extraction does the bulk-work part (case number, disposition, panel composition, statute citations) while the editorial pass curates the doctrinal tags, catches parser misses, and flags edge cases. Both signals stay public; you can see at a glance which records have been read by a human.</p>
 
+  <h2 id="how-we-differ">How DocketDrift differs from AI legal tools</h2>
+  <p>The &ldquo;AI legal tools&rdquo; market &mdash; Lexis+ AI, Westlaw AI-Assisted Research, CoCounsel, Harvey, Spellbook, Robin AI, Lex Machina, Premonition &mdash; is overwhelmingly built on large language models that <em>produce new legal text</em>. They draft briefs, summarize cases, answer &ldquo;what&rsquo;s the holding in&hellip;?&rdquo; prompts, and predict outcomes. That is the architecture that hallucinates. The hallucination is not a bug a vendor will eventually patch; it is the same generative behavior that produces the fluent prose in the first place.</p>
+
+  <table class="differ-table">
+    <thead>
+      <tr><th>What we don&rsquo;t do</th><th>What we do</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Generate legal analysis</td><td>Index real, published opinions</td></tr>
+      <tr><td>Draft briefs, memos, contracts</td><td>Link to the source URL of every record</td></tr>
+      <tr><td>Answer &ldquo;what&rsquo;s the holding in&hellip;?&rdquo;</td><td>Show you the actual opinion text</td></tr>
+      <tr><td>Summarize cases into prose</td><td>Pull verbatim surrounding text around statute citations</td></tr>
+      <tr><td>Predict outcomes or judge behavior</td><td>Count actual prior outcomes (counts only, no narrative)</td></tr>
+      <tr><td>Synthesize holdings</td><td>Color-code the disposition that&rsquo;s literally printed in the opinion</td></tr>
+      <tr><td>Chat / answer questions</td><td>Provide a tag-suggestion queue a human editor must accept or reject</td></tr>
+    </tbody>
+  </table>
+
+  <p>The only two places ML appears at all in DocketDrift:</p>
+  <ol>
+    <li><strong>Voyage embeddings for semantic search.</strong> A 1024-dimension vector representation of each opinion. We compare a query vector to opinion vectors with cosine similarity and return an ordered list of opinion IDs. No text is generated; the only output is &ldquo;these N opinions are most similar to your query.&rdquo; You click through and read the actual published text.</li>
+    <li><strong>Tag-suggestion candidates.</strong> Embeddings rank candidate tags by similarity to each opinion. Above a high-confidence threshold the tag is auto-applied <em>and</em> marked <code>AUTO_APPLIED</code> for transparent audit. Below that threshold the suggestion appears in a human-review queue; the editor accepts or rejects. Nothing low-confidence becomes a published tag.</li>
+  </ol>
+
+  <p>Everything else &mdash; case number, release date, disposition, panel composition, statute citations, court breakdown, judge dossiers &mdash; is deterministic regex extraction over the actual published text. Either the pattern matches or it doesn&rsquo;t. There is no LLM in any of those paths, and no LLM is ever asked to synthesize, summarize, or describe what it sees.</p>
+
+  <p>Two practical consequences:</p>
+  <ul>
+    <li><strong>Hallucination is architecturally impossible.</strong> The system cannot produce a fake case citation because the system cannot produce <em>any</em> text. Every record traces to an opinion the public can verify against the official source.</li>
+    <li><strong>The human-in-the-loop signal is visible.</strong> Every opinion page shows the editorial review status. Every auto-applied tag is marked as such. You can tell at a glance whether a record has been read by a human and whether its tags came from human review.</li>
+  </ul>
+
+  <p>The promise is plainer than &ldquo;AI legal research&rdquo;: we treat the public record as what it is. We organize it. We link to it. We don&rsquo;t tell you what it means. That&rsquo;s still your job.</p>
+
   <h2>Status</h2>
   <p>
     <span class="status-pill status-pill--beta">Beta &middot; Minnesota</span>
@@ -38,8 +79,8 @@
   </p>
   <ul>
     <li><strong>Minnesota</strong> &mdash; full appellate corpus loaded: <strong>60,000+ opinions</strong> spanning <strong>1851 to current</strong>, refreshed weekly as new opinions are released. Judge dossiers, outcome categorization, statute citation graph, semantic search, and tag-suggestion review pipeline are all live. Editorial review of the corpus is in progress.</li>
-    <li><strong>New Hampshire</strong> &mdash; initial seed loaded (NH Supreme Court); deeper backfill is paused on the CourtListener daily request budget and will resume on the next budget cycle. New opinions land via the weekly scheduled ingest job either way.</li>
-    <li><strong>Arizona</strong> &mdash; initial seed loaded (Arizona Supreme Court + Court of Appeals); same posture as New Hampshire while the deeper backfill queues up.</li>
+    <li><strong>New Hampshire</strong> &mdash; full NH Supreme Court corpus loaded: <strong>20,000+ opinions</strong>. Byline-extracted judicial panel graph populated. Semantic search and tag-suggestion pipelines running. Editorial review in progress.</li>
+    <li><strong>Arizona</strong> &mdash; full Arizona Supreme Court + Court of Appeals corpus loaded: <strong>38,000+ opinions</strong>. Byline extraction live for the Court of Appeals; Supreme Court byline format pending a follow-up parser pass. Editorial review in progress.</li>
   </ul>
   <p>Don't see your state? <a href="{% url 'opinions:request_state' %}">Request it &rarr;</a></p>
 

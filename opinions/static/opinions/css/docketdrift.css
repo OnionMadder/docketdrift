@@ -1210,6 +1210,80 @@ button.cta-primary {
   margin: 1.25rem 0 0.5rem;
 }
 
+/* "Does DocketDrift hallucinate cases?" callout on /about/.
+   Visually prominent: brighter border accent + slight background
+   tint so readers' eyes land on it. Sits inside the glossy-frame
+   so spacing inherits naturally. */
+.ai-disclosure {
+  margin: 1.5rem 0 2rem;
+  padding: 1.25rem 1.5rem;
+  background: rgba(255, 60, 180, 0.06);
+  border: 1px solid rgba(255, 60, 180, 0.25);
+  border-left: 4px solid var(--neon-magenta);
+  border-radius: var(--radius-sm);
+}
+.ai-disclosure h2 {
+  margin-top: 0;
+  color: var(--neon-magenta);
+}
+.ai-disclosure p:last-child {
+  margin-bottom: 0;
+}
+
+/* Two-column "what we don't / what we do" table in the
+   How-we-differ section. Subtle border, comfortable padding,
+   collapses to a stacked layout at narrow widths. */
+.differ-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0 1.5rem;
+  font-size: 0.95rem;
+}
+.differ-table th,
+.differ-table td {
+  padding: 0.6rem 0.85rem;
+  border-bottom: 1px solid var(--border-soft-color, rgba(255, 255, 255, 0.08));
+  vertical-align: top;
+  text-align: left;
+}
+.differ-table th {
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary, #aaa);
+  border-bottom: 2px solid var(--border-soft-color, rgba(255, 255, 255, 0.15));
+}
+.differ-table td:first-child {
+  color: var(--text-secondary, #aaa);
+}
+.differ-table td:last-child {
+  color: var(--text-primary, #fff);
+}
+@media (max-width: 720px) {
+  .differ-table thead { display: none; }
+  .differ-table tr {
+    display: block;
+    margin-bottom: 0.85rem;
+    padding-bottom: 0.85rem;
+    border-bottom: 1px solid var(--border-soft-color, rgba(255, 255, 255, 0.08));
+  }
+  .differ-table td {
+    display: block;
+    border: 0;
+    padding: 0.15rem 0;
+  }
+  .differ-table td:first-child::before {
+    content: "We don't: ";
+    color: var(--neon-magenta);
+    font-weight: 600;
+  }
+  .differ-table td:last-child::before {
+    content: "We do: ";
+    color: var(--neon-cyan);
+    font-weight: 600;
+  }
+}
+
 /* Two-column hero row on the judge page: bio card on the left,
    judicial record card on the right. Below the row, the deeper-dive
    cards (by court / by disposition / cohort / recent opinions) keep
