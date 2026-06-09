@@ -399,11 +399,17 @@ CL's API. The bulk-dump backfill from Phase 7 catches you up to the
 dump's snapshot date; the weekly cron keeps the corpus current after
 that.
 
-Update `cron-ingest.sh` to add the new state's CL court IDs to the
-list it iterates over.
+**No action required.** `cron-ingest.sh` auto-discovers every CL
+court id belonging to a live state via:
+```python
+Court.objects.filter(state__is_live=True).values_list("courtlistener_id", flat=True)
+```
+Flipping `State.is_live=True` in Phase 11 puts the state's courts on
+the weekly refresh schedule automatically.
 
-**Gate:** `tail -f /home/logs/scheduled_*.log` after the next
-scheduled run — see successful ingest entries for the new court IDs.
+**Gate:** Watch the next scheduled run land in NFSN's "Manage
+Scheduled Tasks" log — the run header lists every CL court id it's
+about to ingest, including the new state.
 
 ---
 
