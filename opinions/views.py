@@ -307,6 +307,19 @@ def about(request):
 
 
 @cache_control(public=True, max_age=CACHE_SEC_STATIC)
+def how_we_differ(request):
+    """Detailed breakdown of how DocketDrift differs architecturally from
+    the generative-AI legal-tools market. Spun off from the About page so
+    /about/ stays a high-level overview while a reader who wants the
+    specifics (where ML actually appears in the stack; the do/don't
+    matrix; the consequences) has a dedicated, linkable destination
+    they can share with skeptical attorneys."""
+    return render(request, "opinions/how_we_differ.html", {
+        "active_nav": "about",
+    })
+
+
+@cache_control(public=True, max_age=CACHE_SEC_STATIC)
 def privacy(request):
     """Privacy policy. Static page; copy is intentionally short and stark
     because the privacy posture itself is short and stark: we don't log,

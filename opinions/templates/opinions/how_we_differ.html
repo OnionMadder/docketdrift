@@ -1,0 +1,57 @@
+{% extends "opinions/base.html" %}
+{% block title %}How DocketDrift differs from AI legal tools &middot; DocketDrift{% endblock %}
+{% block description %}Where ML appears in DocketDrift, where it doesn't, and why hallucination is structurally impossible: the explicit do/don't breakdown.{% endblock %}
+
+{% block content %}
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+  <ol>
+    <li><a href="{% url 'opinions:home' %}">Home</a></li>
+    <li><a href="{% url 'opinions:about' %}">About</a></li>
+    <li aria-current="page">How DocketDrift differs from AI legal tools</li>
+  </ol>
+</nav>
+
+<div class="glossy-frame">
+  <h1>How DocketDrift differs from AI legal tools</h1>
+
+  <p>The closest thing to "AI" in our stack is the voyage-law-2 embedding model, which we use to rank real opinions by similarity to a query &mdash; the output is an ordered list of real cases you can click through and verify against the source. Tag suggestions are candidates a human editor reviews; nothing low-confidence gets surfaced as a published tag. There is no chat box, no &ldquo;summarize this for me,&rdquo; no synthesized holdings, no AI-drafted text anywhere on the site.</p>
+
+  <p>The &ldquo;AI legal tools&rdquo; market &mdash; Lexis+ AI, Westlaw AI-Assisted Research, CoCounsel, Harvey, Spellbook, Robin AI, Lex Machina, Premonition &mdash; is overwhelmingly built on large language models that <em>produce new legal text</em>. They draft briefs, summarize cases, answer &ldquo;what&rsquo;s the holding in&hellip;?&rdquo; prompts, and predict outcomes. That is the architecture that hallucinates. The hallucination is not a bug a vendor will eventually patch; it is the same generative behavior that produces the fluent prose in the first place.</p>
+
+  <table class="differ-table">
+    <thead>
+      <tr><th>What we don&rsquo;t do</th><th>What we do</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Generate legal analysis</td><td>Index real, published opinions</td></tr>
+      <tr><td>Draft briefs, memos, contracts</td><td>Link to the source URL of every record</td></tr>
+      <tr><td>Answer &ldquo;what&rsquo;s the holding in&hellip;?&rdquo;</td><td>Show you the actual opinion text</td></tr>
+      <tr><td>Summarize cases into prose</td><td>Pull verbatim surrounding text around statute citations</td></tr>
+      <tr><td>Predict outcomes or judge behavior</td><td>Count actual prior outcomes (counts only, no narrative)</td></tr>
+      <tr><td>Synthesize holdings</td><td>Color-code the disposition that&rsquo;s literally printed in the opinion</td></tr>
+      <tr><td>Chat / answer questions</td><td>Provide a tag-suggestion queue a human editor must accept or reject</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Where ML appears at all</h2>
+  <p>Two places, both narrow:</p>
+  <ol>
+    <li><strong>Voyage embeddings for semantic search.</strong> A 1024-dimension vector representation of each opinion. We compare a query vector to opinion vectors with cosine similarity and return an ordered list of opinion IDs. No text is generated; the only output is &ldquo;these N opinions are most similar to your query.&rdquo; You click through and read the actual published text.</li>
+    <li><strong>Tag-suggestion candidates.</strong> Embeddings rank candidate tags by similarity to each opinion. Above a high-confidence threshold the tag is auto-applied <em>and</em> marked <code>AUTO_APPLIED</code> for transparent audit. Below that threshold the suggestion appears in a human-review queue; the editor accepts or rejects. Nothing low-confidence becomes a published tag.</li>
+  </ol>
+
+  <p>Everything else &mdash; case number, release date, disposition, panel composition, statute citations, court breakdown, judge dossiers &mdash; is deterministic regex extraction over the actual published text. Either the pattern matches or it doesn&rsquo;t. There is no LLM in any of those paths, and no LLM is ever asked to synthesize, summarize, or describe what it sees.</p>
+
+  <h2>Two practical consequences</h2>
+  <ul>
+    <li><strong>Hallucination is architecturally impossible.</strong> The system cannot produce a fake case citation because the system cannot produce <em>any</em> text. Every record traces to an opinion the public can verify against the official source.</li>
+    <li><strong>The human-in-the-loop signal is visible.</strong> Every opinion page shows the editorial review status. Every auto-applied tag is marked as such. You can tell at a glance whether a record has been read by a human and whether its tags came from human review.</li>
+  </ul>
+
+  <p>The promise is plainer than &ldquo;AI legal research&rdquo;: we treat the public record as what it is. We organize it. We link to it. We don&rsquo;t tell you what it means. That&rsquo;s still your job.</p>
+
+  <p style="margin-top: 2rem;">
+    &larr; <a href="{% url 'opinions:about' %}">Back to About</a>
+  </p>
+</div>
+{% endblock %}
