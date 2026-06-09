@@ -102,19 +102,34 @@ _PANEL_GROUP_RE = re.compile(
     rf",?\s+(?P<role>C\.J\.|P\.J\.|JJ?\.)\s*,?\s*(?:concurred|concurring|join(?:ed)?)\b"
 )
 
-# AZ-style byline lives at the TOP of the opinion, not the bottom:
-#   Presiding Judge David B. Gass delivered the decision of the court, in
-#   which Judge Michael J. Brown and Judge Andrew J. Becke joined.
-#   Vice Chief Judge Eppich authored the opinion of the Court, in which
-#   Presiding Judge Vasquez and Chief Judge Staring concurred.
-# Two-step: find the "<author>... authored/delivered... in which <list>
-# concurred/joined" block, then enumerate the individual "Judge <Name>"
-# tokens inside. The first token is the author; the rest are panel.
+# AZ-style byline lives at the TOP of the opinion, not the bottom. Two
+# distinct conventions, both handled here:
 #
-# Important: name capture is CASE-SENSITIVE so names like "Eppich" don't
-# bleed into following lowercase words like "authored the opinion". The
-# enclosing block regex stays case-insensitive so verbs like "authored"
-# vs "Authored" both match.
+# 1. AZ Court of Appeals -- mixed-case "Judge", singular per name:
+#      Presiding Judge David B. Gass delivered the decision of the court,
+#      in which Judge Michael J. Brown and Judge Andrew J. Becke joined.
+#      Vice Chief Judge Eppich authored the opinion of the Court, in which
+#      Presiding Judge Vasquez and Chief Judge Staring concurred.
+#
+# 2. AZ Supreme Court -- ALL-UPPERCASE "JUSTICE", plus the panel often
+#    shares one plural "JUSTICES" prefix over a comma-separated list:
+#      CHIEF JUSTICE TIMMER authored the Opinion of the Court, in which
+#      VICE CHIEF JUSTICE LOPEZ, JUSTICES BOLICK, BEENE, KING, and CRUZ
+#      joined.
+#    Author is the first named role; panel = everything in the joined list.
+#
+# Two-step: find the "<author>... authored/delivered... in which <list>
+# concurred/joined" block, then enumerate via TWO sub-regexes -- a singular
+# "<role> <name>" matcher (catches CoA and AZ-Supreme's leading roles) and a
+# plural "JUSTICES <name>, <name>, ..." matcher (catches AZ-Supreme's
+# panel-list shorthand).
+#
+# CRITICAL: name capture must be CASE-SENSITIVE so lowercase verbs like
+# "joined" / "authored" don't slip into a name slot. The enclosing role
+# prefix and verbs are CASE-INSENSITIVE so both "Chief Judge" (CoA) and
+# "CHIEF JUSTICE" (Supreme) match. We mix these flags via Python's
+# `(?-i:...)` inline scoping: the outer regex uses re.IGNORECASE, but the
+# name capture group disables IGNORECASE locally.
 _AZ_ROLE_PREFIX_CI = r"(?:Presiding\s+|Vice\s+Chief\s+|Chief\s+|Vice\s+)?(?:Judge|Justice)"
 # Strict name: each word must start with an uppercase (or accented uppercase)
 # letter. Allow internal periods (initials like "B."), apostrophes, hyphens.
@@ -125,15 +140,26 @@ _AZ_NAME_STRICT = (
 _AZ_BYLINE_BLOCK_RE = re.compile(
     # Greedy-but-bounded block: "<role> <name> ... in which ... concurred/joined".
     # DOTALL because the block typically spans 2-3 lines.
-    rf"\b{_AZ_ROLE_PREFIX_CI}\s+{_AZ_NAME_STRICT}"
+    rf"\b{_AZ_ROLE_PREFIX_CI}\s+(?-i:{_AZ_NAME_STRICT})"
     rf"\s+(?:authored|delivered)[\s\S]{{0,400}}?"
     rf"in\s+which\s+[\s\S]{{0,400}}?\b(?:concurred|joined)\b",
     re.IGNORECASE | re.DOTALL,
 )
-# Inner regex: case-sensitive name capture so we don't slurp following
-# lowercase prose.
-_AZ_NAMED_JUDGE_RE = re.compile(
-    rf"\b{_AZ_ROLE_PREFIX_CI}\s+({_AZ_NAME_STRICT})",
+# Singular: "<role> <name>" -- catches CoA's mixed-case "Judge Brown" and
+# AZ-Supreme's "CHIEF JUSTICE TIMMER" / "VICE CHIEF JUSTICE LOPEZ" /
+# "JUSTICE KING". Role prefix matches case-insensitively; name stays
+# case-sensitive.
+_AZ_NAMED_SINGULAR_RE = re.compile(
+    rf"\b{_AZ_ROLE_PREFIX_CI}\s+((?-i:{_AZ_NAME_STRICT}))",
+    re.IGNORECASE,
+)
+# Plural: "JUSTICES <name>, <name>, ..., and <name>" -- AZ Supreme shares
+# one "JUSTICES" prefix over a comma-separated panel list, optionally with
+# an Oxford-comma "and" before the final name. Each name in the list stays
+# case-sensitive so " joined" / lowercase prose doesn't get slurped.
+_AZ_NAMED_PLURAL_RE = re.compile(
+    rf"\bJUSTICES\s+((?-i:{_AZ_NAME_STRICT})(?:\s*,\s*(?:and\s+)?(?-i:{_AZ_NAME_STRICT}))*)",
+    re.IGNORECASE,
 )
 
 
@@ -170,23 +196,50 @@ def _extract_generic_byline(raw_text: str) -> GenericByline:
     # block + "OPINION" header + first sentence of the byline). Scan
     # the first 5KB to be safe.
     head = raw_text[:5000]
+
+    def _last(name: str) -> str:
+        return name.strip().split()[-1].lower().rstrip(",.;'")
+
     for block in _AZ_BYLINE_BLOCK_RE.finditer(head):
         raw_matches.append(block.group(0)[:200])
         block_text = block.group(0)
-        named = _AZ_NAMED_JUDGE_RE.findall(block_text)
-        if not named:
+
+        # Two-pass extraction:
+        # 1) Singular "<role> <name>" matches (CoA + AZ-Supreme leading roles)
+        # 2) Plural "JUSTICES <name>, <name>, ..." panel lists (AZ Supreme)
+        # Preserve textual order within each pass so the FIRST captured
+        # judge is the byline author. Dedupe across both passes after.
+        in_block_judges: list[str] = []
+
+        for m in _AZ_NAMED_SINGULAR_RE.finditer(block_text):
+            last = _last(m.group(1))
+            if last:
+                in_block_judges.append(last)
+
+        for m in _AZ_NAMED_PLURAL_RE.finditer(block_text):
+            names_blob = m.group(1)
+            # Split on commas (with optional "and") and on bare " and ".
+            for nm in re.split(r"\s*,\s*(?:and\s+)?|\s+and\s+", names_blob):
+                last = _last(nm.strip())
+                if last:
+                    in_block_judges.append(last)
+
+        if not in_block_judges:
             continue
-        # First named judge = author; rest = panel. Last-name = last
-        # whitespace-delimited token of the captured name.
-        def _last(name: str) -> str:
-            return name.strip().split()[-1].lower().rstrip(",.;")
-        first_last = _last(named[0])
-        if first_last and author_last is None:
-            author_last = first_last
-        for nm in named[1:]:
-            ln = _last(nm)
-            if ln:
-                all_panel.append(ln)
+
+        # First named judge = author; the rest = panel members. Dedupe
+        # preserving order (a judge captured by both passes counts once).
+        seen_in_block: set[str] = set()
+        ordered: list[str] = []
+        for j in in_block_judges:
+            if j not in seen_in_block:
+                seen_in_block.add(j)
+                ordered.append(j)
+
+        if author_last is None:
+            author_last = ordered[0]
+        for nm in ordered[1:]:
+            all_panel.append(nm)
 
     # --- NH-style footer concurrence ---
     # Concentrate the search on the last 2KB -- panel lists are at the
