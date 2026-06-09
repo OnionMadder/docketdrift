@@ -102,6 +102,40 @@ _PANEL_GROUP_RE = re.compile(
     rf",?\s+(?P<role>C\.J\.|P\.J\.|JJ?\.)\s*,?\s*(?:concurred|concurring|join(?:ed)?)\b"
 )
 
+# AZ-style byline lives at the TOP of the opinion, not the bottom:
+#   Presiding Judge David B. Gass delivered the decision of the court, in
+#   which Judge Michael J. Brown and Judge Andrew J. Becke joined.
+#   Vice Chief Judge Eppich authored the opinion of the Court, in which
+#   Presiding Judge Vasquez and Chief Judge Staring concurred.
+# Two-step: find the "<author>... authored/delivered... in which <list>
+# concurred/joined" block, then enumerate the individual "Judge <Name>"
+# tokens inside. The first token is the author; the rest are panel.
+#
+# Important: name capture is CASE-SENSITIVE so names like "Eppich" don't
+# bleed into following lowercase words like "authored the opinion". The
+# enclosing block regex stays case-insensitive so verbs like "authored"
+# vs "Authored" both match.
+_AZ_ROLE_PREFIX_CI = r"(?:Presiding\s+|Vice\s+Chief\s+|Chief\s+|Vice\s+)?(?:Judge|Justice)"
+# Strict name: each word must start with an uppercase (or accented uppercase)
+# letter. Allow internal periods (initials like "B."), apostrophes, hyphens.
+_AZ_NAME_STRICT = (
+    r"[A-ZÀ-ß][A-Za-zÀ-ÿ.'\-]+"           # required first word
+    r"(?:\s+[A-ZÀ-ß][A-Za-zÀ-ÿ.'\-]+){0,3}"  # up to 3 additional words
+)
+_AZ_BYLINE_BLOCK_RE = re.compile(
+    # Greedy-but-bounded block: "<role> <name> ... in which ... concurred/joined".
+    # DOTALL because the block typically spans 2-3 lines.
+    rf"\b{_AZ_ROLE_PREFIX_CI}\s+{_AZ_NAME_STRICT}"
+    rf"\s+(?:authored|delivered)[\s\S]{{0,400}}?"
+    rf"in\s+which\s+[\s\S]{{0,400}}?\b(?:concurred|joined)\b",
+    re.IGNORECASE | re.DOTALL,
+)
+# Inner regex: case-sensitive name capture so we don't slurp following
+# lowercase prose.
+_AZ_NAMED_JUDGE_RE = re.compile(
+    rf"\b{_AZ_ROLE_PREFIX_CI}\s+({_AZ_NAME_STRICT})",
+)
+
 
 @dataclass(frozen=True)
 class GenericByline:
@@ -116,19 +150,50 @@ def _extract_generic_byline(raw_text: str) -> GenericByline:
 
     Returns lowercased last-names ready to match against last_name_map.
     Falls back gracefully (empty author + empty panel) on text that
-    doesn't follow the "<NAMES>, JJ., concurred" convention.
+    doesn't follow either of the two supported conventions:
+
+    - NH-style footer concurrence (``X, JJ., concurred.``) -- scanned in
+      the LAST ~2KB of raw_text.
+    - AZ-style top-of-opinion byline (``Judge X authored the opinion of
+      the Court, in which Judge Y and Judge Z joined``) -- scanned in
+      the FIRST ~4KB of raw_text.
     """
     if not raw_text:
         return GenericByline(None, [], [])
 
+    author_last: str | None = None
+    all_panel: list[str] = []
+    raw_matches: list[str] = []
+
+    # --- AZ-style top-of-opinion byline ---
+    # Caption is typically within the first 3-4KB (preamble + counsel
+    # block + "OPINION" header + first sentence of the byline). Scan
+    # the first 5KB to be safe.
+    head = raw_text[:5000]
+    for block in _AZ_BYLINE_BLOCK_RE.finditer(head):
+        raw_matches.append(block.group(0)[:200])
+        block_text = block.group(0)
+        named = _AZ_NAMED_JUDGE_RE.findall(block_text)
+        if not named:
+            continue
+        # First named judge = author; rest = panel. Last-name = last
+        # whitespace-delimited token of the captured name.
+        def _last(name: str) -> str:
+            return name.strip().split()[-1].lower().rstrip(",.;")
+        first_last = _last(named[0])
+        if first_last and author_last is None:
+            author_last = first_last
+        for nm in named[1:]:
+            ln = _last(nm)
+            if ln:
+                all_panel.append(ln)
+
+    # --- NH-style footer concurrence ---
     # Concentrate the search on the last 2KB -- panel lists are at the
     # footer, never the body. This drops false positives from majority
     # text that contains uppercase party names ("ROBERTS sued LARSON").
     tail = raw_text[-2000:]
 
-    author_last: str | None = None
-    all_panel: list[str] = []
-    raw_matches: list[str] = []
     for m in _PANEL_GROUP_RE.finditer(tail):
         raw_matches.append(m.group(0))
         chief = m.group("chief")
