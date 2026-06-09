@@ -17,6 +17,16 @@
   {% endif %}
 </div>
 
+{% if coverage_note %}
+  <div class="coverage-note">
+    <strong>Coverage note.</strong>
+    The most recent opinion in our corpus for {{ state.name }} was filed
+    <strong>{{ coverage_note.last_filed|date:"F j, Y" }}</strong>
+    ({{ coverage_note.days_stale }} day{{ coverage_note.days_stale|pluralize }} ago).
+    {{ coverage_note.reason_html }}
+  </div>
+{% endif %}
+
 <div class="glossy-frame landing-stats-frame">
   <ul class="landing-stats">
     <li>

@@ -1210,6 +1210,36 @@ button.cta-primary {
   margin: 1.25rem 0 0.5rem;
 }
 
+/* Per-state landing "Coverage note" banner -- fires when the most
+   recent opinion in the corpus is more than ~30 days old. Honest
+   disclosure of an ingestion lag (typically caused by CourtListener's
+   own ingestion cadence for that state's court site). Visual posture:
+   subdued -- it's information, not an alarm. */
+.coverage-note {
+  margin: 0 0 1.25rem;
+  padding: 0.9rem 1.1rem;
+  background: rgba(80, 200, 255, 0.06);
+  border: 1px solid rgba(80, 200, 255, 0.22);
+  border-left: 3px solid var(--neon-cyan);
+  border-radius: var(--radius-sm);
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+.coverage-note strong:first-child {
+  color: var(--neon-cyan);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.78rem;
+  margin-right: 0.4rem;
+}
+.coverage-note code {
+  font-size: 0.86em;
+  padding: 0.05em 0.35em;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+}
+
 /* "Does DocketDrift hallucinate cases?" callout on /about/.
    Visually prominent: brighter border accent + slight background
    tint so readers' eyes land on it. Sits inside the glossy-frame

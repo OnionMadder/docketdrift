@@ -57,6 +57,38 @@ HOME_LANDING_SIZE = 10
 DEFAULT_SEARCH_YEARS = 10
 
 
+# Per-state explanation of why coverage might lag real-time. Shown on
+# the state-landing page when the most recent opinion is > the
+# STALE_DAYS_THRESHOLD. Keeps disclosure honest + specific.
+COVERAGE_LAG_NOTES = {
+    "NH": (
+        "We depend on CourtListener's ingestion of New Hampshire Supreme Court "
+        "opinions, which typically lags real-time by several weeks to several "
+        "months. Direct ingestion from <code>courts.nh.gov</code> is blocked by "
+        "the court site's CDN, so we don't have a faster channel yet. "
+        "Updated coverage lands automatically as CourtListener catches up."
+    ),
+    "AZ": (
+        "Coverage depends on CourtListener's ingestion of Arizona appellate "
+        "opinions, which can lag real-time by several weeks. Direct ingestion "
+        "from the Arizona court system would require additional integration; "
+        "until then, updated coverage lands automatically as CourtListener catches up."
+    ),
+    "MN": (
+        "Our weekly scheduled job is the primary source for new Minnesota "
+        "appellate opinions. If you're seeing a gap longer than the normal "
+        "Monday/Wednesday release schedule, the ingest job may have failed; "
+        "please email <a href=\"mailto:hello@docketdrift.com\">hello@docketdrift.com</a>."
+    ),
+}
+DEFAULT_COVERAGE_LAG_NOTE = (
+    "We depend on CourtListener's ingestion cadence for this state's opinions, "
+    "which can lag real-time by weeks to months. Updated coverage lands "
+    "automatically as CourtListener catches up."
+)
+STALE_DAYS_THRESHOLD = 30
+
+
 @cache_control(public=True, max_age=CACHE_SEC_HOME)
 def home(request):
     """Apex state-picker OR per-state landing page.
@@ -112,6 +144,25 @@ def home(request):
     ).distinct().count()
     total_tags_available = Tag.objects.count()
 
+    # Coverage staleness: surface an honest disclosure when the most recent
+    # opinion in our corpus is more than STALE_DAYS_THRESHOLD old. Reason
+    # text differs per state because the cause differs (NH/AZ: CL lag
+    # because we can't scrape the court site directly; MN: should rarely
+    # fire because we ingest weekly via direct CL).
+    coverage_note = None
+    last_filed = date_range.get("last") if date_range else None
+    if last_filed:
+        from datetime import date as _date
+        from django.utils.safestring import mark_safe
+        days_stale = (_date.today() - last_filed).days
+        if days_stale > STALE_DAYS_THRESHOLD:
+            reason_html = COVERAGE_LAG_NOTES.get(state.code, DEFAULT_COVERAGE_LAG_NOTE)
+            coverage_note = {
+                "days_stale": days_stale,
+                "last_filed": last_filed,
+                "reason_html": mark_safe(reason_html),
+            }
+
     return render(request, "opinions/state_landing.html", {
         "state": state,
         "total_opinions": total_opinions,
@@ -121,6 +172,7 @@ def home(request):
         "date_range": date_range,
         "total_tags_used": total_tags_used,
         "total_tags_available": total_tags_available,
+        "coverage_note": coverage_note,
         "active_nav": "home",
     })
 
