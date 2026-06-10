@@ -804,6 +804,130 @@ def judge_detail(request, slug):
     })
 
 
+def _concordance(judge_a, judge_b, disagree_limit=20):
+    """Compute agreement/disagreement stats for two judges + a sample of
+    split-decision opinions.
+
+    For every Opinion both judges have a PanelVote on, classify each
+    judge's vote into one of four buckets:
+
+      majority    -- MAJORITY_AUTHOR or MAJORITY_JOIN
+      concurrence -- CONCURRENCE_AUTHOR or CONCURRENCE_JOIN
+      dissent     -- DISSENT_AUTHOR or DISSENT_JOIN
+      recused     -- RECUSED  (excluded from the agree/disagree denominator)
+
+    Compare buckets:
+      same bucket               -> AGREE
+      {majority, concurrence}   -> PARTIAL  (concurred in the result but
+                                              wrote separately, so they
+                                              agreed on the outcome but
+                                              disagreed on the reasoning)
+      anything else              -> DISAGREE  (the meaningful split --
+                                                majority vs dissent)
+
+    Returns a dict with summary counts + a recency-ordered list of
+    disagreement opinions (truncated to ``disagree_limit``) annotated
+    with each judge's vote bucket for display in a side-by-side table.
+    Returns ``None`` when the two judges have never sat on the same
+    panel -- the template uses that as a render gate.
+
+    Implementation note: we materialize both judges' PanelVote
+    (opinion_id, vote_type) pairs and set-intersect in Python rather
+    than running a self-join in SQL. For typical comparisons (a few
+    thousand votes per judge) the intersection runs in microseconds
+    and avoids a relatively heavy self-join across PanelVote +
+    Opinion.
+    """
+    from opinions.models import PanelVote
+    # NOT_PARTICIPATING is bucketed alongside RECUSED -- both flag "this
+    # judge sat on this opinion but didn't decide it" and should be
+    # excluded from the agree/disagree denominator, not treated as a
+    # silent disagreement.
+    BUCKETS = {
+        PanelVote.Vote.MAJORITY_AUTHOR: "majority",
+        PanelVote.Vote.MAJORITY_JOIN: "majority",
+        PanelVote.Vote.CONCURRENCE_AUTHOR: "concurrence",
+        PanelVote.Vote.CONCURRENCE_JOIN: "concurrence",
+        PanelVote.Vote.DISSENT_AUTHOR: "dissent",
+        PanelVote.Vote.DISSENT_JOIN: "dissent",
+        PanelVote.Vote.RECUSED: "recused",
+        PanelVote.Vote.NOT_PARTICIPATING: "recused",
+    }
+    votes_a = dict(
+        PanelVote.objects.filter(judge=judge_a)
+        .values_list("opinion_id", "vote_type")
+    )
+    votes_b = dict(
+        PanelVote.objects.filter(judge=judge_b)
+        .values_list("opinion_id", "vote_type")
+    )
+    shared_ids = set(votes_a) & set(votes_b)
+    if not shared_ids:
+        return None
+
+    agree_count = 0
+    partial_count = 0
+    disagree_count = 0
+    recused_count = 0
+    disagree_ids: list = []
+    partial_ids: list = []
+
+    for op_id in shared_ids:
+        bucket_a = BUCKETS.get(votes_a[op_id], "recused")
+        bucket_b = BUCKETS.get(votes_b[op_id], "recused")
+        if bucket_a == "recused" or bucket_b == "recused":
+            recused_count += 1
+            continue
+        if bucket_a == bucket_b:
+            agree_count += 1
+        elif {bucket_a, bucket_b} == {"majority", "concurrence"}:
+            partial_count += 1
+            partial_ids.append(op_id)
+        else:
+            disagree_count += 1
+            disagree_ids.append(op_id)
+
+    # Pull the disagreement opinions for the split-decisions table. Cap
+    # at disagree_limit and order by release_date so the most recent
+    # splits appear first.
+    disagree_opinions: list = []
+    if disagree_ids:
+        rows = list(
+            Opinion.objects.filter(id__in=disagree_ids)
+            .defer("raw_text", "html_content")
+            .select_related("court")
+            .order_by("-release_date")[:disagree_limit]
+        )
+        # Annotate each row with both judges' bucket labels for the
+        # template's vote chips. We've already paid for the bucket
+        # lookup above; reuse the dicts.
+        for op in rows:
+            op.judge_a_bucket = BUCKETS.get(votes_a[op.id], "recused")
+            op.judge_b_bucket = BUCKETS.get(votes_b[op.id], "recused")
+        disagree_opinions = rows
+
+    # Denominator for the percentage rows is the votes-where-both-engaged
+    # set: agree + partial + disagree. Recused entries are excluded so
+    # an outlier recused on one side doesn't drag the agreement rate
+    # down artificially.
+    denom = agree_count + partial_count + disagree_count
+
+    return {
+        "total_shared": denom + recused_count,
+        "agreement_denom": denom,
+        "agree_count": agree_count,
+        "partial_count": partial_count,
+        "disagree_count": disagree_count,
+        "recused_count": recused_count,
+        "agree_pct": round(100.0 * agree_count / denom, 1) if denom else 0,
+        "partial_pct": round(100.0 * partial_count / denom, 1) if denom else 0,
+        "disagree_pct": round(100.0 * disagree_count / denom, 1) if denom else 0,
+        "disagree_opinions": disagree_opinions,
+        "disagree_total": len(disagree_ids),
+        "showing_disagree": len(disagree_opinions),
+    }
+
+
 @cache_control(public=True, max_age=CACHE_SEC_DETAIL)
 def judge_compare(request):
     """Two-judge side-by-side dossier.
@@ -860,6 +984,12 @@ def judge_compare(request):
             label_b=judge_b.full_name if judge_b else None,
         )
 
+    # Concordance + split-decision list -- only meaningful when both
+    # judges resolved and they have at least one shared opinion.
+    concordance = None
+    if judge_a is not None and judge_b is not None:
+        concordance = _concordance(judge_a, judge_b)
+
     # Picker: state-scoped list of judges with at least one panel vote,
     # used to populate the two <select> dropdowns when one or both
     # picks are missing. Cap the list at ~250 judges for select-box
@@ -882,6 +1012,7 @@ def judge_compare(request):
         "stats_a": stats_a,
         "stats_b": stats_b,
         "yearly_chart": yearly_chart,
+        "concordance": concordance,
         "show_picker": show_picker,
         "judges_options": judges_options,
         "active_nav": "judges",

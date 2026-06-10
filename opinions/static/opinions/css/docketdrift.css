@@ -1763,6 +1763,138 @@ button.cta-primary {
   padding: 0.35rem 0.45rem;
 }
 
+/* ----- Concordance + split-decision list -----------------------------
+   Sits between the time-series chart and the side-by-side dossier
+   columns on judge_compare.html. Headline is the agreement rate, then
+   a stacked horizontal bar showing agree/partial/disagree share, then
+   the legend, then a table of recent disagreement opinions with each
+   judge's vote-bucket chip side-by-side.
+   ------------------------------------------------------------------ */
+
+.concordance-card {
+  margin-top: 1.2rem;
+}
+
+.concordance-rate {
+  font-size: 0.95rem;
+  margin: 0.8rem 0 0.5rem;
+  letter-spacing: 0.02em;
+}
+
+.concordance-rate strong {
+  font-size: 1.55rem;
+  color: var(--neon-cyan);
+  display: inline-block;
+  padding-right: 0.4rem;
+}
+
+.concordance-bar {
+  display: flex;
+  width: 100%;
+  height: 22px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(148, 140, 161, 0.15);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 0.4rem 0 0.8rem;
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  font-size: 0.72rem;
+}
+
+.concordance-bar__seg {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(0, 0, 0, 0.78);
+  font-weight: 600;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: width 0.2s ease;
+}
+
+.concordance-bar__seg--agree {
+  background: #4adf95;
+}
+
+.concordance-bar__seg--partial {
+  background: #f6c350;
+}
+
+.concordance-bar__seg--disagree {
+  background: #ff6b6b;
+}
+
+.concordance-legend {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+  color: var(--text-bright);
+}
+
+.concordance-legend__swatch {
+  display: inline-block;
+  width: 14px;
+  height: 10px;
+  margin-right: 0.55rem;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+
+.concordance-splits-table {
+  width: 100%;
+}
+
+.concordance-splits-table .title-snippet {
+  display: block;
+  font-size: 0.74rem;
+  color: var(--text-dim);
+  margin-top: 0.1rem;
+  letter-spacing: 0.01em;
+}
+
+/* Vote-bucket chips used in the splits-table judge columns. Distinct
+   palette from the disposition pills -- these are about who-voted-what,
+   not the case outcome. */
+.vote-chip {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.vote-chip--majority {
+  background: rgba(74, 223, 149, 0.16);
+  color: #5fe6a4;
+  border: 1px solid rgba(74, 223, 149, 0.4);
+}
+
+.vote-chip--concurrence {
+  background: rgba(246, 195, 80, 0.16);
+  color: #f6c350;
+  border: 1px solid rgba(246, 195, 80, 0.4);
+}
+
+.vote-chip--dissent {
+  background: rgba(255, 107, 107, 0.16);
+  color: #ff7e7e;
+  border: 1px solid rgba(255, 107, 107, 0.4);
+}
+
+.vote-chip--recused {
+  background: rgba(148, 140, 161, 0.16);
+  color: var(--text-dim);
+  border: 1px solid rgba(148, 140, 161, 0.4);
+}
+
 /* ============================================================
    Editorial tag chips (opinion detail header + browse pages)
    ============================================================

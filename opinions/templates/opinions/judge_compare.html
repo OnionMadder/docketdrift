@@ -119,6 +119,104 @@
     </div>
   {% endif %}
 
+  {% if concordance %}
+    <div class="glossy-frame concordance-card">
+      <h2>Concordance</h2>
+      <p class="subtle-lead">
+        {{ judge_a.full_name }} and {{ judge_b.full_name }} sat on
+        <strong>{{ concordance.total_shared }}</strong> opinion{{ concordance.total_shared|pluralize }} together
+        {% if concordance.recused_count %}
+          ({{ concordance.recused_count }} where one recused, excluded from the rate below).
+        {% else %}
+          .
+        {% endif %}
+      </p>
+
+      {% if concordance.agreement_denom %}
+        <div class="concordance-rate">
+          <strong>{{ concordance.agree_pct }}%</strong> agreement on result
+        </div>
+
+        <div class="concordance-bar" role="img"
+             aria-label="{{ concordance.agree_count }} agree, {{ concordance.partial_count }} concur separately, {{ concordance.disagree_count }} disagree">
+          {% if concordance.agree_count %}
+            <span class="concordance-bar__seg concordance-bar__seg--agree"
+                  style="width: {% widthratio concordance.agree_count concordance.agreement_denom 100 %}%"
+                  title="Agreed on {{ concordance.agree_count }} opinion{{ concordance.agree_count|pluralize }}">
+              {% if concordance.agree_pct >= 8 %}{{ concordance.agree_count }}{% endif %}
+            </span>
+          {% endif %}
+          {% if concordance.partial_count %}
+            <span class="concordance-bar__seg concordance-bar__seg--partial"
+                  style="width: {% widthratio concordance.partial_count concordance.agreement_denom 100 %}%"
+                  title="Concurred separately on {{ concordance.partial_count }} opinion{{ concordance.partial_count|pluralize }}">
+              {% if concordance.partial_pct >= 8 %}{{ concordance.partial_count }}{% endif %}
+            </span>
+          {% endif %}
+          {% if concordance.disagree_count %}
+            <span class="concordance-bar__seg concordance-bar__seg--disagree"
+                  style="width: {% widthratio concordance.disagree_count concordance.agreement_denom 100 %}%"
+                  title="Disagreed on {{ concordance.disagree_count }} opinion{{ concordance.disagree_count|pluralize }}">
+              {% if concordance.disagree_pct >= 8 %}{{ concordance.disagree_count }}{% endif %}
+            </span>
+          {% endif %}
+        </div>
+
+        <ul class="concordance-legend">
+          <li>
+            <span class="concordance-legend__swatch concordance-bar__seg--agree"></span>
+            Agreed (same vote-bucket) &mdash; <strong>{{ concordance.agree_count }}</strong> ({{ concordance.agree_pct }}%)
+          </li>
+          <li>
+            <span class="concordance-legend__swatch concordance-bar__seg--partial"></span>
+            Concurred separately (same outcome, different reasoning) &mdash; <strong>{{ concordance.partial_count }}</strong> ({{ concordance.partial_pct }}%)
+          </li>
+          <li>
+            <span class="concordance-legend__swatch concordance-bar__seg--disagree"></span>
+            Disagreed (one in majority, one in dissent) &mdash; <strong>{{ concordance.disagree_count }}</strong> ({{ concordance.disagree_pct }}%)
+          </li>
+        </ul>
+      {% else %}
+        <p class="glitch-line">No non-recused shared opinions yet.</p>
+      {% endif %}
+
+      {% if concordance.disagree_opinions %}
+        <h3>Split decisions ({{ concordance.showing_disagree }} of {{ concordance.disagree_total }} shown, most recent first)</h3>
+        <table class="doc-table doc-table--compact concordance-splits-table">
+          <thead>
+            <tr>
+              <th>Docket</th>
+              <th>Filed</th>
+              <th>Disposition</th>
+              <th>{{ judge_a.full_name }}</th>
+              <th>{{ judge_b.full_name }}</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for op in concordance.disagree_opinions %}
+            <tr>
+              <td class="case-number-cell">
+                <a href="{% url 'opinions:detail' case_number=op.case_number %}"><span class="file-number">{{ op.case_number }}</span></a>
+                <br><span class="title-snippet">{{ op.title|truncatechars:60 }}</span>
+              </td>
+              <td class="doc-date-cell">{{ op.release_date|date:"Y-m-d" }}</td>
+              <td>
+                {% if op.disposition %}
+                  <span class="case-status disposition-{{ op.disposition_class }}">{{ op.disposition|truncatechars:24 }}</span>
+                {% else %}
+                  <span class="doc-date-cell is-tbd">&mdash;</span>
+                {% endif %}
+              </td>
+              <td><span class="vote-chip vote-chip--{{ op.judge_a_bucket }}">{{ op.judge_a_bucket|title }}</span></td>
+              <td><span class="vote-chip vote-chip--{{ op.judge_b_bucket }}">{{ op.judge_b_bucket|title }}</span></td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% endif %}
+    </div>
+  {% endif %}
+
   <div class="judge-compare-grid">
     {% include "opinions/_judge_compare_col.html" with stats=stats_a judge=judge_a %}
     {% include "opinions/_judge_compare_col.html" with stats=stats_b judge=judge_b %}
