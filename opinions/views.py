@@ -179,7 +179,6 @@ def home(request):
     })
 
 
-@cache_control(public=True, max_age=CACHE_SEC_HOME)
 _SNIPPET_WINDOW = 240   # total characters per snippet
 _SNIPPET_PAD = 80       # characters of context on each side of the match
 
@@ -256,6 +255,7 @@ def _attach_match_snippets(opinions, query):
         op.snippet_html = mark_safe(ellipsis + highlighted + " &hellip;")
 
 
+@cache_control(public=True, max_age=CACHE_SEC_HOME)
 def opinion_list(request):
     """The full opinion browse/search view. State-scoped.
 
