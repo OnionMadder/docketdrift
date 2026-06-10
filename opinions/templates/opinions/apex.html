@@ -1,5 +1,69 @@
 {% extends "opinions/base.html" %}
-{% block title %}DocketDrift &middot; Real-time tracking of state judicial trends{% endblock %}
+{% block title %}DocketDrift &middot; State appellate opinions, organized for human review{% endblock %}
+{% block description %}A navigator for U.S. state appellate court opinions. Real opinions from official sources, organized for human review. {{ states|length }} state{{ states|length|pluralize }} live: {% for state in states %}{{ state.name }}{% if not forloop.last %}, {% endif %}{% endfor %}. Explicitly not an AI legal assistant.{% endblock %}
+
+{% block og_title %}DocketDrift &middot; Public records, treated as public{% endblock %}
+{% block og_description %}Real opinions from real courts. We collate published state appellate opinions from official sources into a structured, searchable archive. No generated text, no fabricated citations.{% endblock %}
+
+{% block jsonld %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "DocketDrift",
+  "alternateName": "DocketDrift &mdash; State appellate opinions",
+  "url": "https://{{ request.get_host }}/",
+  "description": "A navigator for U.S. state appellate court opinions. We collate published opinions from official sources into a structured, searchable archive. Explicitly not an AI legal assistant.",
+  "publisher": {
+    "@type": "Organization",
+    "name": "DocketDrift",
+    "url": "https://docketdrift.com/",
+    "logo": "https://docketdrift.com{% load static %}{% static 'opinions/favi/apple-touch-icon.png' %}",
+    "sameAs": [
+      "https://github.com/OnionMadder/docketdrift"
+    ]
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "DocketDrift",
+  "url": "https://docketdrift.com/",
+  "logo": "https://docketdrift.com{% static 'opinions/favi/apple-touch-icon.png' %}",
+  "description": "Public-records analysis tool for U.S. state appellate courts.",
+  "founder": "DocketDrift",
+  "sameAs": [
+    "https://github.com/OnionMadder/docketdrift"
+  ],
+  "contactPoint": {
+    "@type": "ContactPoint",
+    "email": "hello@docketdrift.com",
+    "contactType": "general inquiries"
+  }
+}
+</script>
+{% if states %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "ItemList",
+  "name": "Live state appellate corpora on DocketDrift",
+  "itemListOrder": "https://schema.org/ItemListOrderAscending",
+  "numberOfItems": {{ states|length }},
+  "itemListElement": [
+    {% for state in states %}{
+      "@type": "ListItem",
+      "position": {{ forloop.counter }},
+      "url": "https://{{ state.slug }}.docketdrift.com/",
+      "name": "{{ state.name|escapejs }} appellate opinions"
+    }{% if not forloop.last %},{% endif %}{% endfor %}
+  ]
+}
+</script>
+{% endif %}
+{% endblock %}
 
 {% block content %}
 <div class="glossy-frame apex-hero">

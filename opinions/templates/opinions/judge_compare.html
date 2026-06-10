@@ -1,6 +1,68 @@
 {% extends "opinions/base.html" %}
 {% block title %}{% if judge_a and judge_b %}{{ judge_a.full_name }} vs {{ judge_b.full_name }}{% else %}Compare judges{% endif %} &middot; DocketDrift{% endblock %}
-{% block description %}{% if judge_a and judge_b %}Side-by-side comparison of {{ judge_a.full_name }} and {{ judge_b.full_name }} on DocketDrift{% if request.state %} ({{ request.state.name }}){% endif %}: panel votes per year, court breakdown, disposition lean, and frequent co-panelists.{% else %}Compare any two {{ request.state.name|default:"appellate" }} judges side-by-side: voting trajectory over time, court and disposition breakdowns, and frequent co-panelists.{% endif %}{% endblock %}
+{% block description %}{% if judge_a and judge_b %}Side-by-side comparison of {{ judge_a.full_name }} and {{ judge_b.full_name }}{% if request.state %} ({{ request.state.name }}){% endif %}: panel votes per year, concordance rate, split decisions, court breakdown, disposition lean, and frequent co-panelists.{% else %}Compare any two {{ request.state.name|default:"appellate" }} judges side-by-side: voting trajectory over time, agreement rate, split decisions, court and disposition breakdowns, and frequent co-panelists.{% endif %}{% endblock %}
+
+{% block og_title %}{% if judge_a and judge_b %}{{ judge_a.full_name }} vs {{ judge_b.full_name }}{% else %}Compare judges &middot; DocketDrift{% endif %}{% endblock %}
+{% block og_description %}{% if judge_a and judge_b %}Side-by-side: voting trajectory, concordance, split decisions, court + disposition breakdowns.{% else %}Side-by-side dossier comparison of any two appellate judges.{% endif %}{% endblock %}
+
+{% block jsonld %}
+{% if judge_a and judge_b %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "{{ judge_a.full_name|escapejs }} vs {{ judge_b.full_name|escapejs }}",
+  "url": "https://{{ request.get_host }}{{ request.path }}?a={{ judge_a.slug }}&b={{ judge_b.slug }}",
+  "description": "Side-by-side comparison of {{ judge_a.full_name|escapejs }} and {{ judge_b.full_name|escapejs }} appellate panel-vote records.",
+  "isPartOf": {
+    "@type": "WebSite",
+    "name": "DocketDrift",
+    "url": "https://{{ request.get_host }}/"
+  },
+  "about": [
+    {
+      "@type": "Person",
+      "name": "{{ judge_a.full_name|escapejs }}",
+      "url": "https://{{ request.get_host }}/judge/{{ judge_a.slug }}/"
+    },
+    {
+      "@type": "Person",
+      "name": "{{ judge_b.full_name|escapejs }}",
+      "url": "https://{{ request.get_host }}/judge/{{ judge_b.slug }}/"
+    }
+  ]
+}
+</script>
+{% else %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "name": "Compare two judges",
+  "url": "https://{{ request.get_host }}{{ request.path }}",
+  "description": "Pick any two {% if request.state %}{{ request.state.name|escapejs }} {% endif %}appellate judges to compare their voting trajectories, agreement rate, and split decisions.",
+  "isPartOf": {
+    "@type": "WebSite",
+    "name": "DocketDrift",
+    "url": "https://{{ request.get_host }}/"
+  }
+}
+</script>
+{% endif %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {"@type": "ListItem", "position": 1, "name": "DocketDrift", "item": "https://docketdrift.com/"}{% if request.state %},
+    {"@type": "ListItem", "position": 2, "name": "{{ request.state.name|escapejs }}", "item": "https://{{ request.get_host }}/"},
+    {"@type": "ListItem", "position": 3, "name": "Current judges", "item": "https://{{ request.get_host }}{% url 'opinions:current_judges' %}"},
+    {"@type": "ListItem", "position": 4, "name": "Compare", "item": "https://{{ request.get_host }}{% url 'opinions:judge_compare' %}"}{% else %},
+    {"@type": "ListItem", "position": 2, "name": "Compare judges", "item": "https://{{ request.get_host }}{% url 'opinions:judge_compare' %}"}{% endif %}
+  ]
+}
+</script>
+{% endblock %}
 
 {% block content %}
 <nav class="breadcrumbs" aria-label="Breadcrumb">

@@ -1,6 +1,38 @@
 {% extends "opinions/base.html" %}
-{% block title %}Tags &middot; DocketDrift{% endblock %}
-{% block description %}Browse opinions by editorial tag &mdash; controlled-vocabulary topics, procedural posture, and significance markers applied by human review.{% endblock %}
+{% block title %}Editorial tags &middot; {% if request.state %}{{ request.state.name }} appellate &middot; {% endif %}DocketDrift{% endblock %}
+{% block description %}Browse {% if request.state %}{{ request.state.name }} {% endif %}appellate opinions by editorial tag &mdash; controlled-vocabulary topics, doctrine markers, procedural posture, and significance signals, applied by human review.{% endblock %}
+
+{% block og_title %}Editorial tags{% if request.state %} &middot; {{ request.state.name }} appellate{% endif %}{% endblock %}
+{% block og_description %}Controlled-vocabulary editorial tags for {% if request.state %}{{ request.state.name }} {% endif %}appellate opinions, organized by category.{% endblock %}
+
+{% block jsonld %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "CollectionPage",
+  "name": "{% if request.state %}{{ request.state.name|escapejs }} {% endif %}Editorial tags",
+  "url": "https://{{ request.get_host }}{{ request.path }}",
+  "description": "Controlled-vocabulary editorial tags applied to {% if request.state %}{{ request.state.name|escapejs }} {% endif %}appellate opinions by human review.",
+  "isPartOf": {
+    "@type": "WebSite",
+    "name": "DocketDrift",
+    "url": "https://{{ request.get_host }}/"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {"@type": "ListItem", "position": 1, "name": "DocketDrift", "item": "https://docketdrift.com/"}{% if request.state %},
+    {"@type": "ListItem", "position": 2, "name": "{{ request.state.name|escapejs }}", "item": "https://{{ request.get_host }}/"},
+    {"@type": "ListItem", "position": 3, "name": "Tags", "item": "https://{{ request.get_host }}{{ request.path }}"}{% else %},
+    {"@type": "ListItem", "position": 2, "name": "Tags", "item": "https://{{ request.get_host }}{{ request.path }}"}{% endif %}
+  ]
+}
+</script>
+{% endblock %}
 
 {% block content %}
 <nav class="breadcrumbs" aria-label="Breadcrumb">

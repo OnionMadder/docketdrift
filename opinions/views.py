@@ -1084,13 +1084,23 @@ Crawl-delay: 5
 Disallow: /admin/
 
 Sitemap: https://mn.docketdrift.com/sitemap.xml
+Sitemap: https://nh.docketdrift.com/sitemap.xml
+Sitemap: https://az.docketdrift.com/sitemap.xml
 """
 
 
 @cache_control(public=True, max_age=CACHE_SEC_ROBOTS)
 def robots_txt(request):
     """Serve /robots.txt as plain text. Site-wide; same content on every
-    subdomain (the policy doesn't change per-state)."""
+    subdomain (the policy doesn't change per-state).
+
+    Each subdomain's robots.txt also advertises THIS host's sitemap URL
+    explicitly so search engines that find /robots.txt directly on a
+    subdomain still pick up the correct sitemap reference. The apex
+    sitemap is minimal but the per-state sitemaps are listed in the
+    constant ROBOTS_TXT block above so a single subdomain robots.txt
+    surfaces all live states' sitemaps.
+    """
     return HttpResponse(ROBOTS_TXT, content_type="text/plain; charset=utf-8")
 
 
@@ -1109,31 +1119,65 @@ LLMS_TXT = """\
 > Public-records analysis tool for U.S. state appellate courts. Indexes
 > published opinions from official sources, normalizes them into a
 > structured archive, and treats the public record as what it is: public.
+> Explicitly NOT an AI legal assistant -- the system does not generate
+> any text. Hallucinated citations are architecturally impossible.
 
 ## What's covered
 
+Three states live as of June 2026:
+
 - **Minnesota** (beta): 60,000+ published opinions from the MN Supreme
-  Court and MN Court of Appeals, 1930-present. Full text indexed via
-  MariaDB FULLTEXT; semantic search via voyage-law-2 embeddings.
-- Other states: planned, expanding state-by-state as funding allows.
+  Court and MN Court of Appeals, 1851-present. Full statute citation
+  graph (124K cites). Full-text indexed via MariaDB FULLTEXT; semantic
+  search via voyage-law-2 embeddings. Tag-suggestion review pipeline
+  with 21K candidates.
+- **New Hampshire** (beta): 20,000+ opinions of the NH Supreme Court.
+  Byline-extracted judicial panel graph. Semantic search and
+  tag-suggestion pipelines running.
+- **Arizona** (beta): 38,000+ opinions of the AZ Supreme Court and
+  Court of Appeals. Byline extraction live for both courts.
 
-## URL grammar (Minnesota)
+New states are added one at a time. See https://docketdrift.com/ for
+the apex picker; each state lives on its own subdomain.
 
-- `https://mn.docketdrift.com/` -- state landing, 10 most recent opinions
-- `https://mn.docketdrift.com/opinion/<docket-number>/` -- single opinion
-  (e.g. `/opinion/A25-1257/`)
-- `https://mn.docketdrift.com/judge/<slug>/` -- judge dossier
-  (e.g. `/judge/natalie-e-hudson/`)
-- `https://mn.docketdrift.com/current-judges/` -- currently-seated roster
-- `https://mn.docketdrift.com/?q=<query>` -- search results
-- `https://mn.docketdrift.com/?disposition=<bucket>` -- filtered by outcome
+## URL grammar (same on every state subdomain)
+
+- `https://<state>.docketdrift.com/` -- state landing
+- `https://<state>.docketdrift.com/opinion/<docket-number>/` -- single
+  opinion (e.g. `/opinion/A25-1257/`, `/opinion/2024-0636/`,
+  `/opinion/CR-25-0203-PR/`)
+- `https://<state>.docketdrift.com/judge/<slug>/` -- judge dossier with
+  panel-vote graph, court breakdown, disposition lean, and a
+  votes-per-year time-series chart. Add `?vs=<other-slug>` to overlay a
+  second judge.
+- `https://<state>.docketdrift.com/compare/judges/?a=<slug-a>&b=<slug-b>`
+  -- side-by-side judge dossier with concordance matrix and a list of
+  split decisions where the two disagreed.
+- `https://<state>.docketdrift.com/current-judges/` -- currently-seated
+  roster
+- `https://<state>.docketdrift.com/statute/<slug>/` -- every opinion
+  citing a given statute (e.g. `/statute/minn.stat.609.185/`)
+- `https://<state>.docketdrift.com/tag/<slug>/` -- every opinion bearing
+  an editorial doctrine tag
+- `https://<state>.docketdrift.com/?q=<query>` -- search results
+
+State codes in use: `mn`, `nh`, `az`.
 
 ## Structured data
 
-Every opinion + judge detail page emits Schema.org JSON-LD (LegalCase /
-Person / GovernmentOrganization). Parse the `<script type="application/
-ld+json">` block for machine-readable fields including docketNumber,
-dateDecided, court, disposition.
+Every detail page emits Schema.org JSON-LD. Parse the
+`<script type="application/ld+json">` block for machine-readable
+fields:
+
+- Opinion pages: `LegalCase` (docketNumber, dateDecided, court,
+  disposition, publisher)
+- Judge pages: `Person` (jobTitle, worksFor, image)
+- Statute pages: `Legislation` (jurisdiction, parent statute)
+- State landing: `Dataset` (corpus size, temporalCoverage) +
+  `WebSite` with `SearchAction`
+- About page: `FAQPage` (Q&A about hallucinations, methodology,
+  data sources, editorial review)
+- Every page: `BreadcrumbList`
 
 ## How to cite
 
@@ -1143,6 +1187,12 @@ docket number + court + date, and link the case page:
 > *In re Garnett*, A25-1257 (Minn. Ct. App. June 1, 2026).
 > https://mn.docketdrift.com/opinion/A25-1257/
 
+> *State v. Brousseau*, 2024-0625 (N.H. Mar. 13, 2026).
+> https://nh.docketdrift.com/opinion/2024-0625/
+
+> *State v. Hippensteel*, CR-25-0203-PR (Ariz. June 1, 2026).
+> https://az.docketdrift.com/opinion/CR-25-0203-PR/
+
 ## Editorial posture
 
 DocketDrift is collation, not interpretation. We surface opinion text +
@@ -1151,16 +1201,27 @@ decided, or politically aligned. Pattern claims about a judge or court
 require human review by the AI consumer; treat our pages as primary-
 source aggregations, not as judicial analysis.
 
+The site does NOT have a chat box. There is no "summarize this for me",
+no AI-generated headnotes, no synthesized holdings, no predicted
+outcomes. The only places ML appears are (1) Voyage embeddings for
+ranking opinions by semantic similarity and (2) tag-suggestion candidates
+that an editor reviews before publication.
+
 ## Data sources
 
-- CourtListener (Free Law Project) -- the underlying public archive
+- CourtListener (Free Law Project) -- historical backfill and the
+  standing source for ongoing ingestion
 - Direct ingestion of same-day court releases (MN: mncourts.gov)
-- Hand-curated judge bios from the official judicial directory
+- Hand-curated judge bios from official judicial directories
+- For states where the court's site is server-side scrape-blocked
+  (NH 2026, AZ COA), operators drop official PDFs into an ingest
+  directory and the corpus picks them up via the `ingest_pdfs`
+  management command
 
 ## Privacy
 
 DocketDrift does not log search queries, track users, or save research
-history. See https://mn.docketdrift.com/privacy/ for full statement.
+history. See https://docketdrift.com/privacy/ for full statement.
 
 ## Contact
 
@@ -1218,6 +1279,7 @@ def sitemap_index(request):
     else:
         lines.append(f"  <sitemap><loc>{host}/sitemap-static.xml</loc></sitemap>")
         lines.append(f"  <sitemap><loc>{host}/sitemap-judges.xml</loc></sitemap>")
+        lines.append(f"  <sitemap><loc>{host}/sitemap-tags.xml</loc></sitemap>")
         # Only advertise the statutes sitemap when at least one citation
         # has been extracted -- otherwise it serves an empty <urlset> and
         # wastes a crawl budget round-trip.
@@ -1234,13 +1296,25 @@ def sitemap_index(request):
 
 @cache_control(public=True, max_age=CACHE_SEC_SITEMAP)
 def sitemap_static(request):
-    """Static-page sitemap: home, about, privacy, support, current-judges."""
+    """Static-page sitemap: home, about, how-we-differ, privacy, support,
+    request-state, current-judges, tags, compare-judges. Per-state
+    subdomains add the state-only paths; apex sticks to the cross-state
+    static pages.
+    """
     host = f"https://{request.get_host()}"
     state = getattr(request, "state", None)
 
-    urls = ["/", "/about/", "/privacy/", "/support/", "/request-state/"]
+    urls = [
+        "/", "/about/", "/how-we-differ/", "/privacy/",
+        "/support/", "/request-state/",
+    ]
     if state is not None:
-        urls.append("/current-judges/")
+        urls.extend([
+            "/opinions/",
+            "/current-judges/",
+            "/tag/",
+            "/compare/judges/",
+        ])
 
     lines = _sitemap_xml_header()
     for u in urls:
@@ -1251,15 +1325,40 @@ def sitemap_static(request):
 
 @cache_control(public=True, max_age=CACHE_SEC_SITEMAP)
 def sitemap_judges(request):
-    """All judges in the current state. Slug-keyed URLs."""
+    """All judges in the current state. Slug-keyed URLs with the row's
+    ``created_at`` as <lastmod> so crawlers can prioritize new dossiers.
+    """
     state = getattr(request, "state", None)
     host = f"https://{request.get_host()}"
 
     lines = _sitemap_xml_header()
     if state is not None:
-        slugs = Judge.objects.filter(state=state).values_list("slug", flat=True)
+        rows = Judge.objects.filter(state=state).values_list("slug", "created_at")
+        for slug, created_at in rows:
+            lines.append("  <url>")
+            lines.append(f"    <loc>{host}/judge/{slug}/</loc>")
+            if created_at:
+                lines.append(f"    <lastmod>{created_at.date().isoformat()}</lastmod>")
+            lines.append("  </url>")
+    lines.extend(_sitemap_xml_footer())
+    return HttpResponse("\n".join(lines), content_type="application/xml; charset=utf-8")
+
+
+@cache_control(public=True, max_age=CACHE_SEC_SITEMAP)
+def sitemap_tags(request):
+    """All editorial tags. Includes the tag-index page itself and one URL
+    per tag detail page. State-scoped (apex serves an empty <urlset>
+    since the tag pages are subdomain-scoped views of the same Tag
+    table)."""
+    state = getattr(request, "state", None)
+    host = f"https://{request.get_host()}"
+
+    lines = _sitemap_xml_header()
+    if state is not None:
+        lines.append(f"  <url><loc>{host}/tag/</loc></url>")
+        slugs = Tag.objects.values_list("slug", flat=True).order_by("slug")
         for slug in slugs:
-            lines.append(f"  <url><loc>{host}/judge/{slug}/</loc></url>")
+            lines.append(f"  <url><loc>{host}/tag/{slug}/</loc></url>")
     lines.extend(_sitemap_xml_footer())
     return HttpResponse("\n".join(lines), content_type="application/xml; charset=utf-8")
 

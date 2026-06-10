@@ -1,6 +1,63 @@
 {% extends "opinions/base.html" %}
 {% block title %}How DocketDrift differs from AI legal tools &middot; DocketDrift{% endblock %}
-{% block description %}Where ML appears in DocketDrift, where it doesn't, and why hallucination is structurally impossible: the explicit do/don't breakdown.{% endblock %}
+{% block description %}Where ML appears in DocketDrift, where it doesn't, and why hallucination is structurally impossible: the explicit do/don't breakdown vs. Lexis+ AI, Westlaw AI-Assisted Research, CoCounsel, Harvey, Spellbook, Robin AI, Lex Machina, Premonition.{% endblock %}
+
+{% block og_title %}How DocketDrift differs from AI legal tools{% endblock %}
+{% block og_description %}DocketDrift indexes real, published opinions and links to source URLs. It does not generate text, draft briefs, summarize cases, or predict outcomes. The architecture that hallucinates is the architecture this site doesn't have.{% endblock %}
+
+{% block jsonld %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Does DocketDrift hallucinate cases?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Generative AI legal tools (Lexis+ AI, Westlaw AI-Assisted Research, CoCounsel, Harvey, and others built on large language models) have been documented to fabricate case citations at rates of 17 to 33 percent even with retrieval-augmentation. That failure mode is structurally impossible on DocketDrift because the system cannot produce any new text. Every record traces to an opinion the public can verify against the official source."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Where does machine learning appear in DocketDrift?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Two places, both narrow. (1) Voyage embeddings for semantic search: a 1024-dimension vector representation of each opinion. The system compares a query vector to opinion vectors with cosine similarity and returns an ordered list of opinion IDs. No text is generated. (2) Tag-suggestion candidates: embeddings rank candidate tags by similarity to each opinion. Above a high-confidence threshold the tag is auto-applied and marked AUTO_APPLIED for transparent audit. Below that threshold the suggestion appears in a human-review queue; the editor accepts or rejects. Nothing low-confidence becomes a published tag."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How is everything else (case number, disposition, panel) extracted?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Deterministic regex over the actual published text. Either the pattern matches or it doesn't. There is no LLM in any of those paths, and no LLM is ever asked to synthesize, summarize, or describe what it sees."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Why is hallucination architecturally impossible here?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "The system cannot produce a fake case citation because the system cannot produce any text. Every record traces to an opinion the public can verify against the official source."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {"@type": "ListItem", "position": 1, "name": "Home", "item": "https://{{ request.get_host }}/"},
+    {"@type": "ListItem", "position": 2, "name": "About", "item": "https://{{ request.get_host }}/about/"},
+    {"@type": "ListItem", "position": 3, "name": "How DocketDrift differs from AI legal tools", "item": "https://{{ request.get_host }}{{ request.path }}"}
+  ]
+}
+</script>
+{% endblock %}
 
 {% block content %}
 <nav class="breadcrumbs" aria-label="Breadcrumb">

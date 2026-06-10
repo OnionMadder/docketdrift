@@ -31,6 +31,18 @@
   }
 }
 </script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {"@type": "ListItem", "position": 1, "name": "DocketDrift", "item": "https://docketdrift.com/"},
+    {"@type": "ListItem", "position": 2, "name": "{{ opinion.court.state.name|escapejs }}", "item": "https://{{ request.get_host }}/"},
+    {"@type": "ListItem", "position": 3, "name": "Opinions", "item": "https://{{ request.get_host }}{% url 'opinions:opinion_list' %}"},
+    {"@type": "ListItem", "position": 4, "name": "{{ opinion.case_number|escapejs }}", "item": "https://{{ request.get_host }}{{ request.path }}"}
+  ]
+}
+</script>
 {% endblock %}
 
 {% block content %}

@@ -1,5 +1,37 @@
 {% extends "opinions/base.html" %}
-{% block title %}{{ state.name }} Appellate Opinions &middot; DocketDrift{% endblock %}
+{% block title %}{% if search_q %}{{ search_q }} &middot; {% endif %}{{ state.name }} appellate opinions &middot; DocketDrift{% endblock %}
+{% block description %}{% if search_q %}{{ total_count }} {{ state.name }} appellate opinion{{ total_count|pluralize }} matching &ldquo;{{ search_q }}&rdquo;.{% elif disp_filter %}{{ total_count }} {{ state.name }} appellate opinion{{ total_count|pluralize }} with disposition {{ disp_label }}.{% else %}{{ total_count }} published {{ state.name }} appellate opinion{{ total_count|pluralize }}, indexed and searchable, with judge dossiers, statute citation graph, and full-text + semantic search.{% endif %}{% endblock %}
+
+{% block og_title %}{% if search_q %}&ldquo;{{ search_q }}&rdquo; &middot; {% endif %}{{ state.name }} appellate opinions{% endblock %}
+{% block og_description %}{% if search_q %}{{ total_count }} {{ state.name }} opinion{{ total_count|pluralize }} matching &ldquo;{{ search_q }}&rdquo;.{% else %}Browse {{ total_count }} {{ state.name }} appellate opinion{{ total_count|pluralize }} indexed on DocketDrift.{% endif %}{% endblock %}
+
+{% block jsonld %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "{% if search_q %}SearchResultsPage{% else %}CollectionPage{% endif %}",
+  "name": "{{ state.name|escapejs }} appellate opinions{% if search_q %} matching {{ search_q|escapejs }}{% elif disp_filter %} ({{ disp_label|escapejs }}){% endif %}",
+  "url": "https://{{ request.get_host }}{{ request.path }}",
+  "description": "Published opinions of the {{ state.name|escapejs }} Supreme Court and Court of Appeals.",
+  "isPartOf": {
+    "@type": "WebSite",
+    "name": "DocketDrift",
+    "url": "https://{{ request.get_host }}/"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {"@type": "ListItem", "position": 1, "name": "DocketDrift", "item": "https://docketdrift.com/"},
+    {"@type": "ListItem", "position": 2, "name": "{{ state.name|escapejs }}", "item": "https://{{ request.get_host }}/"},
+    {"@type": "ListItem", "position": 3, "name": "Opinions", "item": "https://{{ request.get_host }}{% url 'opinions:opinion_list' %}"}
+  ]
+}
+</script>
+{% endblock %}
 
 {% block content %}
 <nav class="breadcrumbs" aria-label="Breadcrumb">

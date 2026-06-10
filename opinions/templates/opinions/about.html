@@ -1,5 +1,86 @@
 {% extends "opinions/base.html" %}
-{% block title %}About &middot; DocketDrift{% endblock %}
+{% block title %}About DocketDrift &middot; Navigator for state appellate court opinions{% endblock %}
+{% block description %}DocketDrift collates published state appellate opinions from official sources into a structured, searchable archive. Built for attorneys, journalists, academic researchers, and self-represented litigants. Explicitly not an AI legal assistant &mdash; we do not generate text.{% endblock %}
+
+{% block og_title %}About DocketDrift &middot; Public records, treated as public{% endblock %}
+{% block og_description %}A navigator for state appellate court opinions. Real opinions from official sources, organized for human review. Methodology, data sources, editorial process, and the "no generative text" posture explained.{% endblock %}
+
+{% block jsonld %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Does DocketDrift hallucinate cases?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Generative AI legal tools have been documented to fabricate case citations at rates of 17 to 33 percent even with retrieval-augmentation, per a 2024 Stanford HAI study. That failure mode is structurally impossible on DocketDrift because the site does not generate text. Every record is a real opinion published by a real court, with a working link to the source."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Who is DocketDrift for?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Appellate attorneys, journalists, academic researchers, and self-represented litigants. State appellate research has historically been dominated by paid databases. DocketDrift treats the public record as what it is: public."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Where does DocketDrift get its data?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Two sources. (1) CourtListener (Free Law Project) supplies the historical backfill and standing source for ongoing ingestion. (2) Direct uploads from official court releases capture new opinions same-day on each state's release schedule, ahead of CourtListener's ingestion lag. State subdomains refresh weekly via a scheduled ingest job."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How is each opinion reviewed?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Every opinion is parsed automatically for structured fields (case number, disposition, author, panel, statute citations) and then reviewed by a human editor. Each record carries a status indicator: processed (machine-parsed, awaiting review), flagged (queued for re-review), or human-reviewed. Both signals stay public so a reader can see at a glance which records have been read by a human."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How does DocketDrift handle patterns and case-pairs?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Patterns and case-pairs that the system surfaces are tools for human review, never assertions of judicial inconsistency. Two cases citing the same statute with opposite outcomes are usually legitimately different (different facts, different procedural posture, different sub-issues). The 'did this judge contradict themselves' question is a question for a human reader; DocketDrift just makes the pairs easier to find."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Which states are live on DocketDrift?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Three states as of June 2026. Minnesota: full appellate corpus, 60,000+ opinions from 1851 to current, with judge dossiers, statute citation graph, semantic search, and tag-suggestion review pipeline. New Hampshire: 20,000+ NH Supreme Court opinions with byline-extracted judicial panel graph. Arizona: 38,000+ Arizona Supreme Court and Court of Appeals opinions. New states are added one at a time."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is DocketDrift open source?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. DocketDrift is open source on GitHub at github.com/OnionMadder/docketdrift. The parser rules, ingestion logic, and infrastructure are all readable, auditable, and forkable."
+      }
+    }
+  ]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {"@type": "ListItem", "position": 1, "name": "Home", "item": "https://{{ request.get_host }}/"},
+    {"@type": "ListItem", "position": 2, "name": "About", "item": "https://{{ request.get_host }}{{ request.path }}"}
+  ]
+}
+</script>
+{% endblock %}
 
 {% block content %}
 <nav class="breadcrumbs" aria-label="Breadcrumb">

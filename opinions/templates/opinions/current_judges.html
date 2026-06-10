@@ -1,5 +1,42 @@
 {% extends "opinions/base.html" %}
-{% block title %}{{ state.name }} Current Judges &middot; DocketDrift{% endblock %}
+{% block title %}{{ state.name }} appellate judges &middot; Current roster &middot; DocketDrift{% endblock %}
+{% block description %}Currently-seated judges of the {{ state.name }} Supreme Court and Court of Appeals. {{ total_count }} judge{{ total_count|pluralize }} on the bench, with photos, appointment dates, and dossiers linking to their full voting records.{% endblock %}
+
+{% block og_title %}{{ state.name }} appellate judges &middot; Current roster{% endblock %}
+{% block og_description %}{{ total_count }} currently-seated {{ state.name }} appellate judges with dossiers, panel-vote graphs, and disposition lean.{% endblock %}
+
+{% block jsonld %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "CollectionPage",
+  "name": "{{ state.name|escapejs }} appellate judges",
+  "url": "https://{{ request.get_host }}{{ request.path }}",
+  "description": "Currently-seated judges of the {{ state.name|escapejs }} appellate courts.",
+  "isPartOf": {
+    "@type": "WebSite",
+    "name": "DocketDrift",
+    "url": "https://{{ request.get_host }}/"
+  },
+  "mainEntity": {
+    "@type": "ItemList",
+    "numberOfItems": {{ total_count }},
+    "itemListOrder": "https://schema.org/ItemListUnordered"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {"@type": "ListItem", "position": 1, "name": "DocketDrift", "item": "https://docketdrift.com/"},
+    {"@type": "ListItem", "position": 2, "name": "{{ state.name|escapejs }}", "item": "https://{{ request.get_host }}/"},
+    {"@type": "ListItem", "position": 3, "name": "Current judges", "item": "https://{{ request.get_host }}{{ request.path }}"}
+  ]
+}
+</script>
+{% endblock %}
 
 {% block content %}
 <nav class="breadcrumbs" aria-label="Breadcrumb">
