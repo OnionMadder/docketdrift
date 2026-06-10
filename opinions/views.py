@@ -12,6 +12,8 @@ All rendering goes through the ``opinions/*.html`` templates in
 ``opinions/templates/opinions/``; the look is the maddervramsey-derived
 dark/neon design system loaded via the base template.
 """
+import re
+
 from django.core.paginator import Paginator
 from django.db import connection, models
 from django.db.models import Q
@@ -231,19 +233,36 @@ def opinion_list(request):
             connection.vendor == "mysql"
             and len(search_q) >= FULLTEXT_MIN_QUERY_LEN
         )
-        if use_fulltext:
-            # MATCH AGAINST against the FULLTEXT index for the big raw_text
-            # field. Phrase-quoted in BOOLEAN MODE so multi-word queries
-            # are treated as exact phrases (matches user intent better than
-            # OR-of-tokens for legal text). LIKE still handles the short
-            # case_number field since that's its own indexed unique pattern.
+        # Route the query down the FAST path that matches its shape.
+        # Mixing case_number LIKE (leading-%, defeats the index, full
+        # scan) with FULLTEXT MATCH AGAINST via OR forced the planner
+        # into a full-table-scan plan on the 60K-row corpus -- a single
+        # "Fourth Amendment" COUNT took 75 seconds and saturated
+        # gunicorn's worker threads. Splitting by shape gives each
+        # query the index it actually needs.
+        #
+        # Docket-like queries (case-number-style: starts with a letter
+        # or digit, contains a hyphen, no spaces, short) get a pure
+        # case_number scan. Everything else gets FULLTEXT-only.
+        is_docket_like = (
+            len(search_q) <= 24
+            and " " not in search_q
+            and ("-" in search_q or re.match(r"^[A-Za-z]\d", search_q))
+        )
+        if is_docket_like:
+            # case_number is indexed; .icontains uses %...% but the
+            # column is small so the scan is still fast.
+            qs = qs.filter(case_number__icontains=search_q)
+        elif use_fulltext:
+            # FULLTEXT-only. The index handles MATCH AGAINST in
+            # milliseconds even on raw_text columns. Phrase-quoted in
+            # BOOLEAN MODE so multi-word queries match as exact phrases.
             qs = qs.extra(
                 where=[
-                    "(opinions_opinion.case_number LIKE %s OR "
                     "MATCH(opinions_opinion.raw_text, opinions_opinion.title) "
-                    "AGAINST (%s IN BOOLEAN MODE))"
+                    "AGAINST (%s IN BOOLEAN MODE)"
                 ],
-                params=[f"%{search_q}%", f'"{search_q}"'],
+                params=[f'"{search_q}"'],
             )
         else:
             qs = qs.filter(
