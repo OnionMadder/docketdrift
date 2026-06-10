@@ -1,55 +1,41 @@
-"""Minnesota statute citation extractor.
+"""State-keyed dispatcher for statute citation extraction.
 
-Recognizes the common Bluebook + MN-house-style citation patterns:
+Each state's statute syntax is different enough that a single regex
+doesn't cover them all without false positives. We keep one per-state
+extractor module per file, exposing a uniform ``extract(text) ->
+list[ExtractedStatute]`` interface, and dispatch by state code here.
 
-  - ``Minn. Stat. § 609.185``
-  - ``Minn. Stat. § 609.185(a)`` (subsection captured to advance the
-    text_offset window past the parenthetical, then dropped from storage --
-    we link at chapter+section granularity, not parenthetical-clause).
-  - ``Minn. Stat. § 609.185, subd. 1`` (subdivision stored, included in
-    slug as ``minn.stat.609.185.subd.1``).
-  - ``Minn. Stat. ch. 169`` (chapter-only, slug ``minn.stat.ch.169``).
-  - ``Minn.Stat. § 609.185`` (no spaces between ``Minn.`` and ``Stat.``).
+Currently registered:
 
-Out of scope for v1 (intentional):
+  - MN: ``Minn. Stat. § <chapter>.<section>[, subd. <n>]`` + chapter-only
+  - NH: ``RSA <chapter>:<section>[, <Roman-subdivision>]``
+  - AZ: ``A.R.S. § <title>-<section>[(<subsection>)]``
 
-  - ``Minnesota Statutes section 609.185`` (long-form -- rare in
-    appellate prose; if it shows up enough, add a third regex).
-  - ``Minn. R. Crim. P. 26.03`` (rules of procedure, not statutes).
-  - ``Minn. R. Evid. 803`` (rules of evidence).
-  - Federal cites like ``18 U.S.C. § 2``.
-  - Session-law cites like ``2010 Minn. Laws ch. 169``.
+Adding a new state: implement ``opinions/parsing/statutes_<code>.py``
+with an ``extract(text)`` function, then add a row to ``_REGISTRY``
+below.
 
-Performance note: both regexes use possessive-style quantifiers
-(``\\s*``, ``\\d{1,4}``) so backtracking is O(n) on input length. The
-whole-corpus extraction over 60K opinions runs in ~5-10 min on dev
-hardware -- comfortably within the brief's expected runtime.
+The ``ExtractedStatute`` dataclass is the cross-state storage shape --
+each extractor maps its state's local terminology (chapter, title,
+subsection, subdivision) onto a common (chapter, section, subdivision)
+triple so the StatuteCitation table can index every state's citations
+the same way.
 """
-import re
+import importlib
 from dataclasses import dataclass
-
-# Full citation: "Minn. Stat. § 609.185" with optional section, optional
-# (subsection), optional ", subd. N". Subsection is captured to advance
-# past the parenthetical but not stored.
-FULL_CITATION = re.compile(
-    r'\bMinn\.?\s*Stat\.?\s*§?\s*'
-    r'(?P<chapter>\d{1,4})'
-    r'(?:\.(?P<section>\d{1,4}[a-zA-Z]?))?'
-    r'(?:\s*\((?P<subsection>[^)]+)\))?'
-    r'(?:,\s*subd\.\s*(?P<subdivision>\d+[a-zA-Z]?))?',
-    re.IGNORECASE,
-)
-
-# Chapter-only citation: "Minn. Stat. ch. 169" or "Minn. Stat. chapter 169".
-CHAPTER_CITATION = re.compile(
-    r'\bMinn\.?\s*Stat\.?\s*(?:ch\.?|chapter)\s*(?P<chapter>\d{1,4})\b',
-    re.IGNORECASE,
-)
 
 
 @dataclass(frozen=True)
 class ExtractedStatute:
-    """One occurrence of a statute citation in an opinion."""
+    """One occurrence of a statute citation in an opinion.
+
+    Cross-state shape: every extractor maps its local grammar onto
+    these three slots (chapter + section + subdivision). For AZ, the
+    A.R.S. "title" maps onto ``chapter``. For NH, the RSA "chapter"
+    (which can have an ``-X`` suffix like 159-B) maps onto ``chapter``
+    too. Storage stays uniform; the per-state ``reference_display``
+    string carries the canonical Bluebook form for the public page.
+    """
 
     chapter: str
     section: str
@@ -59,77 +45,49 @@ class ExtractedStatute:
     text_offset: int
 
 
-def _build_slug_and_display(
-    chapter: str,
-    section: str,
-    subdivision: str,
-) -> tuple[str, str]:
-    """Build (slug, display) pair from extracted parts.
+# Map state code -> module path. Modules are imported lazily on first
+# call so the parsing package's import doesn't drag every state's
+# regex compilation into every Django process boot.
+_REGISTRY: dict[str, str] = {
+    "MN": "opinions.parsing.statutes_mn",
+    "NH": "opinions.parsing.statutes_nh",
+    "AZ": "opinions.parsing.statutes_az",
+}
 
-    Slug grammar:
-        minn.stat.<chapter>                    (chapter-only)
-        minn.stat.<chapter>.<section>           (full section)
-        minn.stat.<chapter>.<section>.subd.<n>  (with subdivision)
-
-    Display grammar mirrors the canonical Bluebook form.
-    """
-    if section:
-        slug = f"minn.stat.{chapter}.{section}"
-        display = f"Minn. Stat. § {chapter}.{section}"
-    else:
-        slug = f"minn.stat.{chapter}"
-        display = f"Minn. Stat. § {chapter}"
-    if subdivision:
-        slug = f"{slug}.subd.{subdivision}"
-        display = f"{display}, subd. {subdivision}"
-    return slug.lower(), display
+_cache: dict[str, object] = {}
 
 
-def extract_statutes(text: str) -> list[ExtractedStatute]:
-    """Find every Minnesota statute citation in ``text``.
+def _load(state_code: str):
+    """Return the cached extractor module for ``state_code`` or None."""
+    state_code = (state_code or "").upper()
+    if state_code in _cache:
+        return _cache[state_code]
+    module_path = _REGISTRY.get(state_code)
+    if module_path is None:
+        _cache[state_code] = None
+        return None
+    module = importlib.import_module(module_path)
+    _cache[state_code] = module
+    return module
+
+
+def extract_statutes(state_code: str, text: str) -> list[ExtractedStatute]:
+    """Find every statute citation in ``text`` for the given state.
 
     Returns a list (NOT deduplicated) sorted by text_offset. Multiple
     citations of the same statute in the same opinion are preserved
     so the statute page can pull surrounding context for each hit.
-    The caller is responsible for de-duplicating when only the set
-    of unique statutes matters.
+
+    Returns ``[]`` when no extractor is registered for the state --
+    callers can use that as a "no statute graph for this state yet"
+    signal instead of crashing.
     """
     if not text:
         return []
-    results: list[ExtractedStatute] = []
+    module = _load(state_code)
+    if module is None:
+        return []
+    return module.extract(text)
 
-    # Pass 1: full citations (section-level + optional subdivision).
-    for match in FULL_CITATION.finditer(text):
-        chapter = match.group("chapter") or ""
-        if not chapter:
-            continue
-        section = match.group("section") or ""
-        subdivision = match.group("subdivision") or ""
-        slug, display = _build_slug_and_display(chapter, section, subdivision)
-        results.append(ExtractedStatute(
-            chapter=chapter,
-            section=section,
-            subdivision=subdivision,
-            reference_slug=slug,
-            reference_display=display,
-            text_offset=match.start(),
-        ))
 
-    # Pass 2: chapter-only citations ("Minn. Stat. ch. 169").
-    for match in CHAPTER_CITATION.finditer(text):
-        chapter = match.group("chapter") or ""
-        if not chapter:
-            continue
-        slug = f"minn.stat.ch.{chapter}".lower()
-        display = f"Minn. Stat. ch. {chapter}"
-        results.append(ExtractedStatute(
-            chapter=chapter,
-            section="",
-            subdivision="",
-            reference_slug=slug,
-            reference_display=display,
-            text_offset=match.start(),
-        ))
-
-    results.sort(key=lambda s: s.text_offset)
-    return results
+__all__ = ["ExtractedStatute", "extract_statutes"]

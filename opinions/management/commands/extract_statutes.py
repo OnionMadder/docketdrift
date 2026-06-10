@@ -1,7 +1,11 @@
 """Bulk-extract statute citations from opinion ``raw_text``.
 
-Reads every Opinion in scope, runs ``opinions.parsing.statutes.extract_statutes``
-over its body, and writes the result into ``StatuteCitation`` rows.
+Reads every Opinion in scope, runs the state's registered statute
+extractor over its body, and writes the result into ``StatuteCitation``
+rows. State is dispatched via ``opinions.parsing.statutes.extract_statutes``;
+states without a registered extractor are silently skipped (returns []).
+
+Currently supported: MN (Minn. Stat.), NH (RSA), AZ (A.R.S.).
 
 Idempotent: by default, opinions that already have at least one
 ``StatuteCitation`` row are skipped. Pass ``--force`` to clear and re-extract
@@ -10,6 +14,8 @@ Idempotent: by default, opinions that already have at least one
 Usage::
 
     python manage.py extract_statutes              # full MN pass, idempotent
+    python manage.py extract_statutes --state NH   # all NH opinions
+    python manage.py extract_statutes --state AZ   # all AZ opinions
     python manage.py extract_statutes --dry-run    # count without writing
     python manage.py extract_statutes --limit 500  # smoke-test sweep
     python manage.py extract_statutes --force      # re-extract everything
@@ -42,13 +48,19 @@ BULK_INSERT_CHUNK = 1_000
 
 
 class Command(BaseCommand):
-    help = "Extract Minn. Stat. citations from opinion raw_text into StatuteCitation rows."
+    help = (
+        "Extract state-specific statute citations from opinion raw_text "
+        "into StatuteCitation rows. Supports MN (Minn. Stat.), NH (RSA), AZ (A.R.S.)."
+    )
 
     def add_arguments(self, parser):
         parser.add_argument(
             "--state",
             default="MN",
-            help="USPS state code to scan (default MN). Only MN has a parser for v1.",
+            help=(
+                "USPS state code to scan (default MN). Supported: MN, NH, AZ. "
+                "Each state's extractor lives in opinions/parsing/statutes_<code>.py."
+            ),
         )
         parser.add_argument(
             "--limit",
@@ -120,7 +132,7 @@ class Command(BaseCommand):
                 break
             scanned += 1
 
-            extractions = extract_statutes(opinion.raw_text)
+            extractions = extract_statutes(state_code, opinion.raw_text)
 
             if force and not dry_run:
                 # Clear existing rows so the new extractor pass replaces
