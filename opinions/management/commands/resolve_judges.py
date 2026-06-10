@@ -471,22 +471,46 @@ class Command(BaseCommand):
                     ending="\n",
                 )
 
-            # Try the state-specific parser first; fall back to the
-            # generic byline extractor when no parser is registered.
-            # The fallback gives author_last + panel_last directly (lowercased
-            # last names) instead of a full ParsedOpinion -- normalise both
-            # paths into the same (author_last, panel_lasts) shape.
+            # Hybrid extraction. The state-specific parser is preferred
+            # for author + panel when it returns them, but state parsers
+            # commonly leave one or both empty (e.g. the NH parser
+            # captures the author byline at the top of the document but
+            # doesn't try to parse the "<NAME>, C.J., and <NAMES>, JJ.,
+            # concurred." footer -- that's _extract_generic_byline's
+            # specialty). For each opinion we run the parser, then run
+            # the generic extractor and use it as a fallback for any
+            # field the parser left empty.
             result = parse_opinion(state_code, opinion.raw_text)
-            if result is None:
-                generic = _extract_generic_byline(opinion.raw_text)
-                author_last = generic.author_last
-                panel_lasts = generic.panel_last
-            else:
+            if result is not None:
                 author_last = (
                     _last_name(result.author).lower() if result.author else None
                 )
                 panel_lasts = [_last_name(p).lower() for p in result.panel]
                 panel_lasts = [p for p in panel_lasts if p]
+            else:
+                author_last = None
+                panel_lasts = []
+            generic = None
+            if author_last is None or not panel_lasts:
+                generic = _extract_generic_byline(opinion.raw_text)
+                if author_last is None and generic.author_last:
+                    author_last = generic.author_last
+                if not panel_lasts and generic.panel_last:
+                    panel_lasts = list(generic.panel_last)
+            # The generic extractor treats the byline-footer chief justice
+            # ("X, C.J., and ...") as the AUTHOR when running standalone --
+            # that's right when there's no parser, since the chief is the
+            # only signer it has. But when the parser identified a
+            # different author at the top of the document (the real
+            # signer), the chief is actually a JOINING panel member.
+            # Promote them into the panel list.
+            if (
+                generic is not None
+                and generic.author_last
+                and generic.author_last != author_last
+                and generic.author_last not in panel_lasts
+            ):
+                panel_lasts.append(generic.author_last)
 
             # ---- Pass 1: Author ----
             author_judge: Judge | None = None
