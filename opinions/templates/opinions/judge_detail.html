@@ -188,15 +188,70 @@ stacked layout.
     </div>
   {% endif %}
 
+  {% if yearly_chart %}
+    <div class="glossy-frame judge-chart-card">
+      <h2>Panel votes per year</h2>
+      <p class="subtle-lead">
+        How {{ judge.full_name }}'s panel-seat count has shifted year by year.
+        {% if vs_judge %}
+          Overlaid with <a href="{% url 'opinions:judge_detail' slug=vs_judge.slug %}">{{ vs_judge.full_name }}</a> for comparison
+          (<a href="{% url 'opinions:judge_detail' slug=judge.slug %}">drop the overlay</a>).
+        {% else %}
+          Add <code>?vs=&lt;another-judge-slug&gt;</code> to the URL to overlay a second judge, or click <em>compare</em> next to any co-panelist below.
+        {% endif %}
+      </p>
+
+      <div class="judge-chart-wrap">
+        <svg
+          viewBox="0 0 {{ yearly_chart.width }} {{ yearly_chart.height }}"
+          xmlns="http://www.w3.org/2000/svg"
+          role="img"
+          aria-label="Panel votes per year for {{ judge.full_name }}{% if vs_judge %}, compared with {{ vs_judge.full_name }}{% endif %}"
+          class="judge-chart-svg"
+        >
+          {% comment %}Axes + horizontal gridlines.{% endcomment %}
+          {% for tick in yearly_chart.y_ticks %}
+            <line x1="{{ yearly_chart.axis_x_left }}" y1="{{ tick.y }}" x2="{{ yearly_chart.axis_x_right }}" y2="{{ tick.y }}" stroke="#ffffff14" stroke-width="1"/>
+            <text x="{{ yearly_chart.pad_left|add:"-8" }}" y="{{ tick.y }}" text-anchor="end" dominant-baseline="central" fill="#9aa" font-size="11">{{ tick.value }}</text>
+          {% endfor %}
+          {% for tick in yearly_chart.x_ticks %}
+            <line x1="{{ tick.x }}" y1="{{ yearly_chart.axis_y_top }}" x2="{{ tick.x }}" y2="{{ yearly_chart.axis_y_bottom }}" stroke="#ffffff08" stroke-width="1"/>
+            <text x="{{ tick.x }}" y="{{ yearly_chart.axis_y_bottom|add:"18" }}" text-anchor="middle" fill="#9aa" font-size="11">{{ tick.year }}</text>
+          {% endfor %}
+
+          {% comment %}Series polylines + per-year dots.{% endcomment %}
+          {% for s in yearly_chart.series %}
+            <polyline points="{{ s.points }}" fill="none" stroke="{{ s.color }}" stroke-width="2" {% if s.dash %}stroke-dasharray="{{ s.dash }}"{% endif %} stroke-linecap="round" stroke-linejoin="round"/>
+            {% for dot in s.dots %}
+              <circle cx="{{ dot.x }}" cy="{{ dot.y }}" r="3" fill="{{ s.color }}">
+                <title>{{ dot.year }}: {{ dot.n }} vote{{ dot.n|pluralize }} &mdash; {{ s.label }}</title>
+              </circle>
+            {% endfor %}
+          {% endfor %}
+        </svg>
+
+        <ul class="judge-chart-legend">
+          {% for s in yearly_chart.series %}
+            <li>
+              <span class="judge-chart-legend__swatch" style="background:{{ s.color }}{% if s.dash %};background-image:linear-gradient(90deg,{{ s.color }} 50%,transparent 50%);background-size:8px 100%{% endif %}"></span>
+              {{ s.label }}
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  {% endif %}
+
   {% if cohort %}
     <div class="glossy-frame">
       <h2>Most-frequent co-panelists</h2>
-      <p class="subtle-lead">Judges who appeared on the same opinions, ranked by overlap count.</p>
+      <p class="subtle-lead">Judges who appeared on the same opinions, ranked by overlap count. Click <em>compare</em> to overlay them on the chart above.</p>
       <ul class="judge-cohort-list">
         {% for c in cohort %}
           <li>
             <a href="{% url 'opinions:judge_detail' slug=c.slug %}">{{ c.full_name }}</a>
             <span class="judge-cohort-count">{{ c.shared }} shared</span>
+            <a class="judge-cohort-compare" href="{% url 'opinions:judge_detail' slug=judge.slug %}?vs={{ c.slug }}">compare</a>
           </li>
         {% endfor %}
       </ul>

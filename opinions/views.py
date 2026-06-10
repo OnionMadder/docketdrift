@@ -624,15 +624,40 @@ def tag_detail(request, slug):
 
 
 @cache_control(public=True, max_age=CACHE_SEC_DETAIL)
+def _yearly_panel_votes(judge_id):
+    """Return [{year: int, n: int}, ...] of panel-vote counts per release-year.
+
+    All vote types are counted (author / join / dissent / concurrence /
+    recusal). V1 of the votes-over-time chart shows total throughput;
+    later passes can split by role or filter by disposition / tag.
+    Years with zero votes are simply absent from the list (the chart's
+    polyline connects whichever years are present).
+    """
+    from django.db.models import Count
+    from django.db.models.functions import ExtractYear
+    from opinions.models import PanelVote
+    rows = (
+        PanelVote.objects.filter(
+            judge_id=judge_id,
+            opinion__release_date__isnull=False,
+        )
+        .annotate(year=ExtractYear("opinion__release_date"))
+        .values("year")
+        .annotate(n=Count("id"))
+        .order_by("year")
+    )
+    return [{"year": r["year"], "n": r["n"]} for r in rows]
+
+
 def judge_detail(request, slug):
     """Per-judge dossier page. State-scoped to keep slugs unambiguous.
 
     Pulls everything we know about this judge from the PanelVote rows
     the CL bulk load created: total opinions, authored vs joined,
     dissent count, court breakdown, disposition breakdown, recent
-    opinions, frequent co-panelists. Heavy query (~5-10 aggregates +
-    a recent-list query) but cached for an hour so subsequent requests
-    are free.
+    opinions, frequent co-panelists, plus a yearly-votes time-series
+    chart. Pass ``?vs=<other-slug>`` to overlay a second judge on the
+    chart for at-a-glance comparison.
     """
     state = getattr(request, "state", None)
     qs = Judge.objects.select_related("state", "court")
@@ -642,6 +667,19 @@ def judge_detail(request, slug):
         judge = qs.get(slug=slug)
     except Judge.DoesNotExist:
         raise Http404("Judge not found")
+
+    # Optional comparison judge from ?vs=<slug>. Scoped to the same
+    # state so cross-state surname collisions don't accidentally match.
+    vs_slug = (request.GET.get("vs") or "").strip()
+    vs_judge = None
+    if vs_slug and vs_slug != slug:
+        vs_qs = Judge.objects.select_related("state", "court")
+        if state is not None:
+            vs_qs = vs_qs.filter(state=state)
+        try:
+            vs_judge = vs_qs.get(slug=vs_slug)
+        except Judge.DoesNotExist:
+            vs_judge = None
 
     from django.db.models import Count, Q
     from opinions.models import PanelVote
@@ -732,8 +770,23 @@ def judge_detail(request, slug):
             .values("slug", "full_name", "shared")
         )
 
+    # Time-series chart: yearly panel votes for this judge, optionally
+    # overlaid with a second judge from ?vs=<slug>. The chart helper
+    # returns None when both series are empty, which the template uses
+    # as a render gate.
+    from opinions import charts
+    series_a = _yearly_panel_votes(judge.pk) if total_opinions > 0 else []
+    series_b = _yearly_panel_votes(vs_judge.pk) if vs_judge is not None else None
+    yearly_chart = charts.build_yearly_votes_chart(
+        series_a=series_a,
+        label_a=judge.full_name,
+        series_b=series_b,
+        label_b=vs_judge.full_name if vs_judge is not None else None,
+    )
+
     return render(request, "opinions/judge_detail.html", {
         "judge": judge,
+        "vs_judge": vs_judge,
         "total_opinions": total_opinions,
         "role_summary": role_summary,
         "date_range": date_range,
@@ -741,6 +794,7 @@ def judge_detail(request, slug):
         "disposition_breakdown": disposition_breakdown,
         "recent_opinions": recent_opinions,
         "cohort": cohort,
+        "yearly_chart": yearly_chart,
         "active_nav": "judges",
     })
 
