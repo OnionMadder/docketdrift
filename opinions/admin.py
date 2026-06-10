@@ -287,6 +287,44 @@ class ParseLogInline(admin.TabularInline):
     show_change_link = True
 
 
+class TagSuggestionInline(admin.TabularInline):
+    """In-context AI tag suggestions for this opinion.
+
+    Shows everything ``suggest_tags`` produced for this opinion -- both
+    pending and decided -- ordered by confidence so the strongest
+    candidates surface first. Lets an editor accept or reject inline
+    without leaving the opinion change form (the alternative is the
+    standalone /admin/opinions/tagsuggestion/ queue, which is better for
+    bulk-review sessions).
+
+    The (opinion, tag, confidence) columns are read-only because
+    they're computed by suggest_tags. Only ``status`` is editable -- the
+    bulk-action accept/reject from TagSuggestionAdmin doesn't apply
+    here, so the editor flips the choice manually and the inline save
+    persists it.
+    """
+    model = TagSuggestion
+    extra = 0
+    fields = ("tag", "confidence", "status", "reviewed_by", "reviewed_at")
+    readonly_fields = ("tag", "confidence", "reviewed_at")
+    can_delete = False
+    show_change_link = False
+    ordering = ("-confidence",)
+    verbose_name = "tag suggestion"
+    verbose_name_plural = "Suggested tags (AI candidates)"
+
+    def has_add_permission(self, request, obj=None):
+        # Suggestions are computed by suggest_tags; editors don't add by hand.
+        return False
+
+    def get_queryset(self, request):
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("tag")
+        )
+
+
 @admin.action(description="Mark selected as human-reviewed")
 def mark_reviewed(modeladmin, request, queryset):
     """Bulk-flip selected opinions to REVIEWED, stamping editor + timestamp.
@@ -460,7 +498,12 @@ class OpinionAdmin(admin.ModelAdmin):
     date_hierarchy = "release_date"
     readonly_fields = ("reviewed_at",)
     filter_horizontal = ("tags",)
-    inlines = [PanelVoteInline, OpinionHoldingInline, ParseLogInline]
+    inlines = [
+        PanelVoteInline,
+        TagSuggestionInline,
+        OpinionHoldingInline,
+        ParseLogInline,
+    ]
     actions = [mark_reviewed, mark_flagged, mark_ai_only, rerun_parser, flag_pre_1849]
     # 60K opinions in the corpus -- without these, the changelist tries
     # to count + render too much per request.
@@ -469,11 +512,20 @@ class OpinionAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         # select_related the FKs that list_display renders so the
-        # changelist makes one query instead of N+1.
+        # changelist makes one query instead of N+1, and DEFER the two
+        # giant TEXT columns (raw_text + html_content, ~50-100KB each)
+        # since list_display + list_filter never touch them. Without the
+        # defer, a 50-row page pulls ~5MB of body text across the wire
+        # per request -- under embed_opinions contention that hits the
+        # "Lost connection to MySQL server during query" / (2013)
+        # mid-query disconnect described in CLAUDE.md, and a save-then-
+        # redirect lands on a 500 page even though the save itself
+        # succeeded.
         return (
             super()
             .get_queryset(request)
             .select_related("court", "court__state")
+            .defer("raw_text", "html_content")
         )
 
     def changelist_view(self, request, extra_context=None):
