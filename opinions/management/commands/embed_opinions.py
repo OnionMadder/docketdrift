@@ -168,8 +168,18 @@ class Command(BaseCommand):
             default=DEFAULT_MODEL,
             help=f"Voyage model name (default {DEFAULT_MODEL}).",
         )
+        parser.add_argument(
+            "--state",
+            default=None,
+            help=(
+                "USPS 2-letter state code (e.g. NH). Restrict embedding "
+                "to opinions in that state's courts only. Useful when "
+                "running unattended and you want to finish one state's "
+                "corpus before tackling the next."
+            ),
+        )
 
-    def handle(self, *args, limit, batch_size, max_batch_tokens, rpm, model, **options):
+    def handle(self, *args, limit, batch_size, max_batch_tokens, rpm, model, state, **options):
         if connection.vendor != "mysql":
             raise CommandError(
                 f"Embedding requires MariaDB / MySQL (got {connection.vendor!r}). "
@@ -185,11 +195,34 @@ class Command(BaseCommand):
                 "(free tier covers the initial 60K-opinion run)."
             )
 
+        # Optional state filter: restrict to one state's court_ids.
+        # Done as a raw IN-list (court ids are small ints, no SQL-injection
+        # risk) appended to every embedding-loop query.
+        state_clause = ""
+        state_params: list = []
+        if state:
+            from opinions.models import Court, State
+            try:
+                state_obj = State.objects.get(code=state.upper())
+            except State.DoesNotExist:
+                raise CommandError(f"State {state.upper()!r} not found.")
+            court_ids = list(state_obj.courts.values_list("id", flat=True))
+            if not court_ids:
+                raise CommandError(f"No courts found for state {state.upper()!r}.")
+            placeholders = ",".join(["%s"] * len(court_ids))
+            state_clause = f" AND court_id IN ({placeholders})"
+            state_params = court_ids
+            self.stdout.write(
+                f"  [state filter] restricting to {state.upper()} "
+                f"({len(court_ids)} court(s))"
+            )
+
         # Count work remaining
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT COUNT(*) FROM opinions_opinion "
-                "WHERE embedding IS NULL AND raw_text != ''"
+                "WHERE embedding IS NULL AND raw_text != ''" + state_clause,
+                state_params,
             )
             total_to_do = cursor.fetchone()[0]
 
@@ -220,10 +253,10 @@ class Command(BaseCommand):
             with connection.cursor() as cursor:
                 cursor.execute(
                     "SELECT id, raw_text FROM opinions_opinion "
-                    "WHERE embedding IS NULL AND raw_text != '' "
+                    "WHERE embedding IS NULL AND raw_text != ''" + state_clause + " "
                     "ORDER BY id "
                     "LIMIT %s",
-                    [batch_size],
+                    state_params + [batch_size],
                 )
                 fetched = cursor.fetchall()
 
