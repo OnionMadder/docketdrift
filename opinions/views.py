@@ -257,16 +257,25 @@ def opinion_list(request):
     is_filtered = bool(search_q or disp_filter)
 
     if is_filtered:
-        paginator = Paginator(qs, HOME_PAGE_SIZE)
+        # NoJoinCountPaginator: the paginator's ``.count`` SQL drops the
+        # ``.select_related("court")`` JOIN that the rendering pass needs
+        # so the COUNT(*) stays a single-table indexed PK scan. The
+        # FULLTEXT MATCH() filter survives (``.extra()`` WHERE clauses
+        # are preserved by ``.values("pk")``). Public search hit the same
+        # 30s-COUNT trap that admin opinion changelist did; this is the
+        # same fix on the public surface.
+        from opinions.paginators import NoJoinCountPaginator
+        paginator = NoJoinCountPaginator(qs, HOME_PAGE_SIZE)
         page_obj = paginator.get_page(request.GET.get("page", 1))
         opinions = page_obj.object_list
         total_count = paginator.count
     else:
         # Default landing: just the most recent N. No paginator object so
-        # the template knows we're in landing mode.
+        # the template knows we're in landing mode. Even here we count
+        # via ``.values("pk")`` to keep the join out of the COUNT.
         page_obj = None
         opinions = list(qs[:HOME_LANDING_SIZE])
-        total_count = qs.count()
+        total_count = qs.values("pk").count()
 
     # Semantic search: when the user has typed a query, also run a
     # vector-similarity search alongside the keyword/FULLTEXT one and
@@ -611,7 +620,12 @@ def tag_detail(request, slug):
     if state is not None:
         qs = qs.filter(court__state=state)
 
-    paginator = Paginator(qs, HOME_PAGE_SIZE)
+    # NoJoinCountPaginator: ``.select_related("court")`` is needed for
+    # rendering but useless for the COUNT(*); strip it so pagination on
+    # a popular tag (thousands of opinions) doesn't drag a 3-table join
+    # into the count query.
+    from opinions.paginators import NoJoinCountPaginator
+    paginator = NoJoinCountPaginator(qs, HOME_PAGE_SIZE)
     page_obj = paginator.get_page(request.GET.get("page", 1))
 
     return render(request, "opinions/tag_detail.html", {
