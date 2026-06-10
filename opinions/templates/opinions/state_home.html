@@ -83,7 +83,7 @@
     </thead>
     <tbody>
     {% for op in opinions %}
-      <tr>
+      <tr{% if op.snippet_html %} class="doc-row--with-snippet"{% endif %}>
         <td class="case-number-cell"><span class="file-number">{{ op.case_number }}</span></td>
         <td class="doc-court-cell"><span class="court-pill court-pill--{{ op.court.level_slug }}" title="{{ op.court.name }}">{{ op.court.short_label }}</span></td>
         <td class="doc-date-cell">{{ op.release_date|date:"Y-m-d" }}</td>
@@ -99,6 +99,13 @@
           <a href="{% url 'opinions:detail' case_number=op.case_number %}">{{ op.title|truncatechars:90 }}</a>
         </td>
       </tr>
+      {% if op.snippet_html %}
+        <tr class="doc-snippet-row">
+          <td colspan="5" class="doc-snippet-cell">
+            <a class="doc-snippet-link" href="{% url 'opinions:detail' case_number=op.case_number %}?q={{ search_q|urlencode }}">{{ op.snippet_html }}</a>
+          </td>
+        </tr>
+      {% endif %}
     {% endfor %}
     </tbody>
   </table>

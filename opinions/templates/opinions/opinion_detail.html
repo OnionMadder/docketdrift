@@ -103,9 +103,15 @@
 
 <div class="glossy-frame">
   <h2>Opinion text</h2>
+  {% if request.GET.q %}
+    <p class="opinion-find-banner">
+      Highlighting matches for &ldquo;<strong>{{ request.GET.q }}</strong>&rdquo;
+      &middot; <a href="{% url 'opinions:detail' case_number=opinion.case_number %}">clear</a>
+    </p>
+  {% endif %}
   {% if opinion.raw_text %}
     <div class="opinion-body">
-      {{ opinion.raw_text|format_opinion_text }}
+      {{ opinion.raw_text|format_opinion_text:request.GET.q }}
     </div>
   {% else %}
     <p class="glitch-line">No opinion text available.</p>
@@ -155,5 +161,20 @@
       </tbody>
     </table>
   </div>
+{% endif %}
+
+{% if request.GET.q %}
+{# Scroll the first <mark> match into view when the page lands with
+   ?q=... -- only when the URL has no explicit fragment, so #para-N
+   takes precedence. Browser-native smooth-scroll, no library. #}
+<script>
+(function () {
+  if (window.location.hash) return;
+  var first = document.querySelector(".opinion-body mark");
+  if (first) {
+    first.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+})();
+</script>
 {% endif %}
 {% endblock %}

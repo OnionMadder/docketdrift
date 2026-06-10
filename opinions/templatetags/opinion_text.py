@@ -40,6 +40,15 @@ _MAX_HEADING_LEN = 60
 _MAX_HEADING_WORDS = 5
 
 
+# Paragraph number marker at the START of a chunk:
+#   "[¶1] The plaintiffs..."   (NH / AZ Supreme convention -- bracketed)
+#   "¶1 The respondent..."     (AZ COA / older NH convention -- bare)
+# When present, we render the chunk's <p> tag with id="para-N" so URLs
+# can deep-link via #para-N, and we wrap the marker itself in a clickable
+# self-anchor so users can copy "share this paragraph" links.
+_PARA_NUM_RE = re.compile(r"^\[?¶\s*(\d+)\]?\s+")
+
+
 def _is_heading(text: str) -> bool:
     stripped = text.strip()
     if not (_MIN_HEADING_LEN <= len(stripped) <= _MAX_HEADING_LEN):
@@ -102,14 +111,38 @@ def _wrap_citation(match: re.Match) -> str:
 
 
 @register.filter(is_safe=True)
-def format_opinion_text(raw_text: str | None) -> str:
+def format_opinion_text(raw_text: str | None, highlight: str = "") -> str:
     """Render opinion raw_text as structured HTML.
+
+    When ``highlight`` is a non-empty string (typically passed from the
+    request query as ``?q=...``), every case-insensitive occurrence of
+    the highlight phrase in the body gets wrapped in ``<mark>`` tags.
+    Used to land a user on the opinion page with their search term
+    already visually located -- complements the snippet preview in the
+    search results.
 
     Returns an empty string when raw_text is empty/falsy, so the
     "no body" branch in the template is just ``{% if formatted %}``.
     """
     if not raw_text:
         return ""
+
+    # Build the highlight regex once. Escape so phrase queries with regex
+    # metacharacters (parens, dots, brackets) match literally. Empty
+    # highlight = no-op pattern that never matches.
+    highlight = (highlight or "").strip()
+    if highlight:
+        hl_re = re.compile(re.escape(highlight), re.IGNORECASE)
+    else:
+        hl_re = None
+
+    def _highlight(escaped_html: str) -> str:
+        if hl_re is None:
+            return escaped_html
+        return hl_re.sub(
+            lambda m: f"<mark>{m.group(0)}</mark>",
+            escaped_html,
+        )
 
     # Chunks separated by blank lines (1+ blank lines = paragraph break)
     chunks = re.split(r"\n\s*\n", raw_text)
@@ -121,8 +154,24 @@ def format_opinion_text(raw_text: str | None) -> str:
             continue
 
         if _is_heading(chunk):
-            parts.append(f'<h3 class="op-heading">{escape(chunk)}</h3>')
+            parts.append(f'<h3 class="op-heading">{_highlight(escape(chunk))}</h3>')
             continue
+
+        # Detect a leading paragraph marker like "[¶23]" so we can attach
+        # id="para-23" to the <p> for deep-linking and wrap the marker
+        # itself as an in-page self-link the user can right-click + copy.
+        para_match = _PARA_NUM_RE.match(chunk)
+        para_id_attr = ""
+        para_marker_html = ""
+        if para_match:
+            para_n = para_match.group(1)
+            para_id_attr = f' id="para-{para_n}"'
+            para_marker_html = (
+                f'<a class="op-para-anchor" href="#para-{para_n}"'
+                f' aria-label="Link to paragraph {para_n}">'
+                f'¶{para_n}</a> '
+            )
+            chunk = chunk[para_match.end():]
 
         # Body paragraph. Escape first, then inject statute links + case
         # citation wrappers. Internal hard newlines become <br> so
@@ -131,7 +180,10 @@ def format_opinion_text(raw_text: str | None) -> str:
         escaped = escape(chunk)
         escaped = _STATUTE_RE.sub(_linkify_statute, escaped)
         escaped = _CITATION_RE.sub(_wrap_citation, escaped)
+        escaped = _highlight(escaped)
         escaped = escaped.replace("\n", "<br>")
-        parts.append(f'<p class="op-para">{escaped}</p>')
+        parts.append(
+            f'<p class="op-para"{para_id_attr}>{para_marker_html}{escaped}</p>'
+        )
 
     return mark_safe("\n".join(parts))

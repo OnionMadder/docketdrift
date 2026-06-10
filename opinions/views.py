@@ -180,6 +180,82 @@ def home(request):
 
 
 @cache_control(public=True, max_age=CACHE_SEC_HOME)
+_SNIPPET_WINDOW = 240   # total characters per snippet
+_SNIPPET_PAD = 80       # characters of context on each side of the match
+
+
+def _attach_match_snippets(opinions, query):
+    """Attach an HTML-highlighted ``snippet_html`` to each opinion.
+
+    For each opinion in the list, find the first case-insensitive
+    occurrence of ``query`` in raw_text via MariaDB's ``INSTR`` and
+    return a SUBSTRING window around it -- all done DB-side so we don't
+    pump 100KB of raw_text across the wire per result row just to
+    extract a 240-char snippet.
+
+    The returned snippet is HTML-escaped, then every (case-insensitive)
+    occurrence of the query inside that window is wrapped in ``<mark>``
+    tags. Marked safe so the template can render it inline. Opinions
+    where the query isn't present in raw_text (e.g. semantic-search-
+    only matches) get an empty string -- the template treats that as
+    "no snippet to show".
+
+    Skips silently on local SQLite dev (no MariaDB SUBSTRING/INSTR
+    in the test setup). The template guards on ``op.snippet_html``
+    truthiness, so an empty annotation just hides the snippet row.
+    """
+    if connection.vendor != "mysql" or not query or not opinions:
+        return
+    ids = [op.pk for op in opinions]
+    placeholders = ",".join(["%s"] * len(ids))
+    sql = f"""
+        SELECT id,
+               SUBSTRING(
+                   raw_text,
+                   GREATEST(1, INSTR(LOWER(raw_text), LOWER(%s)) - %s),
+                   %s
+               ) AS snippet
+        FROM opinions_opinion
+        WHERE id IN ({placeholders})
+          AND INSTR(LOWER(raw_text), LOWER(%s)) > 0
+    """
+    params = [query, _SNIPPET_PAD, _SNIPPET_WINDOW, *ids, query]
+    with connection.cursor() as cursor:
+        cursor.execute(sql, params)
+        snippets = {row[0]: row[1] or "" for row in cursor.fetchall()}
+
+    if not snippets:
+        return
+
+    import html as _html
+    import re as _re
+    from django.utils.safestring import mark_safe
+
+    # Build a case-insensitive regex that matches the literal query
+    # text. We re.escape so phrase queries with regex metacharacters
+    # (parens, dots, brackets) match literally.
+    query_re = _re.compile(_re.escape(query), _re.IGNORECASE)
+
+    for op in opinions:
+        raw_snippet = snippets.get(op.pk, "")
+        if not raw_snippet:
+            op.snippet_html = ""
+            continue
+        # Collapse internal whitespace + strip edges so the snippet
+        # reads as a single tight line rather than column-broken
+        # PDF-extracted raw_text.
+        cleaned = _re.sub(r"\s+", " ", raw_snippet).strip()
+        # Add ellipses to signal mid-text truncation when applicable
+        # (always true unless the snippet starts at offset 1).
+        ellipsis = "&hellip; "
+        escaped = _html.escape(cleaned, quote=False)
+        highlighted = query_re.sub(
+            lambda m: f"<mark>{_html.escape(m.group(0), quote=False)}</mark>",
+            escaped,
+        )
+        op.snippet_html = mark_safe(ellipsis + highlighted + " &hellip;")
+
+
 def opinion_list(request):
     """The full opinion browse/search view. State-scoped.
 
@@ -229,6 +305,25 @@ def opinion_list(request):
         date_cutoff = date.today() - timedelta(days=365 * years_back)
         qs = qs.filter(release_date__gte=date_cutoff)
     if search_q:
+        # Statute-cite shortcut. If the query parses as a statute citation
+        # under the current state's grammar, redirect straight to the
+        # statute page. Saves the user a hop through the search results
+        # for the most-common "I have a citation, where's the source"
+        # path. Patterns recognized:
+        #   MN:  "Minn. Stat. § 609.185"
+        #   NH:  "RSA 159-B:1"
+        #   AZ:  "A.R.S. § 13-1103"
+        # The statute parser itself decides what counts -- same code that
+        # populated the statute pages now also routes the search box.
+        from opinions.parsing.statutes import extract_statutes as _parse_statutes
+        cites = _parse_statutes(state.code, search_q) if state else []
+        if cites:
+            from django.urls import reverse
+            return redirect(reverse(
+                "opinions:statute_detail",
+                kwargs={"reference": cites[0].reference_slug},
+            ))
+
         use_fulltext = (
             connection.vendor == "mysql"
             and len(search_q) >= FULLTEXT_MIN_QUERY_LEN
@@ -283,18 +378,36 @@ def opinion_list(request):
         # are preserved by ``.values("pk")``). Public search hit the same
         # 30s-COUNT trap that admin opinion changelist did; this is the
         # same fix on the public surface.
+        #
+        # Defer the giant TEXT columns on the rendering pass too -- the
+        # search-results table only displays docket / court / disposition /
+        # title. The match-context snippet comes from a separate
+        # SUBSTRING query (see _attach_match_snippets below) that pulls
+        # ~240 bytes per opinion instead of the full 50-100KB raw_text.
         from opinions.paginators import NoJoinCountPaginator
-        paginator = NoJoinCountPaginator(qs, HOME_PAGE_SIZE)
+        qs_render = qs.defer("raw_text", "html_content")
+        paginator = NoJoinCountPaginator(qs_render, HOME_PAGE_SIZE)
         page_obj = paginator.get_page(request.GET.get("page", 1))
         opinions = page_obj.object_list
         total_count = paginator.count
     else:
         # Default landing: just the most recent N. No paginator object so
         # the template knows we're in landing mode. Even here we count
-        # via ``.values("pk")`` to keep the join out of the COUNT.
+        # via ``.values("pk")`` to keep the join out of the COUNT. Defer
+        # the body columns -- list views don't render them.
         page_obj = None
-        opinions = list(qs[:HOME_LANDING_SIZE])
+        opinions = list(qs.defer("raw_text", "html_content")[:HOME_LANDING_SIZE])
         total_count = qs.values("pk").count()
+
+    # Snippet generation. For keyword searches, pull a ~240-char window
+    # around the FIRST occurrence of the query in each opinion's
+    # raw_text and highlight the match with <mark> tags. The SUBSTRING
+    # runs DB-side so we don't ship 100KB of raw_text per row across
+    # the wire just to extract 240 bytes. Renders as the "match context"
+    # row below each result so a paste-the-quote search shows WHERE in
+    # which opinion the phrase appears.
+    if search_q and opinions:
+        _attach_match_snippets(opinions, search_q)
 
     # Semantic search: when the user has typed a query, also run a
     # vector-similarity search alongside the keyword/FULLTEXT one and

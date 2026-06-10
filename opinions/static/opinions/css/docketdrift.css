@@ -1895,6 +1895,115 @@ button.cta-primary {
   border: 1px solid rgba(148, 140, 161, 0.4);
 }
 
+/* ----- Search-result match snippets ------------------------------- */
+
+/* When a row has an attached snippet, drop the bottom border so the
+   snippet row visually continues from the result row above it instead
+   of looking like a separate result. */
+.doc-table tbody tr.doc-row--with-snippet td {
+  border-bottom: none;
+}
+
+.doc-snippet-row td.doc-snippet-cell {
+  padding: 0 0.6rem 0.7rem 0.6rem;
+  border-bottom: 1px solid rgba(148, 140, 161, 0.18);
+}
+
+.doc-snippet-link {
+  display: block;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+  text-decoration: none;
+  font-style: italic;
+  padding: 0.25rem 0.5rem 0.4rem 2rem;
+  border-left: 2px solid rgba(255, 126, 211, 0.3);
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 0 2px 2px 0;
+}
+
+.doc-snippet-link:hover,
+.doc-snippet-link:focus-visible {
+  color: var(--text-bright);
+  border-left-color: var(--neon-pink);
+  background: rgba(255, 126, 211, 0.06);
+  outline: none;
+}
+
+.doc-snippet-link mark {
+  background: rgba(255, 126, 211, 0.32);
+  color: var(--text-bright);
+  font-style: normal;
+  font-weight: 600;
+  padding: 0.05rem 0.15rem;
+  border-radius: 2px;
+}
+
+/* ----- Opinion-detail: paragraph anchors + find-this banner -------- */
+
+.op-para-anchor {
+  display: inline-block;
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  font-size: 0.78rem;
+  color: var(--text-dim);
+  text-decoration: none;
+  margin-right: 0.15rem;
+  padding: 0 0.25rem;
+  border-radius: 2px;
+  vertical-align: baseline;
+  user-select: none;
+}
+
+.op-para-anchor:hover,
+.op-para-anchor:focus-visible {
+  color: var(--neon-cyan);
+  background: rgba(0, 217, 255, 0.08);
+  outline: none;
+}
+
+/* When a paragraph is the URL-fragment target, briefly flash it so the
+   user can spot where the deep-link landed. */
+.opinion-body .op-para:target {
+  background: rgba(0, 217, 255, 0.06);
+  border-left: 2px solid var(--neon-cyan);
+  padding-left: 0.75rem;
+  margin-left: -0.75rem;
+  border-radius: 0 3px 3px 0;
+}
+
+/* Marks inside the opinion body (from ?q= highlighting). */
+.opinion-body mark {
+  background: rgba(255, 126, 211, 0.32);
+  color: inherit;
+  padding: 0.03rem 0.18rem;
+  border-radius: 2px;
+  font-weight: 600;
+}
+
+.opinion-find-banner {
+  margin: 0 0 1rem;
+  padding: 0.55rem 0.9rem;
+  background: rgba(255, 126, 211, 0.08);
+  border: 1px solid rgba(255, 126, 211, 0.25);
+  border-radius: 3px;
+  font-size: 0.86rem;
+  color: var(--text-bright);
+}
+
+.opinion-find-banner a {
+  color: var(--neon-cyan);
+  text-decoration: none;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
+
+.opinion-find-banner a:hover,
+.opinion-find-banner a:focus-visible {
+  color: var(--neon-pink);
+  text-decoration: underline;
+}
+
 /* ============================================================
    Editorial tag chips (opinion detail header + browse pages)
    ============================================================
