@@ -102,6 +102,21 @@ _PANEL_GROUP_RE = re.compile(
     rf",?\s+(?P<role>C\.J\.|P\.J\.|JJ?\.)\s*,?\s*(?:concurred|concurring|join(?:ed)?)\b"
 )
 
+# NH dissent-footer continuation. In opinions with a dissent, the
+# footer-style signoff continues past the majority's "concurred." with
+# an explicit dissenter line:
+#   MACDONALD, C.J., and DONOVAN and COUNTWAY, JJ., concurred;
+#   BASSETT, J., dissented.
+# Each dissenter gets a DISSENT_AUTHOR vote -- they wrote their own
+# dissenting opinion that gets a separate section header
+# ("BASSETT, J., dissenting.") earlier in the body. We use this footer
+# pattern rather than the body header because the footer is more
+# uniform and unambiguous (the body header can show up inside cited
+# quotations from OTHER cases).
+_DISSENT_FOOTER_RE = re.compile(
+    rf"\b(?P<name>{_SURNAME}),\s*J\.,?\s+dissented\b",
+)
+
 # AZ-style byline lives at the TOP of the opinion, not the bottom. Two
 # distinct conventions, both handled here:
 #
@@ -168,6 +183,7 @@ class GenericByline:
     """Output of the generic byline extractor."""
     author_last: str | None
     panel_last: list[str]
+    dissenter_last: list[str]
     raw_matches: list[str]  # for debug / log inspection
 
 
@@ -185,10 +201,11 @@ def _extract_generic_byline(raw_text: str) -> GenericByline:
       the FIRST ~4KB of raw_text.
     """
     if not raw_text:
-        return GenericByline(None, [], [])
+        return GenericByline(None, [], [], [])
 
     author_last: str | None = None
     all_panel: list[str] = []
+    dissenter_lasts: list[str] = []
     raw_matches: list[str] = []
 
     # --- AZ-style top-of-opinion byline ---
@@ -272,6 +289,20 @@ def _extract_generic_byline(raw_text: str) -> GenericByline:
             author_last = names[0].lower()
         all_panel.extend(n.lower() for n in names)
 
+    # --- Dissenters in the same NH footer ---
+    # The "concurred; X, J., dissented." continuation lives in the same
+    # tail window as the majority signoff. Each match is a DISSENT_AUTHOR
+    # vote -- they wrote a separate dissenting opinion. Dedupe across
+    # matches (defensive: the same name shouldn't appear twice in a
+    # single footer, but be safe).
+    seen_dissenters: set[str] = set()
+    for m in _DISSENT_FOOTER_RE.finditer(tail):
+        ln = (m.group("name") or "").lower()
+        if ln and ln not in seen_dissenters:
+            seen_dissenters.add(ln)
+            dissenter_lasts.append(ln)
+            raw_matches.append(m.group(0))
+
     # Dedupe + drop the author from panel (author already counted via PV)
     seen = set()
     panel: list[str] = []
@@ -282,7 +313,15 @@ def _extract_generic_byline(raw_text: str) -> GenericByline:
             continue
         seen.add(n)
         panel.append(n)
-    return GenericByline(author_last=author_last, panel_last=panel, raw_matches=raw_matches)
+    # Also drop any name appearing both in panel and dissenters --
+    # they're dissenters, not majority-joiners.
+    panel = [n for n in panel if n not in seen_dissenters]
+    return GenericByline(
+        author_last=author_last,
+        panel_last=panel,
+        dissenter_last=dissenter_lasts,
+        raw_matches=raw_matches,
+    )
 
 
 # Title-case for display when we create new Judge rows from a byline-
@@ -451,6 +490,7 @@ class Command(BaseCommand):
         author_resolved = panel_resolved = 0
         author_ambiguous = panel_ambiguous = 0
         new_author_votes = new_join_votes = upgraded_votes = 0
+        new_dissent_votes = dissent_ambiguous = 0
         t0 = time.time()
 
         for opinion in opinion_qs.iterator(chunk_size=500):
@@ -466,6 +506,7 @@ class Command(BaseCommand):
                     f"  scanned {scanned:>6,}/{total:,}  "
                     f"author={new_author_votes:>5,}  "
                     f"join={new_join_votes:>5,}  "
+                    f"dissent={new_dissent_votes:>4,}  "
                     f"upgraded={upgraded_votes:>4,}  "
                     f"({rate:>4.0f}/s, eta {eta/60:.0f}min)",
                     ending="\n",
@@ -490,13 +531,17 @@ class Command(BaseCommand):
             else:
                 author_last = None
                 panel_lasts = []
-            generic = None
-            if author_last is None or not panel_lasts:
-                generic = _extract_generic_byline(opinion.raw_text)
-                if author_last is None and generic.author_last:
-                    author_last = generic.author_last
-                if not panel_lasts and generic.panel_last:
-                    panel_lasts = list(generic.panel_last)
+            # Always run the generic extractor in addition to the parser:
+            # the parser handles author + panel for its state, but only
+            # the generic extractor scans the NH-style "; X, J., dissented."
+            # continuation that carries dissenter names. Without this the
+            # concordance page on judge_compare always read 100% agreement
+            # for NH pairs since no DISSENT_AUTHOR votes existed.
+            generic = _extract_generic_byline(opinion.raw_text)
+            if author_last is None and generic.author_last:
+                author_last = generic.author_last
+            if not panel_lasts and generic.panel_last:
+                panel_lasts = list(generic.panel_last)
             # The generic extractor treats the byline-footer chief justice
             # ("X, C.J., and ...") as the AUTHOR when running standalone --
             # that's right when there's no parser, since the chief is the
@@ -505,12 +550,20 @@ class Command(BaseCommand):
             # signer), the chief is actually a JOINING panel member.
             # Promote them into the panel list.
             if (
-                generic is not None
-                and generic.author_last
+                generic.author_last
                 and generic.author_last != author_last
                 and generic.author_last not in panel_lasts
+                and generic.author_last not in generic.dissenter_last
             ):
                 panel_lasts.append(generic.author_last)
+            # Remove dissenters from the panel-joiner list if they accidentally
+            # appeared there (defensive -- the generic extractor already
+            # excludes dissenters from its panel output, but a state parser
+            # may not have).
+            dissenter_lasts = list(generic.dissenter_last)
+            if dissenter_lasts:
+                dissenter_set = set(dissenter_lasts)
+                panel_lasts = [p for p in panel_lasts if p not in dissenter_set]
 
             # ---- Pass 1: Author ----
             author_judge: Judge | None = None
@@ -562,20 +615,53 @@ class Command(BaseCommand):
                     if created:
                         new_join_votes += 1
 
+            # ---- Pass 3: Dissenters ----
+            # Each dissenter wrote a separate dissenting opinion, so
+            # the vote type is DISSENT_AUTHOR. If a prior pass wrote a
+            # MAJORITY_JOIN row for this same judge (e.g. a CL bulk
+            # load that didn't distinguish dissents), upgrade it in
+            # place rather than leaving conflicting data.
+            for dissenter_last in dissenter_lasts:
+                pre_existing = last_name_map.get(dissenter_last, [])
+                if len(pre_existing) > 1:
+                    dissent_ambiguous += 1
+                    continue
+
+                dissent_judge = _get_or_create_byline_judge(dissenter_last)
+                if dissent_judge is None:
+                    continue
+
+                if not dry_run:
+                    pv, created = PanelVote.objects.get_or_create(
+                        opinion=opinion,
+                        judge=dissent_judge,
+                        defaults={"vote_type": PanelVote.Vote.DISSENT_AUTHOR},
+                    )
+                    if created:
+                        new_dissent_votes += 1
+                    elif pv.vote_type == PanelVote.Vote.MAJORITY_JOIN:
+                        # CL bulk row mis-classified -- the footer says
+                        # this judge dissented, not joined.
+                        pv.vote_type = PanelVote.Vote.DISSENT_AUTHOR
+                        pv.save(update_fields=["vote_type"])
+                        upgraded_votes += 1
+
         elapsed = time.time() - t0
         self.stdout.write("")
         self.stdout.write(self.style.SUCCESS(
             f"Done in {elapsed/60:.1f} min."
         ))
         self.stdout.write(
-            f"  scanned:           {scanned:>7,}\n"
-            f"  authors resolved:  {author_resolved:>7,}  "
+            f"  scanned:             {scanned:>7,}\n"
+            f"  authors resolved:    {author_resolved:>7,}  "
             f"(ambiguous skipped: {author_ambiguous})\n"
-            f"  panels resolved:   {panel_resolved:>7,}  "
+            f"  panels resolved:     {panel_resolved:>7,}  "
             f"(ambiguous skipped: {panel_ambiguous})\n"
-            f"  new author votes:  {new_author_votes:>7,}\n"
-            f"  new joined votes:  {new_join_votes:>7,}\n"
-            f"  upgraded (J->A):   {upgraded_votes:>7,}"
+            f"  new author votes:    {new_author_votes:>7,}\n"
+            f"  new joined votes:    {new_join_votes:>7,}\n"
+            f"  new dissent votes:   {new_dissent_votes:>7,}  "
+            f"(ambiguous skipped: {dissent_ambiguous})\n"
+            f"  upgraded (J->A/D):   {upgraded_votes:>7,}"
             + (
                 f"\n  byline-learned judges (status=UNKNOWN): {forged_judges:>7,}"
                 if create_missing else ""
