@@ -623,7 +623,6 @@ def tag_detail(request, slug):
     })
 
 
-@cache_control(public=True, max_age=CACHE_SEC_DETAIL)
 def _yearly_panel_votes(judge_id):
     """Return [{year: int, n: int}, ...] of panel-vote counts per release-year.
 
@@ -649,6 +648,7 @@ def _yearly_panel_votes(judge_id):
     return [{"year": r["year"], "n": r["n"]} for r in rows]
 
 
+@cache_control(public=True, max_age=CACHE_SEC_DETAIL)
 def judge_detail(request, slug):
     """Per-judge dossier page. State-scoped to keep slugs unambiguous.
 
