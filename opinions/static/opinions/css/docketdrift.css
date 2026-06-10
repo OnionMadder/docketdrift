@@ -1606,6 +1606,163 @@ button.cta-primary {
   flex-shrink: 0;
 }
 
+/* ----- Compare two judges (judge_compare.html) ---------------------- */
+
+.judge-compare-header h1 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-size: 1.6rem;
+  margin: 0 0 0.4rem;
+}
+
+.judge-compare-header h1 a {
+  color: var(--neon-cyan);
+  text-decoration: none;
+}
+
+.judge-compare-header h1 a:nth-of-type(2) {
+  color: var(--neon-pink);
+}
+
+.vs-token {
+  font-size: 0.85rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.judge-compare-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.9rem;
+  margin-top: 1rem;
+}
+
+.judge-compare-picker__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.judge-compare-picker__label {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.judge-compare-picker__field select {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text-bright);
+  border: 1px solid rgba(148, 140, 161, 0.3);
+  border-radius: 3px;
+  font: inherit;
+}
+
+.judge-compare-picker__field select:focus-visible {
+  border-color: var(--neon-cyan);
+  outline: none;
+}
+
+.judge-compare-picker__sep {
+  padding-bottom: 0.5rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.judge-compare-picker__submit {
+  padding: 0.55rem 1.15rem;
+  background: var(--neon-cyan);
+  color: #00141a;
+  border: none;
+  border-radius: 3px;
+  font: inherit;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+
+.judge-compare-picker__submit:hover,
+.judge-compare-picker__submit:focus-visible {
+  background: var(--neon-pink);
+  outline: none;
+}
+
+.judge-compare-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.1rem;
+  margin-top: 1.2rem;
+}
+
+@media (max-width: 800px) {
+  .judge-compare-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.judge-compare-col-frame {
+  /* Each column is its own glossy-frame so they stand as parallel
+     dossier cards; trim the inner padding slightly so the two columns
+     don't feel cramped at typical desktop widths. */
+  padding: 1.25rem 1.4rem;
+}
+
+.judge-compare-col-frame h3 {
+  margin-top: 1.4rem;
+  margin-bottom: 0.6rem;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  color: var(--text-bright);
+}
+
+.judge-compare-col-frame .judge-bar-list,
+.judge-compare-col-frame .judge-cohort-list {
+  margin-top: 0.4rem;
+}
+
+.judge-compare-col-title {
+  margin: 0 0 0.4rem;
+  font-size: 1.25rem;
+}
+
+.judge-compare-col-title a {
+  text-decoration: none;
+}
+
+.judge-compare-col-frame:nth-of-type(2) .judge-compare-col-title a {
+  /* Matches the chart's overlay color so the column visually anchors
+     to the pink line in the chart above. */
+  color: var(--neon-pink);
+}
+
+.judge-compare-col-frame:nth-of-type(1) .judge-compare-col-title a {
+  color: var(--neon-cyan);
+}
+
+/* Compact variant of doc-table used inside the side-by-side columns
+   to keep each recent-opinions list narrower than the standalone
+   dossier's. */
+.doc-table.doc-table--compact {
+  font-size: 0.82rem;
+}
+
+.doc-table.doc-table--compact th,
+.doc-table.doc-table--compact td {
+  padding: 0.35rem 0.45rem;
+}
+
 /* ============================================================
    Editorial tag chips (opinion detail header + browse pages)
    ============================================================

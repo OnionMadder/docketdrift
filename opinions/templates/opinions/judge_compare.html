@@ -1,0 +1,127 @@
+{% extends "opinions/base.html" %}
+{% block title %}{% if judge_a and judge_b %}{{ judge_a.full_name }} vs {{ judge_b.full_name }}{% else %}Compare judges{% endif %} &middot; DocketDrift{% endblock %}
+{% block description %}{% if judge_a and judge_b %}Side-by-side comparison of {{ judge_a.full_name }} and {{ judge_b.full_name }} on DocketDrift{% if request.state %} ({{ request.state.name }}){% endif %}: panel votes per year, court breakdown, disposition lean, and frequent co-panelists.{% else %}Compare any two {{ request.state.name|default:"appellate" }} judges side-by-side: voting trajectory over time, court and disposition breakdowns, and frequent co-panelists.{% endif %}{% endblock %}
+
+{% block content %}
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+  <ol>
+    <li><a href="https://docketdrift.com/">DocketDrift</a></li>
+    {% if request.state %}<li><a href="{% url 'opinions:home' %}">{{ request.state.name }}</a></li>{% endif %}
+    <li><a href="{% url 'opinions:current_judges' %}">Current Judges</a></li>
+    <li aria-current="page">Compare</li>
+  </ol>
+</nav>
+
+{% if show_picker %}
+  <div class="glossy-frame">
+    <h1>Compare two judges</h1>
+    <p class="subtle-lead">
+      Pick two judges{% if request.state %} from {{ request.state.name }}{% endif %} to see their voting
+      trajectories overlaid on the same chart, plus a side-by-side dossier with
+      court breakdown, disposition lean, and frequent co-panelists.
+      {% if judge_a and not judge_b %}
+        Picked {{ judge_a.full_name }} but need a second judge for the comparison.
+      {% elif judge_b and not judge_a %}
+        Picked {{ judge_b.full_name }} but need a second judge for the comparison.
+      {% elif a_slug and not judge_a %}
+        Couldn&rsquo;t find <code>{{ a_slug }}</code>{% if request.state %} in {{ request.state.name }}{% endif %}.
+      {% elif b_slug and not judge_b %}
+        Couldn&rsquo;t find <code>{{ b_slug }}</code>{% if request.state %} in {{ request.state.name }}{% endif %}.
+      {% endif %}
+    </p>
+
+    {% if judges_options %}
+      <form method="get" class="judge-compare-picker">
+        <label class="judge-compare-picker__field">
+          <span class="judge-compare-picker__label">Judge A</span>
+          <select name="a" required>
+            <option value="">Pick a judge&hellip;</option>
+            {% for j in judges_options %}
+              <option value="{{ j.slug }}"{% if j.slug == a_slug %} selected{% endif %}>{{ j.full_name }} &mdash; {{ j.n }} vote{{ j.n|pluralize }}</option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <span class="judge-compare-picker__sep" aria-hidden="true">vs</span>
+
+        <label class="judge-compare-picker__field">
+          <span class="judge-compare-picker__label">Judge B</span>
+          <select name="b" required>
+            <option value="">Pick a judge&hellip;</option>
+            {% for j in judges_options %}
+              <option value="{{ j.slug }}"{% if j.slug == b_slug %} selected{% endif %}>{{ j.full_name }} &mdash; {{ j.n }} vote{{ j.n|pluralize }}</option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <button type="submit" class="judge-compare-picker__submit">Compare</button>
+      </form>
+    {% else %}
+      <p class="glitch-line">
+        No judges with panel-vote data{% if request.state %} in {{ request.state.name }}{% endif %} yet.
+      </p>
+    {% endif %}
+  </div>
+
+{% else %}
+  <div class="glossy-frame judge-compare-header">
+    <h1>
+      <a href="{% url 'opinions:judge_detail' slug=judge_a.slug %}">{{ judge_a.full_name }}</a>
+      <span class="vs-token" aria-hidden="true">vs</span>
+      <a href="{% url 'opinions:judge_detail' slug=judge_b.slug %}">{{ judge_b.full_name }}</a>
+    </h1>
+    <p class="subtle-lead">
+      Side-by-side dossier &middot;
+      <a href="{% url 'opinions:judge_compare' %}">pick different judges</a> &middot;
+      <a href="{% url 'opinions:judge_detail' slug=judge_a.slug %}?vs={{ judge_b.slug }}">open as overlay on {{ judge_a.full_name }}&rsquo;s dossier</a>
+    </p>
+  </div>
+
+  {% if yearly_chart %}
+    <div class="glossy-frame judge-chart-card">
+      <h2>Panel votes per year</h2>
+      <div class="judge-chart-wrap">
+        <svg
+          viewBox="0 0 {{ yearly_chart.width }} {{ yearly_chart.height }}"
+          xmlns="http://www.w3.org/2000/svg"
+          role="img"
+          aria-label="Panel votes per year: {{ judge_a.full_name }} vs {{ judge_b.full_name }}"
+          class="judge-chart-svg"
+        >
+          {% for tick in yearly_chart.y_ticks %}
+            <line x1="{{ yearly_chart.axis_x_left }}" y1="{{ tick.y }}" x2="{{ yearly_chart.axis_x_right }}" y2="{{ tick.y }}" stroke="#ffffff14" stroke-width="1"/>
+            <text x="{{ yearly_chart.pad_left|add:"-8" }}" y="{{ tick.y }}" text-anchor="end" dominant-baseline="central" fill="#9aa" font-size="11">{{ tick.value }}</text>
+          {% endfor %}
+          {% for tick in yearly_chart.x_ticks %}
+            <line x1="{{ tick.x }}" y1="{{ yearly_chart.axis_y_top }}" x2="{{ tick.x }}" y2="{{ yearly_chart.axis_y_bottom }}" stroke="#ffffff08" stroke-width="1"/>
+            <text x="{{ tick.x }}" y="{{ yearly_chart.axis_y_bottom|add:"18" }}" text-anchor="middle" fill="#9aa" font-size="11">{{ tick.year }}</text>
+          {% endfor %}
+
+          {% for s in yearly_chart.series %}
+            <polyline points="{{ s.points }}" fill="none" stroke="{{ s.color }}" stroke-width="2" {% if s.dash %}stroke-dasharray="{{ s.dash }}"{% endif %} stroke-linecap="round" stroke-linejoin="round"/>
+            {% for dot in s.dots %}
+              <circle cx="{{ dot.x }}" cy="{{ dot.y }}" r="3" fill="{{ s.color }}">
+                <title>{{ dot.year }}: {{ dot.n }} vote{{ dot.n|pluralize }} &mdash; {{ s.label }}</title>
+              </circle>
+            {% endfor %}
+          {% endfor %}
+        </svg>
+
+        <ul class="judge-chart-legend">
+          {% for s in yearly_chart.series %}
+            <li>
+              <span class="judge-chart-legend__swatch" style="background:{{ s.color }}{% if s.dash %};background-image:linear-gradient(90deg,{{ s.color }} 50%,transparent 50%);background-size:8px 100%{% endif %}"></span>
+              {{ s.label }}
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="judge-compare-grid">
+    {% include "opinions/_judge_compare_col.html" with stats=stats_a judge=judge_a %}
+    {% include "opinions/_judge_compare_col.html" with stats=stats_b judge=judge_b %}
+  </div>
+{% endif %}
+{% endblock %}

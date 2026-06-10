@@ -1,5 +1,7 @@
 """Django admin for DocketDrift opinions."""
 from django.contrib import admin
+from django.core.paginator import Paginator
+from django.utils.functional import cached_property
 
 from opinions.models import (
     Court,
@@ -14,6 +16,35 @@ from opinions.models import (
     Tag,
     TagSuggestion,
 )
+
+
+class NoJoinCountPaginator(Paginator):
+    """Paginator whose ``.count`` doesn't carry select_related joins.
+
+    Django's admin queryset for OpinionAdmin uses ``.select_related(
+    "court", "court__state")`` so the changelist's list_display renders
+    courts in a single query. But ``Paginator.count`` reuses the SAME
+    queryset for the COUNT, generating::
+
+        SELECT COUNT(*) FROM opinions_opinion
+        INNER JOIN opinions_court ON ...
+        INNER JOIN opinions_state ON ...
+
+    Those joins are useless for the count and -- on a 120K-row corpus
+    with a court filter applied -- take 30+ seconds. Three concurrent
+    admin pageviews were enough to saturate gunicorn's worker threads
+    and time out unrelated requests during the 2026-06-09 session.
+
+    Fix: strip the joins by re-querying via ``.values("pk")`` before the
+    count. ``.values("pk")`` only references the primary key, so Django
+    drops the select_related joins from the SQL it emits. Result: the
+    count becomes a simple single-table COUNT on the indexed PK column,
+    ~1ms even on the full corpus.
+    """
+
+    @cached_property
+    def count(self):
+        return self.object_list.values("pk").count()
 
 
 @admin.register(Tag)
@@ -509,6 +540,9 @@ class OpinionAdmin(admin.ModelAdmin):
     # to count + render too much per request.
     list_per_page = 50
     show_full_result_count = False  # skip the unfiltered-count query
+    # And use a paginator that doesn't drag select_related joins into
+    # the COUNT(*). See NoJoinCountPaginator for the why.
+    paginator = NoJoinCountPaginator
 
     def get_queryset(self, request):
         # select_related the FKs that list_display renders so the

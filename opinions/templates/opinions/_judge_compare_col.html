@@ -1,0 +1,142 @@
+{% comment %}
+Single-column rendering of one judge's dossier inside the
+side-by-side compare view. Expects context:
+  stats   -- the dict returned by views._judge_stats() for one judge
+  judge   -- shortcut for stats.judge (so the template reads more naturally)
+
+The same partial is included twice from judge_compare.html (once per
+column). Mirroring this with judge_detail.html's main column is a
+deliberate non-goal -- the standalone dossier has its own bio card +
+photo treatment that wouldn't survive a 2-col squeeze.
+{% endcomment %}
+
+<div class="glossy-frame judge-compare-col-frame">
+  <h2 class="judge-compare-col-title">
+    <a href="{% url 'opinions:judge_detail' slug=judge.slug %}">{{ judge.full_name }}</a>
+  </h2>
+
+  {% if judge.court or judge.appointment_date %}
+    <p class="opinion-meta">
+      {% if judge.court %}<strong>{{ judge.court.name }}</strong>{% endif %}
+      {% if judge.court and judge.appointment_date %} &middot; {% endif %}
+      {% if judge.appointment_date %}Appointed {{ judge.appointment_date|date:"F j, Y" }}{% endif %}
+    </p>
+  {% endif %}
+
+  {% if stats.total_opinions %}
+    <p class="subtle-lead">
+      <strong>{{ stats.total_opinions }}</strong> opinion{{ stats.total_opinions|pluralize }}{% if stats.date_range.first %},
+      {{ stats.date_range.first|date:"Y" }}&ndash;{{ stats.date_range.last|date:"Y" }}{% endif %}.
+    </p>
+
+    <div class="judge-stat-grid">
+      {% if stats.role_summary.authored_majority %}
+        <div class="judge-stat-card">
+          <strong>{{ stats.role_summary.authored_majority }}</strong>
+          <span>Majority authored</span>
+        </div>
+      {% endif %}
+      {% if stats.role_summary.joined_majority %}
+        <div class="judge-stat-card">
+          <strong>{{ stats.role_summary.joined_majority }}</strong>
+          <span>Joined majority</span>
+        </div>
+      {% endif %}
+      {% if stats.role_summary.authored_concurrence or stats.role_summary.joined_concurrence %}
+        <div class="judge-stat-card">
+          <strong>{{ stats.role_summary.authored_concurrence|add:stats.role_summary.joined_concurrence }}</strong>
+          <span>Concurrences</span>
+        </div>
+      {% endif %}
+      {% if stats.role_summary.authored_dissent or stats.role_summary.joined_dissent %}
+        <div class="judge-stat-card judge-stat-card--accent">
+          <strong>{{ stats.role_summary.authored_dissent|add:stats.role_summary.joined_dissent }}</strong>
+          <span>Dissents</span>
+        </div>
+      {% endif %}
+      {% if stats.role_summary.recused %}
+        <div class="judge-stat-card">
+          <strong>{{ stats.role_summary.recused }}</strong>
+          <span>Recused</span>
+        </div>
+      {% endif %}
+    </div>
+
+    {% if stats.court_breakdown %}
+      <h3>By court</h3>
+      <ul class="judge-bar-list">
+        {% for c in stats.court_breakdown %}
+          <li>
+            <span class="judge-bar-label">
+              <span class="court-pill court-pill--{{ c.court.level_slug }}" title="{{ c.court.name }}">{{ c.court.short_label }}</span>
+            </span>
+            <span class="judge-bar-track">
+              <span class="judge-bar-fill" style="width: {% widthratio c.n stats.total_opinions 100 %}%"></span>
+            </span>
+            <span class="judge-bar-count">{{ c.n }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    {% if stats.disposition_breakdown %}
+      <h3>By disposition</h3>
+      <ul class="judge-bar-list">
+        {% for d in stats.disposition_breakdown %}
+          <li>
+            <span class="judge-bar-label">
+              <span class="case-status disposition-{{ d.disposition_bucket }}">{{ d.disposition_bucket|title }}</span>
+            </span>
+            <span class="judge-bar-track">
+              <span class="judge-bar-fill judge-bar-fill--{{ d.disposition_bucket }}" style="width: {% widthratio d.n stats.total_opinions 100 %}%"></span>
+            </span>
+            <span class="judge-bar-count">{{ d.n }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    {% if stats.cohort %}
+      <h3>Most-frequent co-panelists</h3>
+      <ul class="judge-cohort-list">
+        {% for c in stats.cohort %}
+          <li>
+            <a href="{% url 'opinions:judge_detail' slug=c.slug %}">{{ c.full_name }}</a>
+            <span class="judge-cohort-count">{{ c.shared }} shared</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    {% if stats.recent_opinions %}
+      <h3>Recent opinions</h3>
+      <table class="doc-table doc-table--compact">
+        <thead>
+          <tr>
+            <th>Docket</th>
+            <th>Filed</th>
+            <th>Disposition</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for op in stats.recent_opinions %}
+          <tr>
+            <td class="case-number-cell"><a href="{% url 'opinions:detail' case_number=op.case_number %}"><span class="file-number">{{ op.case_number }}</span></a></td>
+            <td class="doc-date-cell">{{ op.release_date|date:"Y-m-d" }}</td>
+            <td>
+              {% if op.disposition %}
+                <span class="case-status disposition-{{ op.disposition_class }}">{{ op.disposition|truncatechars:24 }}</span>
+              {% else %}
+                <span class="doc-date-cell is-tbd">&mdash;</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+
+  {% else %}
+    <p class="glitch-line">No panel-vote data for {{ judge.full_name }} yet.</p>
+  {% endif %}
+</div>

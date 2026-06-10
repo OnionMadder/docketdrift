@@ -648,6 +648,104 @@ def _yearly_panel_votes(judge_id):
     return [{"year": r["year"], "n": r["n"]} for r in rows]
 
 
+def _judge_stats(judge, recent_limit=15, cohort_limit=10):
+    """Compute the full per-judge dossier stat bundle.
+
+    Shared between judge_detail (single-judge dossier) and judge_compare
+    (side-by-side view) so both render the exact same numbers from the
+    exact same queries. Returns a dict ready to spread into the template
+    context.
+
+    ``recent_limit`` and ``cohort_limit`` are template knobs -- the
+    compare view shows fewer rows per column than the standalone
+    dossier so the two-column layout doesn't get unmanageably tall.
+    """
+    from django.db.models import Count
+    from opinions.models import PanelVote, Court as _Court
+
+    opinions_qs = Opinion.objects.filter(panel_votes__judge=judge).distinct()
+    total_opinions = opinions_qs.count()
+
+    vote_counts = dict(
+        PanelVote.objects.filter(judge=judge)
+        .values_list("vote_type")
+        .annotate(n=Count("id"))
+        .values_list("vote_type", "n")
+    )
+    role_summary = {
+        "authored_majority": vote_counts.get(PanelVote.Vote.MAJORITY_AUTHOR, 0),
+        "joined_majority": vote_counts.get(PanelVote.Vote.MAJORITY_JOIN, 0),
+        "authored_concurrence": vote_counts.get(PanelVote.Vote.CONCURRENCE_AUTHOR, 0),
+        "joined_concurrence": vote_counts.get(PanelVote.Vote.CONCURRENCE_JOIN, 0),
+        "authored_dissent": vote_counts.get(PanelVote.Vote.DISSENT_AUTHOR, 0),
+        "joined_dissent": vote_counts.get(PanelVote.Vote.DISSENT_JOIN, 0),
+        "recused": vote_counts.get(PanelVote.Vote.RECUSED, 0),
+    }
+
+    date_range = opinions_qs.aggregate(
+        first=models.Min("release_date"),
+        last=models.Max("release_date"),
+    ) if total_opinions else {"first": None, "last": None}
+
+    # Court breakdown -- group by court_id (a real column), resolve to
+    # Court instances after aggregation. short_label is a Python
+    # @property so it can't appear in .values().
+    court_breakdown_rows = list(
+        opinions_qs.values("court_id")
+        .annotate(n=Count("id"))
+        .order_by("-n")
+    )
+    courts_map = {
+        c.id: c for c in _Court.objects.filter(
+            id__in=[r["court_id"] for r in court_breakdown_rows]
+        )
+    }
+    court_breakdown = [
+        {"court": courts_map[row["court_id"]], "n": row["n"]}
+        for row in court_breakdown_rows
+        if row["court_id"] in courts_map
+    ]
+
+    disposition_breakdown = list(
+        opinions_qs.exclude(disposition_bucket="")
+        .values("disposition_bucket")
+        .annotate(n=Count("id"))
+        .order_by("-n")
+    )
+
+    # Defer the two giant TEXT columns: list views never render raw_text
+    # and pulling it pumps multi-MB across the wire for a 15-row list.
+    recent_opinions = list(
+        opinions_qs.defer("raw_text", "html_content")
+        .select_related("court")
+        .order_by("-release_date")[:recent_limit]
+    )
+
+    cohort = []
+    if total_opinions > 0:
+        cohort = list(
+            Judge.objects.filter(
+                panel_votes__opinion__panel_votes__judge=judge,
+            )
+            .exclude(pk=judge.pk)
+            .annotate(shared=Count("panel_votes__opinion", distinct=True))
+            .order_by("-shared", "full_name")[:cohort_limit]
+            .values("slug", "full_name", "shared")
+        )
+
+    return {
+        "judge": judge,
+        "total_opinions": total_opinions,
+        "role_summary": role_summary,
+        "date_range": date_range,
+        "court_breakdown": court_breakdown,
+        "disposition_breakdown": disposition_breakdown,
+        "recent_opinions": recent_opinions,
+        "cohort": cohort,
+        "yearly_votes": _yearly_panel_votes(judge.pk) if total_opinions > 0 else [],
+    }
+
+
 @cache_control(public=True, max_age=CACHE_SEC_DETAIL)
 def judge_detail(request, slug):
     """Per-judge dossier page. State-scoped to keep slugs unambiguous.
@@ -681,120 +779,111 @@ def judge_detail(request, slug):
         except Judge.DoesNotExist:
             vs_judge = None
 
-    from django.db.models import Count, Q
-    from opinions.models import PanelVote
-
-    # Total opinions the judge sat on
-    opinions_qs = Opinion.objects.filter(panel_votes__judge=judge).distinct()
-    total_opinions = opinions_qs.count()
-
-    # Vote-type breakdown (authored vs joined vs dissent etc)
-    vote_counts = dict(
-        PanelVote.objects.filter(judge=judge)
-        .values_list("vote_type")
-        .annotate(n=Count("id"))
-        .values_list("vote_type", "n")
-    )
-
-    # Group authored / joined / dissent at a higher level so display
-    # is "Majority opinions authored: N, Joined majority: N, Dissents: N"
-    role_summary = {
-        "authored_majority": vote_counts.get(PanelVote.Vote.MAJORITY_AUTHOR, 0),
-        "joined_majority": vote_counts.get(PanelVote.Vote.MAJORITY_JOIN, 0),
-        "authored_concurrence": vote_counts.get(PanelVote.Vote.CONCURRENCE_AUTHOR, 0),
-        "joined_concurrence": vote_counts.get(PanelVote.Vote.CONCURRENCE_JOIN, 0),
-        "authored_dissent": vote_counts.get(PanelVote.Vote.DISSENT_AUTHOR, 0),
-        "joined_dissent": vote_counts.get(PanelVote.Vote.DISSENT_JOIN, 0),
-        "recused": vote_counts.get(PanelVote.Vote.RECUSED, 0),
-    }
-
-    # Date range -- when did this judge sit on opinions we have?
-    date_range = opinions_qs.aggregate(
-        first=models.Min("release_date"),
-        last=models.Max("release_date"),
-    ) if total_opinions else {"first": None, "last": None}
-
-    # Court breakdown -- Supreme vs Court of Appeals splits via panel
-    # votes, since a single judge can sit on multiple courts over time.
-    # Group by court_id (a real DB column) and resolve to Court instances
-    # after the aggregation -- short_label is a Python @property so it
-    # can't appear in .values().
-    from opinions.models import Court as _Court
-    court_breakdown_rows = list(
-        opinions_qs.values("court_id")
-        .annotate(n=Count("id"))
-        .order_by("-n")
-    )
-    courts_map = {
-        c.id: c for c in _Court.objects.filter(
-            id__in=[r["court_id"] for r in court_breakdown_rows]
-        )
-    }
-    court_breakdown = [
-        {"court": courts_map[row["court_id"]], "n": row["n"]}
-        for row in court_breakdown_rows
-        if row["court_id"] in courts_map
-    ]
-
-    # Disposition breakdown for the disposition pill colors.
-    disposition_breakdown = list(
-        opinions_qs.exclude(disposition_bucket="")
-        .values("disposition_bucket")
-        .annotate(n=Count("id"))
-        .order_by("-n")
-    )
-
-    # Recent opinions list -- 15 most recent we have a panel-vote for.
-    # ``.defer("raw_text", "html_content")`` keeps the two giant TEXT
-    # columns out of the list payload -- pulling raw_text on 15 rows
-    # could be 1MB+ of wire bytes for a list view that doesn't render
-    # the body. (Same trap statute_detail learned a few hours back.)
-    recent_opinions = list(
-        opinions_qs.defer("raw_text", "html_content")
-        .select_related("court")
-        .order_by("-release_date")[:15]
-    )
-
-    # Frequent co-panelists -- other judges who appeared on the same
-    # opinions, ranked by overlap count. Capped at top 10. Heavy query;
-    # only computed when the judge has > 0 opinions.
-    cohort = []
-    if total_opinions > 0:
-        cohort = list(
-            Judge.objects.filter(
-                panel_votes__opinion__panel_votes__judge=judge,
-            )
-            .exclude(pk=judge.pk)
-            .annotate(shared=Count("panel_votes__opinion", distinct=True))
-            .order_by("-shared", "full_name")[:10]
-            .values("slug", "full_name", "shared")
-        )
+    # All dossier aggregates live in the shared helper so judge_detail
+    # and judge_compare emit the same numbers from the same queries.
+    stats = _judge_stats(judge)
+    vs_stats = _judge_stats(vs_judge) if vs_judge is not None else None
 
     # Time-series chart: yearly panel votes for this judge, optionally
     # overlaid with a second judge from ?vs=<slug>. The chart helper
     # returns None when both series are empty, which the template uses
     # as a render gate.
     from opinions import charts
-    series_a = _yearly_panel_votes(judge.pk) if total_opinions > 0 else []
-    series_b = _yearly_panel_votes(vs_judge.pk) if vs_judge is not None else None
     yearly_chart = charts.build_yearly_votes_chart(
-        series_a=series_a,
+        series_a=stats["yearly_votes"],
         label_a=judge.full_name,
-        series_b=series_b,
+        series_b=vs_stats["yearly_votes"] if vs_stats else None,
         label_b=vs_judge.full_name if vs_judge is not None else None,
     )
 
     return render(request, "opinions/judge_detail.html", {
-        "judge": judge,
+        **stats,
         "vs_judge": vs_judge,
-        "total_opinions": total_opinions,
-        "role_summary": role_summary,
-        "date_range": date_range,
-        "court_breakdown": court_breakdown,
-        "disposition_breakdown": disposition_breakdown,
-        "recent_opinions": recent_opinions,
-        "cohort": cohort,
         "yearly_chart": yearly_chart,
+        "active_nav": "judges",
+    })
+
+
+@cache_control(public=True, max_age=CACHE_SEC_DETAIL)
+def judge_compare(request):
+    """Two-judge side-by-side dossier.
+
+    URL: /compare/judges/?a=<slug-a>&b=<slug-b>. Both slugs are resolved
+    in the current state (the StateRouterMiddleware sets
+    ``request.state``); cross-state comparison is intentionally NOT
+    supported because Judge slugs are unique per state, not globally --
+    a cross-state "Smith" comparison would be ambiguous.
+
+    Renders the same per-judge stat bundle as judge_detail in two
+    columns, plus the overlaid time-series chart up top. Missing /
+    unresolvable slugs render a picker form instead of the comparison
+    so the URL is shareable as a "let me compare these two" link
+    without breaking when one slug is wrong.
+    """
+    from django.db.models import Count
+    from opinions import charts
+
+    state = getattr(request, "state", None)
+
+    def _resolve(slug: str):
+        if not slug:
+            return None
+        qs = Judge.objects.select_related("state", "court")
+        if state is not None:
+            qs = qs.filter(state=state)
+        try:
+            return qs.get(slug=slug)
+        except Judge.DoesNotExist:
+            return None
+
+    a_slug = (request.GET.get("a") or "").strip()
+    b_slug = (request.GET.get("b") or "").strip()
+    judge_a = _resolve(a_slug)
+    judge_b = _resolve(b_slug)
+
+    # Reject the degenerate self-compare. The picker will re-render
+    # with a hint instead of showing two identical columns.
+    if judge_a is not None and judge_b is not None and judge_a.pk == judge_b.pk:
+        judge_b = None
+
+    show_picker = judge_a is None or judge_b is None
+
+    stats_a = _judge_stats(judge_a, recent_limit=8, cohort_limit=6) if judge_a else None
+    stats_b = _judge_stats(judge_b, recent_limit=8, cohort_limit=6) if judge_b else None
+
+    yearly_chart = None
+    if stats_a is not None or stats_b is not None:
+        yearly_chart = charts.build_yearly_votes_chart(
+            series_a=stats_a["yearly_votes"] if stats_a else [],
+            label_a=judge_a.full_name if judge_a else "",
+            series_b=stats_b["yearly_votes"] if stats_b else None,
+            label_b=judge_b.full_name if judge_b else None,
+        )
+
+    # Picker: state-scoped list of judges with at least one panel vote,
+    # used to populate the two <select> dropdowns when one or both
+    # picks are missing. Cap the list at ~250 judges for select-box
+    # usability; if a state ever has more, we can switch to autocomplete.
+    judges_options: list[dict] = []
+    if show_picker and state is not None:
+        judges_options = list(
+            Judge.objects.filter(state=state)
+            .annotate(n=Count("panel_votes"))
+            .filter(n__gt=0)
+            .order_by("full_name")
+            .values("slug", "full_name", "n")[:250]
+        )
+
+    return render(request, "opinions/judge_compare.html", {
+        "judge_a": judge_a,
+        "judge_b": judge_b,
+        "a_slug": a_slug,
+        "b_slug": b_slug,
+        "stats_a": stats_a,
+        "stats_b": stats_b,
+        "yearly_chart": yearly_chart,
+        "show_picker": show_picker,
+        "judges_options": judges_options,
         "active_nav": "judges",
     })
 

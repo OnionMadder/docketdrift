@@ -17,6 +17,7 @@ urlpatterns = [
     path("opinion/<str:case_number>/", views.opinion_detail, name="detail"),
     path("current-judges/", views.current_judges, name="current_judges"),
     path("judge/<slug:slug>/", views.judge_detail, name="judge_detail"),
+    path("compare/judges/", views.judge_compare, name="judge_compare"),
     path("tag/", views.tag_index, name="tag_index"),
     path("tag/<slug:slug>/", views.tag_detail, name="tag_detail"),
     # Statute reference is a dot-separated slug (minn.stat.609.185), so the
