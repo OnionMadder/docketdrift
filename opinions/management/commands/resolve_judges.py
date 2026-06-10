@@ -259,10 +259,15 @@ def _extract_generic_byline(raw_text: str) -> GenericByline:
             all_panel.append(nm)
 
     # --- NH-style footer concurrence ---
-    # Concentrate the search on the last 2KB -- panel lists are at the
-    # footer, never the body. This drops false positives from majority
-    # text that contains uppercase party names ("ROBERTS sued LARSON").
-    tail = raw_text[-2000:]
+    # Concentrate the search on the last 8KB -- panel lists are at the
+    # footer, never the body. For unanimous opinions the footer sits in
+    # the last few hundred bytes, but opinions with a dissent push the
+    # majority footer back behind the (typically 4-10KB) dissent body,
+    # so the window has to be generous. ``_PANEL_GROUP_RE`` requires the
+    # explicit ", JJ., concurred" / ", J., concurred" anchor, so this
+    # wider window doesn't admit false positives from majority prose
+    # like "ROBERTS sued LARSON".
+    tail = raw_text[-8000:]
 
     for m in _PANEL_GROUP_RE.finditer(tail):
         raw_matches.append(m.group(0))
