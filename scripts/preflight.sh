@@ -29,16 +29,22 @@ if [ ! -x "$PYTHON" ]; then
     PYTHON="./.venv/bin/python"
 fi
 
+# The bare `python -c "import opinions.views"` route needs Django
+# already configured; we do it through django.setup() so the import-side
+# decorator-orphan SyntaxError + URL-conf import errors surface here
+# rather than at gunicorn boot in production.
+export DJANGO_SETTINGS_MODULE="docketdrift_site.settings"
+
 echo "[preflight] manage.py check (includes opinions.E001 multi-line {# #} guard)"
 "$PYTHON" manage.py check
 
 echo "[preflight] importing opinions.views (catches decorator-orphan SyntaxError)"
-"$PYTHON" -c "import opinions.views; print('opinions.views imported cleanly')"
+"$PYTHON" -c "import django; django.setup(); import opinions.views; print('opinions.views imported cleanly')"
 
 echo "[preflight] importing opinions.urls (catches URL-conf syntax errors)"
-"$PYTHON" -c "import opinions.urls; print('opinions.urls imported cleanly')"
+"$PYTHON" -c "import django; django.setup(); import opinions.urls; print('opinions.urls imported cleanly')"
 
 echo "[preflight] importing every parser (catches parser regex / import bugs)"
-"$PYTHON" -c "from opinions.parsing import REGISTRY; print('parsers:', list(REGISTRY))"
+"$PYTHON" -c "import django; django.setup(); from opinions.parsing import REGISTRY; print('parsers:', list(REGISTRY))"
 
 echo "[preflight] all checks passed. safe to push."

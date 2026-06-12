@@ -126,8 +126,17 @@ def home(request):
         return redirect(f"{reverse('opinions:opinion_list')}?{request.GET.urlencode()}")
 
     # State landing.
-    state_opinions = Opinion.objects.filter(court__state=state)
-    total_opinions = state_opinions.count()
+    # Pre-resolve court_ids the same way opinion_list does. The previous
+    # `Opinion.objects.filter(court__state=state)` JOINed opinions ->
+    # courts -> states on every aggregate (count, MIN/MAX, recent-5),
+    # which on the 60K-row MN corpus took 12+ seconds under embed
+    # contention -- enough to time out the public state-landing page.
+    # The court table is a handful of rows per state; resolving in
+    # Python first turns every aggregate into an FK-indexed scan.
+    court_ids = list(state.courts.values_list("id", flat=True))
+
+    state_opinions = Opinion.objects.filter(court_id__in=court_ids)
+    total_opinions = state_opinions.values("pk").count()
     judges_qs = Judge.objects.filter(state=state)
     total_judges = judges_qs.count()
     currently_seated = judges_qs.filter(is_currently_seated=True).count()
@@ -141,8 +150,11 @@ def home(request):
         state_opinions.select_related("court").order_by("-release_date")[:5]
     )
 
+    # tag-distinct-count uses an indexed M2M plus the same pre-resolved
+    # court_ids, dodging the opinions -> courts -> states JOIN that the
+    # old `opinions__court__state=state` lookup forced.
     total_tags_used = Tag.objects.filter(
-        opinions__court__state=state,
+        opinions__court_id__in=court_ids,
     ).distinct().count()
     total_tags_available = Tag.objects.count()
 
