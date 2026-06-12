@@ -95,6 +95,16 @@ def _get_sized_tags(state) -> list[tuple[str, int, str]]:
 
     use_fulltext = connection.vendor == "mysql"
 
+    # Pre-resolve court_ids once per call. Without this every per-tag
+    # MATCH-AGAINST COUNT JOINed opinions -> courts -> states and N tags
+    # * full-corpus FULLTEXT scan was THE single biggest source of state-
+    # landing slowness -- this runs on every templated response, so a
+    # crawler hammering /tag/ + /opinions/ + state landings could pile
+    # 60+ JOIN-COUNTs on the workers concurrently. Pre-resolved court
+    # IDs let MariaDB use the FULLTEXT index AND the court_id index
+    # without dragging in the multi-table join plan.
+    court_ids = list(state.courts.values_list("id", flat=True))
+
     raw_counts: list[tuple[str, int]] = []
     for tag in EXPLORE_TAGS:
         try:
@@ -104,16 +114,21 @@ def _get_sized_tags(state) -> list[tuple[str, int, str]]:
                 # multi-word tags like "Fourth Amendment" match precisely.
                 # extra() is the cleanest way to inject MATCH AGAINST in
                 # Django -- there's no native ORM lookup for MySQL FULLTEXT.
-                n = Opinion.objects.filter(court__state=state).extra(
-                    where=[
-                        "MATCH(opinions_opinion.raw_text, opinions_opinion.title) "
-                        "AGAINST (%s IN BOOLEAN MODE)"
-                    ],
-                    params=[f'"{tag}"'],
-                ).count()
+                n = (
+                    Opinion.objects.filter(court_id__in=court_ids)
+                    .extra(
+                        where=[
+                            "MATCH(opinions_opinion.raw_text, opinions_opinion.title) "
+                            "AGAINST (%s IN BOOLEAN MODE)"
+                        ],
+                        params=[f'"{tag}"'],
+                    )
+                    .values("pk")
+                    .count()
+                )
             else:
                 n = Opinion.objects.filter(
-                    court__state=state,
+                    court_id__in=court_ids,
                     raw_text__icontains=tag,
                 ).count()
         except Exception:
