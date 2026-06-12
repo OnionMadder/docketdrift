@@ -51,6 +51,10 @@ fail=0
 stamp() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 # --- (1) /healthz ----------------------------------------------------------
+# Clear any stale body from a previous heartbeat run -- otherwise a
+# current curl failure would surface the PRIOR success body in its
+# alert, which is misleading.
+: > /tmp/healthz.body
 code=$(curl -sS --max-time 5 -o /tmp/healthz.body -w "%{http_code}" -H "Host: $HEALTHZ_HOST" "$HEALTHZ_URL" 2>/dev/null || echo "000")
 if [ "$code" != "200" ]; then
     echo "[$(stamp)] HEARTBEAT FAIL: /healthz returned $code" >&2

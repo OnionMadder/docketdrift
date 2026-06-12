@@ -40,11 +40,16 @@ stamp() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 # Write our final exit code to STATUS_FILE so the heartbeat supervisor
 # can read it and decide whether to resurrect us, alert, or stand down.
-#   0 -> all done, supervisor clears the marker
-#   2 -> preflight failed, supervisor alerts (don't auto-restart -- needs human)
-#   3 -> rapid-fail brake fired, supervisor alerts (something's broken)
+#   0  -> all done, supervisor clears the marker
+#   2  -> preflight failed, supervisor alerts (don't auto-restart)
+#   3  -> rapid-fail brake fired, supervisor alerts (don't auto-restart)
+#   99 -> "currently running" sentinel written at startup. If the
+#         supervisor sees this with no live process, the wrapper got
+#         SIGKILL'd (trap EXIT doesn't fire on SIGKILL) -- treat as
+#         crash, resurrect.
 #   any other -> normal crash / kill / NFSN supervisor cull, supervisor resurrects
 write_status() { echo "$1" > "$STATUS_FILE"; }
+write_status 99
 trap 'write_status $?' EXIT
 
 echo "[$(stamp)] [wrapper] preflight: manage.py check"
