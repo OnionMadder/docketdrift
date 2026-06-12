@@ -1482,12 +1482,19 @@ def sitemap_index(request):
         lines.append(f"  <sitemap><loc>{host}/sitemap-static.xml</loc></sitemap>")
         lines.append(f"  <sitemap><loc>{host}/sitemap-judges.xml</loc></sitemap>")
         lines.append(f"  <sitemap><loc>{host}/sitemap-tags.xml</loc></sitemap>")
+        # Pre-resolve court_ids so every sitemap-index query is a
+        # single-table FK-indexed scan instead of an opinions JOIN
+        # courts JOIN states tour. Crawlers hit /sitemap.xml constantly;
+        # without this, three concurrent crawl bots were enough to
+        # queue 60K-row JOIN COUNTs behind each other and time out
+        # everything else on the worker.
+        court_ids = list(state.courts.values_list("id", flat=True))
         # Only advertise the statutes sitemap when at least one citation
         # has been extracted -- otherwise it serves an empty <urlset> and
         # wastes a crawl budget round-trip.
-        if StatuteCitation.objects.filter(opinion__court__state=state).exists():
+        if StatuteCitation.objects.filter(opinion__court_id__in=court_ids).exists():
             lines.append(f"  <sitemap><loc>{host}/sitemap-statutes.xml</loc></sitemap>")
-        opinion_count = Opinion.objects.filter(court__state=state).count()
+        opinion_count = Opinion.objects.filter(court_id__in=court_ids).values("pk").count()
         num_chunks = max(1, (opinion_count + SITEMAP_CHUNK_SIZE - 1) // SITEMAP_CHUNK_SIZE)
         for i in range(1, num_chunks + 1):
             lines.append(f"  <sitemap><loc>{host}/sitemap-opinions-{i}.xml</loc></sitemap>")
@@ -1579,8 +1586,13 @@ def sitemap_statutes(request):
 
     lines = _sitemap_xml_header()
     if state is not None:
+        # Same pre-resolve trick the sitemap_index now uses -- avoids
+        # an opinions -> courts -> states JOIN on a multi-tens-of-
+        # thousands-row table just to enumerate statute slugs.
+        court_ids = list(state.courts.values_list("id", flat=True))
         slugs = (
-            StatuteCitation.objects.filter(opinion__court__state=state)
+            StatuteCitation.objects.filter(opinion__court_id__in=court_ids)
+            .order_by()
             .values_list("reference_slug", flat=True)
             .distinct()
             .order_by("reference_slug")
@@ -1605,9 +1617,13 @@ def sitemap_opinions(request, chunk: int):
     if state is None or chunk < 1:
         raise Http404("Sitemap chunk not found")
 
+    # Pre-resolve court_ids so the chunk SELECT doesn't JOIN courts +
+    # states. Each chunk is 25K rows; the JOIN turned this into a
+    # multi-second query at the very tail of the corpus.
+    court_ids = list(state.courts.values_list("id", flat=True))
     offset = (chunk - 1) * SITEMAP_CHUNK_SIZE
     rows = list(
-        Opinion.objects.filter(court__state=state)
+        Opinion.objects.filter(court_id__in=court_ids)
         .order_by("id")
         .values_list("case_number", "release_date")[offset : offset + SITEMAP_CHUNK_SIZE]
     )
