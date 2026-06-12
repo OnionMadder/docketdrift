@@ -150,12 +150,22 @@ def home(request):
     # renders docket / court / disposition / title. Without this
     # defer, every state-landing request pulled 5 * ~100KB of TEXT
     # column across the wire for nothing (just 5 rows, but each row
-    # is huge). On MN with the longest avg opinion this was tripping
-    # the 25s max_statement_time cap; NH stayed fast because NH
-    # opinions are shorter on average. Same defer trick judge_detail
-    # and statute_detail already use.
+    # is huge). Same defer trick judge_detail and statute_detail
+    # already use.
+    #
+    # Pre-scope to release_date >= today - 180 days. Without the date
+    # window, MariaDB's optimizer kept choosing a full-scan-then-sort
+    # plan on the 60K-row MN corpus (24s+ on a 5-row LIMIT) instead of
+    # walking the indexed release_date DESC. Bounding the date range
+    # makes the index scan the only sensible plan even when the IN
+    # filter is small. 180 days easily exceeds the publish cadence for
+    # any active state -- the landing card NEVER wants stale opinions
+    # anyway.
+    from datetime import date as _date, timedelta as _td
+    latest_window = _date.today() - _td(days=180)
     latest_opinions = list(
         state_opinions.defer("raw_text", "html_content")
+        .filter(release_date__gte=latest_window)
         .select_related("court")
         .order_by("-release_date")[:5]
     )
