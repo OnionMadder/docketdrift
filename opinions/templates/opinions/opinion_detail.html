@@ -164,9 +164,11 @@
 {% endif %}
 
 {% if request.GET.q %}
-{# Scroll the first <mark> match into view when the page lands with
-   ?q=... -- only when the URL has no explicit fragment, so #para-N
-   takes precedence. Browser-native smooth-scroll, no library. #}
+{% comment %}
+Scroll the first <mark> match into view when the page lands with
+?q=... -- only when the URL has no explicit fragment, so #para-N
+takes precedence. Browser-native smooth-scroll, no library.
+{% endcomment %}
 <script>
 (function () {
   if (window.location.hash) return;
