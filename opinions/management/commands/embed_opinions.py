@@ -186,6 +186,17 @@ class Command(BaseCommand):
                 "Local SQLite dev doesn't have a VECTOR column."
             )
 
+        # Disable the per-statement timeout set by docketdrift_site.settings's
+        # init_command. That 25s cap protects gunicorn workers from runaway
+        # queries on the public site, but the batch-fetch SELECT here
+        # legitimately runs ~30-60s on the embedding-IS-NULL scan of a
+        # multi-tens-of-thousands-row corpus. Without this, every batch
+        # tripped 1969 ("max_statement_time exceeded"), the wrapper saw
+        # rapid failures, and the rapid-fail brake aborted the loop.
+        # 0 = no limit (the MariaDB default).
+        with connection.cursor() as cursor:
+            cursor.execute("SET SESSION max_statement_time = 0")
+
         api_key = os.environ.get("VOYAGE_API_KEY")
         if not api_key:
             raise CommandError(
