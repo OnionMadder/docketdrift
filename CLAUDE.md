@@ -6,18 +6,28 @@ to make the next session productive within the first 5 minutes.
 
 ## Where things stand right now
 
+(Numbers as of session-end 2026-06-12.)
+
 Three states live, all on subdomains of `docketdrift.com`:
 
-| State | Subdomain | Opinions | Judges | Panel votes | Date range | Notes |
-|---|---|---|---|---|---|---|
-| MN (flagship) | `mn.docketdrift.com` | 60,375 | 124 | 9,914 | 1851 to current | Full statute graph (124K cites), 21K tag suggestions, full editorial pipeline |
-| NH (beta) | `nh.docketdrift.com` | 20,693 | 69 | 17,032 | Through 2025-11-07 | CL lag; courts.nh.gov is Akamai-blocked, can't scrape directly |
-| AZ (beta) | `az.docketdrift.com` | 38,066 | 133 | 40 → growing | Through 2026-06-05 | 7 AZ Supreme justices have full bios + photos via azcourts.gov scraper. AZ Supreme byline-extractor pattern needs work (low coverage) |
+| State | Subdomain | Opinions | Embedded | Judges | Panel votes | Statute cites | Date range |
+|---|---|---|---|---|---|---|---|
+| MN (flagship) | `mn.docketdrift.com` | 60,375 | 100% | 124 | 9,914 | 124,858 | 1851 to current |
+| NH (beta) | `nh.docketdrift.com` | 20,715 | 57.6% | 69 | 17,161 | 79,384 | Through 2026-06-03 |
+| AZ (beta) | `az.docketdrift.com` | 38,066 | 0.1% | 139 | 142 | 0 | Through 2026-06-05 |
 
-The apex `docketdrift.com` shows three live state tiles. About page
-documents the editorial-review posture + the "we do not generate text"
-anti-hallucination disclosure. A dedicated `/how-we-differ/` page
-expands on the AI-tools distinction.
+The apex `docketdrift.com` shows three live state tiles. About page is
+trimmed; the full anti-hallucination disclosure + ML-architecture
+breakdown live on `/how-we-differ/`. Judge pages now carry a
+votes-per-year SVG chart with `?vs=<other-slug>` overlay and a
+"compare" link on every co-panelist; `/compare/judges/?a=&b=` is a
+side-by-side dossier with a concordance + split-decision section.
+
+**Embed:** NH-only run is supervised by a self-respawning wrapper
+script (`/home/private/docketdrift/_embed_nh_loop.sh`) — it loops
+embed_opinions, waits 30s on any non-zero exit, restarts. AZ embed is
+intentionally deferred; flip the wrapper to `--state AZ` once NH
+completes.
 
 **Right after this session:** see *Open work, ranked* below.
 
@@ -154,6 +164,76 @@ candidate set to a 3-year window around the source opinion's
 release_date. Don't remove this cap without first migrating embeddings
 to NOT NULL + creating the actual VECTOR index.
 
+### `.values("pk")` alone doesn't strip select_related from COUNT
+
+Django's `QuerySet.count()` clones the underlying Query. On some
+queryset shapes that clone preserves both the `.select_related` JOINs
+AND the `ORDER BY` clause even though neither affects the count. Using
+`.values("pk")` strips the SELECT field list but Django can keep the
+JOIN if the queryset's Query object was built with select_related
+state.
+
+The hard fix is the chain in `opinions/paginators.py:NoJoinCountPaginator`:
+```python
+@cached_property
+def count(self):
+    cleaner = self.object_list.select_related(None).order_by()
+    return cleaner.values("pk").count()
+```
+`select_related(None)` is the explicit reset; `order_by()` (no args)
+strips the ORDER BY so the count doesn't pointlessly sort before
+aggregating. Filter clauses including raw `.extra()` SQL (FULLTEXT
+MATCH()) are preserved.
+
+Used in: OpinionAdmin changelist, `opinion_list` public search,
+`tag_detail` paginator. Any future paginator over a select_related'd
+queryset on a big table should reach for this paginator.
+
+### Decorator-orphan SyntaxError on helper insertion
+
+When adding a helper function or module-level constants BETWEEN an
+existing `@cache_control(...)` decorator and the view it decorates,
+the decorator silently attaches to the helper, which crashes module
+load with `SyntaxError: invalid syntax` (decorator on a variable
+assignment) and 500s the entire site at every URL.
+
+I hit this twice in the 2026-06-09 session — once on `judge_detail`,
+once on `opinion_list` — because the editor pattern of "find the
+function header, insert helper just above it" lands inside the
+decorator/function pair. Move the new helper ABOVE the decorator, or
+move the decorator down to immediately precede the view's `def`.
+
+### Multi-line `{# #}` template comments — opinions.E001
+
+Already documented above, but worth re-stating: **I broke this myself**
+in the 2026-06-09 session by adding a 3-line `{# ... #}` block in
+`opinion_detail.html`. The E001 check is deploy-blocking, so any
+`manage.py` invocation (including `embed_opinions`) failed during
+Django setup. The self-respawning embed wrapper happily logged
+"Restarting in 30s" for ~48 hours while the embed never advanced.
+
+Lessons restated:
+- Use `{% comment %}{% endcomment %}` for any comment that doesn't
+  fit on a single line.
+- When a long-running wrapped command stops advancing for unexpected
+  reasons, the first thing to check is whether the most recent commit
+  introduced a system-check failure. Run `python manage.py check` on
+  NFSN if in doubt.
+
+### Pooled MariaDB connection retains "interrupted" state after KILL QUERY
+
+After running `KILL QUERY <id>` against a stuck query, the next request
+that picks up the same pooled connection from gunicorn's worker can
+hit `pymysql.err.OperationalError: (1317, 'Query execution was
+interrupted')` even though nothing's actively interrupted. The bad
+connection stays in the pool until `CONN_MAX_AGE` (60s) expires.
+During that window every request lands a 500.
+
+If you find yourself debugging stuck queries on prod, prefer
+`nfsn -j signal-daemon gunicorn TERM` over `KILL QUERY` — the worker
+restart flushes the pool clean rather than leaving poisoned
+connections behind.
+
 ### NFSN proxy cache can serve stale 503 for minutes
 
 After fixing a slow/broken endpoint and restarting gunicorn, the public URL
@@ -200,6 +280,10 @@ ssh docketdrift 'cd /home/private/docketdrift && git pull && source .venv/bin/ac
 # Tail daemon log
 ssh docketdrift 'tail -f /home/logs/daemon_gunicorn.log'
 
+# Run a system check after a deploy (catches opinions.E001 et al.
+# BEFORE the wrapped long-running commands trip on it silently)
+ssh docketdrift 'cd /home/private/docketdrift && source .venv/bin/activate && python manage.py check'
+
 # Show MariaDB processlist (debug slow queries)
 ssh docketdrift 'cd /home/private/docketdrift && source .venv/bin/activate && python -c "
 import django, os
@@ -211,6 +295,18 @@ with connection.cursor() as c:
     for r in c.fetchall():
         print(r[4], r[5], (r[7] or \"\")[:80])
 "'
+
+# Re-launch the self-respawning NH embed wrapper after a system-check
+# failure or a manual kill. The wrapper sits at
+# /home/private/docketdrift/_embed_nh_loop.sh and loops embed_opinions
+# until clean exit; never call TaskStop on it.
+ssh docketdrift 'nohup /home/private/docketdrift/_embed_nh_loop.sh \
+    >> /home/logs/embed_opinions.log 2>&1 < /dev/null & disown
+  sleep 5
+  ps -axww | grep -E "(_embed_nh_loop|manage.py embed)" | grep -v grep'
+
+# Verify the wrapper is healthy (process visible, log advancing)
+ssh docketdrift 'ps -axww | grep -E "_embed_nh_loop|manage.py embed" | grep -v grep; tail -3 /home/logs/embed_opinions.log'
 ```
 
 ## Management commands reference
@@ -222,12 +318,13 @@ with connection.cursor() as c:
 | `cron-ingest.sh` (`/home/private/docketdrift/cron-ingest.sh`) | Weekly wrapper; auto-discovers live courts via `Court.objects.filter(state__is_live=True)` | auto | yes |
 | `load_cl_bulk --subset-dir <dir> --state <CODE>` | Load filtered CL bulk-dump CSVs | yes | yes |
 | `scripts/cl_bulk_filter.py --state <CODE>` | Filter local CL bulk dump (~50GB sweep) to one state | yes | yes |
-| `embed_opinions` | Voyage embeddings on raw_text → VECTOR column | global | yes (`WHERE embedding IS NULL`) |
+| `ingest_pdfs --dir <path> --state <CODE> --court <slug>` | Bulk-ingest a directory of opinion PDFs. Uses the state's registered parser to populate fields; SHA-256 dedup; optional `--no-pdf`; `--dry-run` for preview. **Used for Akamai-blocked states where CL lags.** | per state | yes (skips existing on `(court, case_number)`) |
+| `embed_opinions [--state <CODE>] [--limit N]` | Voyage embeddings on raw_text → VECTOR column. `--state` restricts to one state's courts. | per state (optional) | yes (`WHERE embedding IS NULL`) |
 | `embed_tags [--force]` | Voyage embeddings of Tag.label+description | global | yes (`embedded_at` skip) |
 | `suggest_tags [--rescore-all] [--limit N]` | Score opinions vs tags via VEC_DISTANCE_COSINE | global | yes |
-| `extract_statutes [--force]` | Pull `Minn. Stat. § ...` cites from opinion text | **MN-only currently** | yes |
-| `resolve_judges --state <CODE> [--create-missing]` | Match byline+panel to existing Judge rows; `--create-missing` mints new ones | per state | yes |
-| `scrape_judges <state> [--dry-run]` | Scrape current-roster bios. Supports `mn` (mncourts.gov sitemap) + `az` (azcourts.gov MeettheJustices single page) | per state | yes |
+| `extract_statutes [--state <CODE>] [--force]` | Pull statute citations. Now multi-state via the `opinions/parsing/statutes.py` dispatcher (MN: `Minn. Stat.`, NH: `RSA`, AZ: `A.R.S.`). | per state (optional) | yes |
+| `resolve_judges --state <CODE> [--create-missing] [--since YYYY-MM-DD]` | Match byline+panel to existing Judge rows; `--create-missing` mints new ones. Hybrid: state parser fills what it knows, generic byline extractor fills the rest. | per state | yes |
+| `scrape_judges <state> [--dry-run]` | Scrape current-roster bios. Supports `mn` (mncourts.gov sitemap) + `az` (azcourts.gov MeettheJustices single page). NH/AZ-COA blocked by Akamai — needs #41 Playwright path. | per state | yes |
 | `reconcile_az_judges [--dry-run]` | One-shot merge of duplicate AZ Judge rows from the first scrape_judges run | AZ-specific | yes (no-op after merge) |
 | `backfill_dispositions` | Parse dispositions from raw_text into `disposition` field | global | yes |
 | `manage.py check` | Django system checks (incl. opinions.E001 multi-line `{# #}` guard) | global | n/a |
@@ -261,69 +358,95 @@ strategy, not engineering preference.
 
 ## Open work, ranked
 
-These reflect the state of play at session-end on 2026-06-08. Tasks are
-also tracked in the task list (`TaskList` tool); IDs in parens.
+State of play at session-end 2026-06-12. Items struck through were
+closed in the 2026-06-09 → 2026-06-12 session.
 
 ### Priority 1 — close NH/AZ gaps
 
-1. **Embed NH+AZ opinion corpus** (#42). 58K opinions loaded but
-   unembedded; semantic search returns nothing for them. Just kick
-   `python manage.py embed_opinions` and let it run overnight on
-   Voyage's 60 RPM free tier (~10-13 hr wall clock, ~$3 total).
-2. **Fix AZ Supreme Court byline format** (#44) in `resolve_judges`. Only
-   40 panel votes across 38K AZ opinions vs 17K for NH. AZ Court of
-   Appeals format works (`Presiding Judge X delivered ... in which Judge Y
-   joined`); AZ Supreme is different. Sample real AZ Supreme texts and add
-   a third pattern.
-3. **Re-run `resolve_judges --state AZ --create-missing`** after the
-   scraper added 5 new Judge rows (Bolick, Beene, Lopez, King, Montgomery)
-   that have 0 panel votes. The byline pattern should now match them
-   against real opinions.
-4. **Fix Cruz's full_name in the AZ Judge admin** — still says just "Cruz"
-   from byline-learning. Should be "Maria Elena Cruz" (the scraper
-   correctly captured it but the merge preserved the canonical row's
-   name field).
+1. **Finish NH embed.** ~8,790 NH opinions left (57.6% → 100%). The
+   self-respawning wrapper at `/home/private/docketdrift/_embed_nh_loop.sh`
+   is running; tail `/home/logs/embed_opinions.log`. ETA ~3.5h at the
+   current ~0.7/s rate; ~$1 in Voyage cost.
+2. **Embed AZ corpus.** ~38K opinions still at 0.1%. After NH finishes,
+   flip the wrapper's `--state NH` to `--state AZ` (or write
+   `_embed_az_loop.sh`). ~13-15 hr wall clock, ~$8-10.
+3. **Run `extract_statutes --state AZ`** to populate AZ's A.R.S.
+   citation graph. Extractor module exists (`statutes_az.py`); it just
+   hasn't been swept over the AZ corpus yet. ~10-15 min on NFSN.
+4. ~~Fix AZ Supreme Court byline format (#44).~~ ✅ Done — `JUSTICES X,
+   Y, and Z` plural-prefix handling shipped in commit `986e14f`. AZ
+   panel votes 40 → 142.
+5. ~~Re-run `resolve_judges --state AZ --create-missing`.~~ ✅ Done —
+   ran with the new byline regex; AZ judge count 133 → 139.
+6. ~~Fix Cruz's full_name.~~ ✅ Done — manually updated to "Maria Elena
+   Cruz" in admin.
+7. ~~Generalize `extract_statutes` to NH (RSA) + AZ (A.R.S.) (#43).~~
+   ✅ Done — `opinions/parsing/statutes.py` is now a state-dispatched
+   registry with one module per state. NH statute graph went from 0 to
+   79,384 cites; AZ extractor exists but hasn't been swept yet (item 3
+   above).
+8. ~~NH dissent detection in `resolve_judges`.~~ ✅ Done — the generic
+   byline extractor now parses `<NAME>, J., dissented.` footers (the
+   convention NH uses to record solo dissenters). Concordance section
+   on `/compare/judges/` can now show actual split decisions on NH
+   pairs.
 
 ### Priority 2 — close coverage gaps
 
-5. **Playwright-on-Windows scrapers** (#41) for the three Akamai-blocked
-   judge sites:
-   - NH Supreme (`courts.nh.gov`)
+9. **Playwright-on-Windows scrapers** (#41) for the three Akamai-blocked
+   judge / opinion sites:
+   - NH Supreme (`courts.nh.gov`) — current corpus is only through
+     2026-06-03 because of this block; we manually scp 2026 PDFs via
+     `ingest_pdfs` instead.
    - AZ COA Div 1 (`coa1.azcourts.gov`)
    - AZ COA Div 2 (`appeals2.az.gov`)
    Output drops PDFs/JSON to a watched folder; NFSN-side `scrape_judges`
-   ingests them. This also unblocks the broader "NH opinions newer than
-   2025-11-07" problem if NH publishes their PDFs at a stable URL.
-6. **Generalize `extract_statutes`** (#43) to NH (RSA) + AZ (A.R.S.).
-   Split `opinions/parsing/statutes.py` into per-state modules + a
-   dispatcher; update the command to accept `--state`. Phase 5 of
-   STATE_ROLLOUT.md.
+   ingests them. Without this, NH stays behind CL by a quarter-or-so
+   and AZ COA judge bios are missing.
+10. **Backfill `reporter_cite` field on Opinion.** The NH parser already
+    extracts the citation line (`2026 N.H. 1`); making it a queryable
+    field unlocks paste-the-cite search on the public site (current
+    statute-cite redirect handles RSA/Minn. Stat./A.R.S. but not
+    reporter cites). Migration + populate command.
 
-### Priority 3 — the brief's Phase 1D + 2
+### Priority 3 — editorial throughput
 
-7. **Triage MN tag suggestions** (#39). 20,134 pending in
-   `/admin/opinions/tag-review/`. HTMX UX designed for 100+/session.
-   Every review recalibrates the precision/recall knee for the
-   suggest_tags thresholds. Each accepted tag also makes the corpus
-   richer for downstream analysis.
-8. **Phase 1D LLM holding extraction** from session-brief.md. Optional
-   v2. Claude Haiku decomposes each opinion into `OpinionHolding` rows
-   (statute_cited + holding_direction + holding_text). One-time ~$90
-   batch. Unlocks per-holding semantic search + per-issue judge voting.
-   **Spend confirmation required from Onion before running.**
+11. **Triage MN tag suggestions** (#39). 20,161 pending in
+    `/admin/opinions/tag-review/`. HTMX UX designed for 100+/session.
+    Each review recalibrates the precision/recall knee for the
+    `suggest_tags` thresholds. (Onion's manual work, not a coding task.)
+12. **Re-run `suggest_tags` after NH embed completes.** NH's
+    tag-suggestion queue is currently sparse because most NH opinions
+    weren't embedded yet; once embedding finishes, run
+    `python manage.py suggest_tags` to fill the queue.
+13. **Phase 1D LLM holding extraction.** Claude Haiku decomposes each
+    opinion into `OpinionHolding` rows (statute_cited +
+    holding_direction + holding_text). One-time ~$90 batch. Unlocks
+    per-holding semantic search + per-issue judge voting. **Spend
+    confirmation required from Onion before running.**
 
 ### Priority 4 — hardening / polish
 
-9. **VECTOR INDEX migration** so `similar_to_opinion` doesn't need the
-   3-year date_cutoff workaround. Requires migrating
-   `opinions_opinion.embedding` to NOT NULL (which means filling in the
-   nulls first via #1).
-10. **FAQ schema on About** (P1-11 from session-brief).
-11. **State-router middleware lookup cache** (P0-2). Currently
-    `_resolve_state` hits the DB on every request. Cache by Host header
-    for the duration of a worker's lifetime.
-12. **Cloudflare in front of NFSN** (P0-6). Deferred because NFSN doesn't
-    allow nameserver changes — needs alternate registrar setup.
+14. **VECTOR INDEX migration** so `similar_to_opinion` doesn't need the
+    3-year date_cutoff workaround. Requires migrating
+    `opinions_opinion.embedding` to NOT NULL — which means item #1 + #2
+    have to finish first (no NULL embeddings left in the corpus).
+15. **Search-snippet INSTR query is slow on big raw_text.** The
+    `_attach_match_snippets` helper in `views.py` runs
+    `INSTR(LOWER(raw_text), LOWER(?))` on each result row -- across 50
+    rows it can take 5-10s under embed contention. Worth caching the
+    INSTR position via a session variable or switching to MariaDB's
+    MATCH SNIPPET if performance becomes a complaint.
+16. **State-router middleware lookup cache** (P0-2). `_resolve_state`
+    hits the DB on every request. Cache by Host header for the
+    duration of a worker's lifetime.
+17. **Cloudflare in front of NFSN** (P0-6). Deferred because NFSN
+    doesn't allow nameserver changes — needs alternate registrar setup.
+18. ~~FAQ schema on About.~~ ✅ Done in the SEO + schema.org pass
+    (commit `d487247`), which also added Organization +
+    GovernmentOrganization markup on judge/opinion/statute pages,
+    refreshed canonical URLs, expanded sitemaps, and pulled meta-
+    descriptions out of the templates.
 
 ## When to ASK
 
@@ -350,43 +473,95 @@ also tracked in the task list (`TaskList` tool); IDs in parens.
 
 ## Key files added or substantially changed this session
 
-For orientation when looking at the repo with fresh eyes:
+For orientation when looking at the repo with fresh eyes. Only items
+added or meaningfully changed in the **2026-06-09 → 2026-06-12**
+session are listed here — see the prior CLAUDE.md if you need the
+2026-06-08 cut.
 
-- `docs/STATE_ROLLOUT.md` (new) — 12-phase per-state runbook
-- `opinions/checks.py` (new) — opinions.E001 system check
-- `opinions/middleware.py` (extended) — CrawlerBlockMiddleware
-- `opinions/scrapers/az_supreme.py` (new) — azcourts.gov scraper
-- `opinions/admin_views.py` (new) — HTMX tag-review surface
-- `opinions/parsing/statutes.py` (new) — Minn. Stat. extractor
-- `opinions/templates/opinions/how_we_differ.html` (new) — anti-AI page
-- `opinions/templates/opinions/statute_detail.html` (new)
-- `opinions/templates/opinions/admin/tag_review*.html` (new)
-- `opinions/templates/admin/change_form_object_tools.html` (override) —
-  "View on site" opens in new tab
-- `opinions/management/commands/extract_statutes.py` (new)
-- `opinions/management/commands/embed_tags.py` (new)
-- `opinions/management/commands/suggest_tags.py` (new)
-- `opinions/management/commands/reconcile_az_judges.py` (new) — one-shot
-- `opinions/management/commands/resolve_judges.py` (extended) — generic
-  byline fallback + `--create-missing`
-- `opinions/management/commands/scrape_judges.py` (extended) — AZ branch
-- `scripts/cl_bulk_filter.py` (parametrized) — `--state` + `--court-ids`
-- `cron-ingest.sh` (rewrote) — auto-discovers live courts
-- `opinions/models.py` — added `StatuteCitation`, `TagSuggestion`,
-  `Tag.embedding`, `Tag.embedded_at`, `get_absolute_url` on Judge +
-  Opinion (powers admin "View on site"), AZ entries in
-  `Court.short_label`
-- `docketdrift_site/settings.py` — CONN_MAX_AGE, CONN_HEALTH_CHECKS,
-  GZipMiddleware, security headers, fail-loud SECRET_KEY guard,
-  CrawlerBlockMiddleware in MIDDLEWARE list, TAG_SUGGESTION_* thresholds
-- `requirements.txt` — explicit "no numpy" comment after the FreeBSD
-  BLAS discovery
-- `opinions/templates/opinions/about.html` — hallucination disclosure +
-  NH/AZ status refresh
-- `opinions/templates/opinions/state_landing.html` — coverage-note banner
+### New modules / commands
 
-Migrations added this session: 0020_statutecitation,
-0021_tag_embedded_at_tag_embedding_tagsuggestion, 0022_seed_az.
+- `opinions/charts.py` (new) — server-rendered SVG line-chart builder.
+  Powers the votes-per-year chart on `/judge/<slug>/` and
+  `/compare/judges/`. No JS chart library.
+- `opinions/paginators.py` (new) — `NoJoinCountPaginator`. Drops
+  `select_related` joins AND `ORDER BY` from the COUNT(*) query that
+  Django's stock Paginator would otherwise inherit. Used by
+  OpinionAdmin, `opinion_list`, `tag_detail`. See the gotcha section
+  for why `.values("pk")` alone isn't enough.
+- `opinions/parsing/nh.py` (new) — NH Supreme Court parser. Handles
+  modern slip-cite format incl. associate-J / chief-C.J. / per-curiam
+  bylines, plural-`Case Nos.`, citation-derived case name, "Opinion
+  Issued:" date, tail-anchored disposition (incl. `So ordered`).
+- `opinions/parsing/statutes_mn.py`, `statutes_nh.py`,
+  `statutes_az.py` (new) — per-state extractors. `statutes.py` is now
+  a thin state-keyed dispatcher.
+- `opinions/management/commands/ingest_pdfs.py` (new) — bulk-ingest a
+  directory of opinion PDFs. pypdf text extraction, state-parser-driven
+  field population, SHA-256 dedup, optional `pdf_file` storage. Used
+  for the 22 NH 2026 opinions and reusable for any future direct
+  upload.
+
+### Substantially extended
+
+- `opinions/management/commands/resolve_judges.py` — three big extensions:
+  (a) AZ-Supreme plural-prefix handling (`JUSTICES X, Y, and Z`);
+  (b) hybrid extraction (use parser, fall back to generic per-field);
+  (c) NH dissent footer parsing (`<NAME>, J., dissented.`) with an
+  8KB tail window so dissenter lines after the concurrence line still
+  match.
+- `opinions/management/commands/embed_opinions.py` — `--state <CODE>`
+  filter so you can finish one state's corpus before tackling another.
+- `opinions/views.py` — added `judge_compare`, `_judge_stats`,
+  `_concordance`, `_yearly_panel_votes`, `_attach_match_snippets`;
+  extended `opinion_list` with statute-cite redirect, docket-shape
+  routing, and snippet generation; `opinion_detail` passes
+  `request.GET.q` to the formatter for highlight-on-arrival.
+- `opinions/templatetags/opinion_text.py` — paragraph anchors
+  (`[¶N]` → `id="para-N"` with self-link), optional highlight
+  argument that wraps every match in `<mark>`.
+- `opinions/admin.py` — TagSuggestion inline on OpinionAdmin; defer
+  raw_text+html_content on the changelist; `paginator = NoJoinCountPaginator`.
+
+### Templates
+
+- `opinions/templates/opinions/judge_compare.html` (new) — side-by-side
+  dossier with overlay chart + concordance + split-decisions table.
+- `opinions/templates/opinions/_judge_compare_col.html` (new) — partial
+  that renders one judge's stat block. Used twice from the parent.
+- `opinions/templates/opinions/judge_detail.html` — added voting-
+  trajectory chart section + "compare" link on each cohort entry.
+- `opinions/templates/opinions/opinion_detail.html` — paragraph
+  anchors, `?q=` highlight banner, scroll-to-first-mark script.
+- `opinions/templates/opinions/state_home.html` — match-context
+  snippet sub-rows under each search result.
+- `opinions/templates/opinions/about.html` — first paragraph trimmed,
+  hallucination Q&A still present, longer ML-architecture content
+  moved to `how_we_differ.html`.
+- `opinions/templates/opinions/how_we_differ.html` — receives the
+  longer hallucination content.
+- `opinions/templates/opinions/state_landing.html`,
+  `apex.html` — SEO + schema.org pass: added WebSite + Organization
+  + (per-state) Dataset JSON-LD, refreshed canonical URLs, expanded
+  meta descriptions.
+
+### Other
+
+- `opinions/static/opinions/css/docketdrift.css` — chart card,
+  concordance bar + vote chips, search-snippet rows, paragraph-anchor
+  + opinion-find banner, op-para-anchor + `.opinion-body mark`.
+- `docs/STATE_ROLLOUT.md` — restructured for future contributors,
+  697 lines, Day 1/2/3 timeline + standalone gotcha sections (commit
+  `4511c2b`).
+- `/home/private/docketdrift/_embed_nh_loop.sh` (NFSN, not in repo) —
+  self-respawning wrapper. The pattern is general: write the wrapper
+  on NFSN, kick via `nohup ... < /dev/null & disown`, never call
+  `TaskStop` on the launcher.
+
+### Migrations
+
+No model schema migrations this session — all the new work fit into
+existing tables. `Opinion.reporter_cite` would be the next migration
+when item #10 lands.
 
 ## Memory: how Onion likes to work
 
