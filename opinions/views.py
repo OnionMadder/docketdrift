@@ -481,8 +481,27 @@ def opinion_list(request):
         # the template knows we're in landing mode. Even here we count
         # via ``.values("pk")`` to keep the join out of the COUNT. Defer
         # the body columns -- list views don't render them.
+        #
+        # Scope to release_date >= today - 365 days. Without the date
+        # window, MariaDB's optimizer kept choosing a full-scan-then-sort
+        # plan on the 60K-row MN corpus for the LIMIT 10 fetch -- 12s+
+        # total request time, tripping NFSN's proxy timeout. Bounding
+        # the date range makes the indexed release_date DESC scan the
+        # only sensible plan. 365 days easily exceeds the publish
+        # cadence of HOME_LANDING_SIZE opinions across all live states
+        # (MN/NH/AZ all publish multiple per week); "show me everything"
+        # is what the filter paths are for, this branch only serves the
+        # default landing list.
+        from datetime import date as _date, timedelta as _td
+        landing_window = _date.today() - _td(days=365)
         page_obj = None
-        opinions = list(qs.defer("raw_text", "html_content")[:HOME_LANDING_SIZE])
+        opinions = list(
+            qs.defer("raw_text", "html_content")
+            .filter(release_date__gte=landing_window)
+            [:HOME_LANDING_SIZE]
+        )
+        # The count is the WHOLE corpus though -- the "X opinions
+        # indexed" header doesn't lie even if the list is windowed.
         total_count = qs.values("pk").count()
 
     # Snippet generation. For keyword searches, pull a ~240-char window
