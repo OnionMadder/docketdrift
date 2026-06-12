@@ -202,26 +202,50 @@ def _attach_match_snippets(opinions, query):
     Skips silently on local SQLite dev (no MariaDB SUBSTRING/INSTR
     in the test setup). The template guards on ``op.snippet_html``
     truthiness, so an empty annotation just hides the snippet row.
+
+    DEFENSIVE: the whole body runs inside a try/except. Snippets are a
+    UX nice-to-have; a query timeout or transient DB error here should
+    NOT 500 the entire search page. On failure we log + return,
+    leaving each opinion's ``snippet_html`` unset (template hides the
+    row).
     """
     if connection.vendor != "mysql" or not query or not opinions:
         return
+
     ids = [op.pk for op in opinions]
     placeholders = ",".join(["%s"] * len(ids))
+    # We deliberately do NOT call LOWER(raw_text) here. The table's
+    # collation (utf8mb4_unicode_ci) makes INSTR case-insensitive
+    # already, and pre-LOWERing a 50-100KB raw_text per row was
+    # costing 5-10s under embed contention. Native INSTR against the
+    # collation is one operation per row instead of three.
     sql = f"""
         SELECT id,
                SUBSTRING(
                    raw_text,
-                   GREATEST(1, INSTR(LOWER(raw_text), LOWER(%s)) - %s),
+                   GREATEST(1, INSTR(raw_text, %s) - %s),
                    %s
                ) AS snippet
         FROM opinions_opinion
         WHERE id IN ({placeholders})
-          AND INSTR(LOWER(raw_text), LOWER(%s)) > 0
+          AND INSTR(raw_text, %s) > 0
     """
     params = [query, _SNIPPET_PAD, _SNIPPET_WINDOW, *ids, query]
-    with connection.cursor() as cursor:
-        cursor.execute(sql, params)
-        snippets = {row[0]: row[1] or "" for row in cursor.fetchall()}
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            snippets = {row[0]: row[1] or "" for row in cursor.fetchall()}
+    except Exception:
+        # Don't 500 the search page over a snippet failure. Typical
+        # causes: MAX_STATEMENT_TIME tripped on a slow snippet query,
+        # transient connection drop. The search results render fine
+        # without snippets.
+        import logging
+        logging.getLogger(__name__).warning(
+            "_attach_match_snippets failed; returning without snippets",
+            exc_info=True,
+        )
+        return
 
     if not snippets:
         return

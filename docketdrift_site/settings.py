@@ -182,6 +182,20 @@ if _db_backend == "mariadb":
             "CONN_HEALTH_CHECKS": True,
             "OPTIONS": {
                 "charset": "utf8mb4",
+                # Per-connection MAX_STATEMENT_TIME ceiling. A single
+                # runaway query (slow FULLTEXT MATCH(), full-corpus
+                # SUBSTRING, accidental cartesian join, VEC_DISTANCE
+                # without a date cutoff) used to pin a gunicorn worker
+                # for 30+ seconds, queuing every subsequent request
+                # behind it. Cap each statement at 25s -- enough for
+                # the legitimately slow public-search COUNT on a 120K-
+                # row corpus but tight enough that a runaway query
+                # surfaces as a 500 on ONE request instead of timing
+                # out FIVE before someone notices.
+                # `init_command` runs on every new pooled connection,
+                # so the limit applies regardless of which worker /
+                # which connection picks up the request.
+                "init_command": "SET SESSION max_statement_time = 25",
             },
         }
     }
