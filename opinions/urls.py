@@ -23,6 +23,7 @@ urlpatterns = [
     # Statute reference is a dot-separated slug (minn.stat.609.185), so the
     # URL pattern uses <str:> rather than <slug:>, which would reject dots.
     path("statute/<str:reference>/", views.statute_detail, name="statute_detail"),
+    path("healthz", views.healthz, name="healthz"),
     path("robots.txt", views.robots_txt, name="robots_txt"),
     path("llms.txt", views.llms_txt, name="llms_txt"),
     path("sitemap.xml", views.sitemap_index, name="sitemap_index"),

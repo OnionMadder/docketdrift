@@ -1,0 +1,72 @@
+"""Pre-warm the explore_tags template-context cache for every live state.
+
+The explore-tags sidebar runs ~20 FULLTEXT MATCH-AGAINST COUNTs per
+state to size the tag cloud. With the per-state cache cold (no entry
+in the persistent FileBasedCache), the first request after expiry
+pays the whole cost -- ~2-6 seconds depending on contention. Crawlers
+hitting state landings concurrently can multiply this across workers.
+
+This command rebuilds each live state's explore_tags cache entry
+proactively, BEFORE the TTL expires. Schedule it via NFSN's Scheduled
+Tasks UI (Manage Site -> Scheduled Tasks) at a cadence shorter than
+the cache TTL -- recommended: hourly. Real-user requests then always
+hit a warm cache.
+
+Idempotent: if the cache is already warm, the build re-uses the same
+queries and writes the same value. No DB writes.
+
+Cost: 20 MATCH-COUNTs * N live states once per run. On the current
+3-state corpus that's ~60 cheap-when-warm-but-each-2s-when-cold
+queries, all under the per-statement timeout. ~10-30 seconds
+wall-clock per run.
+
+Usage::
+
+    python manage.py precompute_explore_tags          # all live states
+    python manage.py precompute_explore_tags --state MN  # one state
+"""
+from __future__ import annotations
+
+import time
+
+from django.core.cache import cache
+from django.core.management.base import BaseCommand
+
+from opinions.context_processors import _get_sized_tags
+from opinions.models import State
+
+
+class Command(BaseCommand):
+    help = "Pre-warm the explore_tags cache for every live state."
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--state", default=None,
+            help="USPS 2-letter state code (e.g. MN). Restrict pre-warming "
+                 "to one state. Default: every state with is_live=True.",
+        )
+
+    def handle(self, *args, state, **options):
+        if state:
+            states = list(State.objects.filter(code=state.upper()))
+            if not states:
+                self.stderr.write(f"State {state.upper()!r} not found.")
+                return
+        else:
+            states = list(State.objects.filter(is_live=True).order_by("code"))
+
+        if not states:
+            self.stdout.write("No live states to warm.")
+            return
+
+        for s in states:
+            # Invalidate then rebuild so the warming run reflects fresh
+            # counts even if something else just touched the cache.
+            cache.delete(f"explore_tags_sized:{s.code}")
+            t0 = time.time()
+            sized = _get_sized_tags(s)
+            elapsed = time.time() - t0
+            self.stdout.write(
+                f"  {s.code}: {len(sized)} tags warmed in {elapsed:.1f}s"
+            )
+        self.stdout.write(self.style.SUCCESS("Done."))

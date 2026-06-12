@@ -165,12 +165,20 @@ if _db_backend == "mariadb":
             "USER": os.environ.get("DOCKETDRIFT_DB_USER", ""),
             "PASSWORD": os.environ.get("DOCKETDRIFT_DB_PASSWORD", ""),
             # Persistent connections: each gunicorn worker holds an open
-            # MariaDB connection for up to 60s instead of three-way
+            # MariaDB connection for up to 30s instead of three-way
             # handshaking per request. Saves ~5-15ms of warm-request
             # latency; the per-worker memory cost is trivial. Safe with
             # gunicorn's preforking model because each worker has its own
             # connection pool, not a shared one.
-            "CONN_MAX_AGE": 60,
+            #
+            # 30s instead of 60s because the 60s window was twice the
+            # CONN_HEALTH_CHECKS recovery time during a KILL QUERY
+            # cascade: a poisoned pooled connection (errno 1317
+            # "interrupted") could stay alive for up to a minute past
+            # the kill before being evicted, 500ing every request that
+            # touched it in the meantime. Halving the max-age halves
+            # the window of exposure.
+            "CONN_MAX_AGE": 30,
             # CONN_HEALTH_CHECKS makes Django do a cheap SELECT 1 against
             # the pooled connection before reusing it. NFSN's shared
             # MariaDB occasionally drops SSL sockets mid-pool (especially
@@ -206,6 +214,37 @@ else:
             "NAME": BASE_DIR / "db.sqlite3",
         }
     }
+
+
+# --- Cache -----------------------------------------------------------------
+# Persistent file-backed cache so warmups (explore_tags MATCH counts,
+# sitemap XML, statute-page lists, etc.) SURVIVE a gunicorn restart.
+# Django's default LocMemCache lives inside the worker process; every
+# `signal-daemon gunicorn TERM` wiped every entry, which meant the next
+# three pageviews per state paid full cache-cold cost. That recurring
+# cold-cache cascade was the residual reason state landings looked slow
+# even after the JOIN-trap fixes -- crawlers + bots kept the cold path
+# hot enough that some MISSes happened multiple times per hour.
+#
+# FileBasedCache is shared across all workers and survives restarts.
+# On NFSN we use /home/private/cache (writable, private, separate from
+# the deploy tree so collectstatic / git pull can't clobber it). Local
+# dev falls back to BASE_DIR/.cache so the same code path runs in tests.
+_cache_dir = os.environ.get("DOCKETDRIFT_CACHE_DIR") or str(BASE_DIR / ".cache")
+os.makedirs(_cache_dir, exist_ok=True)
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
+        "LOCATION": _cache_dir,
+        # MAX_ENTRIES caps the dir size; CULL_FREQUENCY says "when full,
+        # evict 1/3 randomly". 5000 entries at ~5KB each = ~25MB max,
+        # negligible for NFSN's quota. The explore_tags cache only has
+        # 3 entries (one per live state), so this is mostly bound by the
+        # sitemap + statute caches we'll be adding next.
+        "OPTIONS": {"MAX_ENTRIES": 5000, "CULL_FREQUENCY": 3},
+        "TIMEOUT": 60 * 60,  # 1 hour default; per-call overrides win.
+    }
+}
 
 
 # --- Auth ------------------------------------------------------------------

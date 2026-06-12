@@ -66,7 +66,13 @@ DISPOSITION_BUCKETS: tuple[tuple[str, str], ...] = (
 # Font-size buckets for the tag cloud, ordered from rarest (xs) to most
 # frequent (xl). The CSS rule for each is in docketdrift.css.
 _SIZE_BUCKETS = ("xs", "sm", "md", "lg", "xl")
-_CACHE_TTL_SECONDS = 60 * 15  # 15 min -- balance freshness vs. cold-cache cost.
+_CACHE_TTL_SECONDS = 60 * 60 * 2  # 2 hr -- tag counts change slowly; the
+# cold-cache cost of 20+ MATCH-COUNTs once an hour is plenty. Pre-warming
+# via the precompute_explore_tags command (run via NFSN scheduled task
+# every hour) means this TTL effectively never expires for real users.
+# When _CACHE_TTL_SECONDS WAS 15 min, the cold-cache window happened
+# multiple times per state per hour and was the residual cause of slow
+# state-landing first hits.
 
 
 def _get_sized_tags(state) -> list[tuple[str, int, str]]:

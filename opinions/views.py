@@ -19,7 +19,8 @@ from django.db import connection, models
 from django.db.models import Q
 from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
-from django.views.decorators.cache import cache_control
+from django.views.decorators.cache import cache_control, cache_page
+from django.views.decorators.vary import vary_on_headers
 
 from opinions.models import Judge, Opinion, State, StatuteCitation, Tag
 
@@ -1298,6 +1299,43 @@ Sitemap: https://az.docketdrift.com/sitemap.xml
 """
 
 
+def healthz(request):
+    """Lightweight health-check endpoint for external monitoring.
+
+    Returns 200 with a compact JSON body when the application is
+    healthy: Django is up, the URL conf loaded, AND a cheap query
+    against MariaDB completes inside the 25s ``max_statement_time``
+    cap. Returns 503 with the same JSON shape (plus an error message)
+    when the DB probe fails.
+
+    Designed to be polled cheaply -- the only DB cost is a SELECT 1.
+    NFSN's scheduled task system can hit this every 5 minutes and
+    email on a non-200, closing the silent-death gap that cost us 48
+    hours of embed time when the wrapper looped without progressing.
+
+    Intentionally NOT decorated with ``@cache_control`` -- the response
+    must be live, not from a CDN/proxy cache. The body is tiny enough
+    that the lack of caching is irrelevant.
+    """
+    import json
+    from django.db import connection as _conn
+    try:
+        with _conn.cursor() as c:
+            c.execute("SELECT 1")
+            c.fetchone()
+        return HttpResponse(
+            json.dumps({"status": "ok"}),
+            status=200,
+            content_type="application/json",
+        )
+    except Exception as exc:
+        return HttpResponse(
+            json.dumps({"status": "error", "detail": str(exc)[:200]}),
+            status=503,
+            content_type="application/json",
+        )
+
+
 @cache_control(public=True, max_age=CACHE_SEC_ROBOTS)
 def robots_txt(request):
     """Serve /robots.txt as plain text. Site-wide; same content on every
@@ -1465,6 +1503,8 @@ def _sitemap_xml_footer() -> list[str]:
 
 
 @cache_control(public=True, max_age=CACHE_SEC_SITEMAP)
+@cache_page(60 * 60)
+@vary_on_headers("Host")
 def sitemap_index(request):
     """Site-wide sitemap index. Lists sub-sitemap URLs for chunked
     opinion lists + judges + static pages.
@@ -1510,7 +1550,8 @@ def sitemap_index(request):
     return HttpResponse("\n".join(lines), content_type="application/xml; charset=utf-8")
 
 
-@cache_control(public=True, max_age=CACHE_SEC_SITEMAP)
+@cache_page(60 * 60)
+@vary_on_headers("Host")
 def sitemap_static(request):
     """Static-page sitemap: home, about, how-we-differ, privacy, support,
     request-state, current-judges, tags, compare-judges. Per-state
@@ -1539,7 +1580,8 @@ def sitemap_static(request):
     return HttpResponse("\n".join(lines), content_type="application/xml; charset=utf-8")
 
 
-@cache_control(public=True, max_age=CACHE_SEC_SITEMAP)
+@cache_page(60 * 60)
+@vary_on_headers("Host")
 def sitemap_judges(request):
     """All judges in the current state. Slug-keyed URLs with the row's
     ``created_at`` as <lastmod> so crawlers can prioritize new dossiers.
@@ -1560,7 +1602,8 @@ def sitemap_judges(request):
     return HttpResponse("\n".join(lines), content_type="application/xml; charset=utf-8")
 
 
-@cache_control(public=True, max_age=CACHE_SEC_SITEMAP)
+@cache_page(60 * 60)
+@vary_on_headers("Host")
 def sitemap_tags(request):
     """All editorial tags. Includes the tag-index page itself and one URL
     per tag detail page. State-scoped (apex serves an empty <urlset>
@@ -1579,7 +1622,8 @@ def sitemap_tags(request):
     return HttpResponse("\n".join(lines), content_type="application/xml; charset=utf-8")
 
 
-@cache_control(public=True, max_age=CACHE_SEC_SITEMAP)
+@cache_page(60 * 60)
+@vary_on_headers("Host")
 def sitemap_statutes(request):
     """All unique statute references cited by opinions in this state.
 
@@ -1610,7 +1654,8 @@ def sitemap_statutes(request):
     return HttpResponse("\n".join(lines), content_type="application/xml; charset=utf-8")
 
 
-@cache_control(public=True, max_age=CACHE_SEC_SITEMAP)
+@cache_page(60 * 60)
+@vary_on_headers("Host")
 def sitemap_opinions(request, chunk: int):
     """One chunk of ``SITEMAP_CHUNK_SIZE`` opinion URLs.
 
