@@ -32,10 +32,20 @@
 STATE=NH
 MIN_RUN_SECONDS=60
 MAX_FAIL_STREAK=4
+STATUS_FILE=/home/private/docketdrift/.embed_last_exit
 
 cd /home/private/docketdrift
 
 stamp() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+
+# Write our final exit code to STATUS_FILE so the heartbeat supervisor
+# can read it and decide whether to resurrect us, alert, or stand down.
+#   0 -> all done, supervisor clears the marker
+#   2 -> preflight failed, supervisor alerts (don't auto-restart -- needs human)
+#   3 -> rapid-fail brake fired, supervisor alerts (something's broken)
+#   any other -> normal crash / kill / NFSN supervisor cull, supervisor resurrects
+write_status() { echo "$1" > "$STATUS_FILE"; }
+trap 'write_status $?' EXIT
 
 echo "[$(stamp)] [wrapper] preflight: manage.py check"
 if ! /home/private/docketdrift/.venv/bin/python -u manage.py check; then
@@ -55,7 +65,7 @@ while true; do
 
     if [ $exit_code -eq 0 ]; then
         echo "[$(stamp)] [wrapper] embed_opinions exit 0 -- all $STATE opinions embedded. Done."
-        break
+        exit 0
     fi
 
     if [ $run_duration -lt $MIN_RUN_SECONDS ]; then
