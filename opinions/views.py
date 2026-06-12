@@ -146,8 +146,18 @@ def home(request):
         last=models.Max("release_date"),
     )
 
+    # Defer raw_text + html_content -- the state-landing card only
+    # renders docket / court / disposition / title. Without this
+    # defer, every state-landing request pulled 5 * ~100KB of TEXT
+    # column across the wire for nothing (just 5 rows, but each row
+    # is huge). On MN with the longest avg opinion this was tripping
+    # the 25s max_statement_time cap; NH stayed fast because NH
+    # opinions are shorter on average. Same defer trick judge_detail
+    # and statute_detail already use.
     latest_opinions = list(
-        state_opinions.select_related("court").order_by("-release_date")[:5]
+        state_opinions.defer("raw_text", "html_content")
+        .select_related("court")
+        .order_by("-release_date")[:5]
     )
 
     # tag-distinct-count uses an indexed M2M plus the same pre-resolved
