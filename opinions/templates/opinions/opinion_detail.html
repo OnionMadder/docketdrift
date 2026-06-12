@@ -103,15 +103,15 @@
 
 <div class="glossy-frame">
   <h2>Opinion text</h2>
-  {% if request.GET.q %}
+  {% if search_q %}
     <p class="opinion-find-banner">
-      Highlighting matches for &ldquo;<strong>{{ request.GET.q }}</strong>&rdquo;
+      Highlighting matches for &ldquo;<strong>{{ search_q }}</strong>&rdquo;
       &middot; <a href="{% url 'opinions:detail' case_number=opinion.case_number %}">clear</a>
     </p>
   {% endif %}
   {% if opinion.raw_text %}
     <div class="opinion-body">
-      {{ opinion.raw_text|format_opinion_text:request.GET.q }}
+      {{ opinion.raw_text|format_opinion_text:search_q }}
     </div>
   {% else %}
     <p class="glitch-line">No opinion text available.</p>
@@ -163,7 +163,7 @@
   </div>
 {% endif %}
 
-{% if request.GET.q %}
+{% if search_q %}
 {% comment %}
 Scroll the first <mark> match into view when the page lands with
 ?q=... -- only when the URL has no explicit fragment, so #para-N

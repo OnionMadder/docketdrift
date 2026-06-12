@@ -580,6 +580,14 @@ def opinion_detail(request, case_number):
     return render(request, "opinions/opinion_detail.html", {
         "opinion": opinion,
         "similar_opinions": similar_opinions,
+        # Pass the search query explicitly. Templates resolving
+        # ``request.GET.q`` raise MultiValueDictKeyError when ``q``
+        # isn't in the URL -- Django 5's template engine no longer
+        # silently swallows that on dict-style lookups against
+        # QueryDict, so every "open an opinion without ?q=" 500'd.
+        # Using ``.get("q", "")`` from the view side gives templates
+        # a plain string they can default + truthiness-test cleanly.
+        "search_q": request.GET.get("q", ""),
         "active_nav": "opinions",
     })
 
