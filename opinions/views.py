@@ -678,11 +678,18 @@ def tag_index(request):
     if state is not None:
         # Annotate with count of opinions in THIS state's corpus that
         # carry this tag, then keep only the tags with nonzero counts.
+        # Pre-resolve court_ids so the per-tag COUNT subquery doesn't
+        # join opinions -> courts -> states. With 32 tags and 60K MN
+        # opinions, the original opinions__court__state lookup fired 32
+        # JOIN-COUNTs and was the single biggest source of the worker
+        # starvation we kept hitting -- crawlers / bots hammering
+        # /tag/ multiplied it across concurrent requests.
         from django.db.models import Count, Q
+        court_ids = list(state.courts.values_list("id", flat=True))
         tags_qs = tags_qs.annotate(
             state_opinion_count=Count(
                 "opinions",
-                filter=Q(opinions__court__state=state),
+                filter=Q(opinions__court_id__in=court_ids),
             )
         )
         tags_with_counts = [t for t in tags_qs if t.state_opinion_count > 0]
