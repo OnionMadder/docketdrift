@@ -137,15 +137,39 @@ def home(request):
     court_ids = list(state.courts.values_list("id", flat=True))
 
     state_opinions = Opinion.objects.filter(court_id__in=court_ids)
-    total_opinions = state_opinions.values("pk").count()
-    judges_qs = Judge.objects.filter(state=state)
-    total_judges = judges_qs.count()
-    currently_seated = judges_qs.filter(is_currently_seated=True).count()
 
-    date_range = state_opinions.aggregate(
-        first=models.Min("release_date"),
-        last=models.Max("release_date"),
-    )
+    # Cache the slow scalar aggregates as a single state-stats bundle.
+    # Each one is a full-table or full-index scan that competes with
+    # embed_opinions' raw_text fetch on the same MariaDB instance --
+    # under contention the bundle was running 22+ seconds even with
+    # the court_id pre-resolve in place. The bundle changes only on
+    # corpus ingest (weekly) and editor activity, so a 30-minute TTL
+    # is dramatically over-fresh. The persistent FileBasedCache holds
+    # it across gunicorn restarts; precompute_explore_tags also
+    # rebuilds it as part of the warming run.
+    from django.core.cache import cache as _cache
+    _stats_key = f"state_landing_stats:{state.code}"
+    cached_stats = _cache.get(_stats_key)
+    if cached_stats is None:
+        judges_qs = Judge.objects.filter(state=state)
+        total_opinions = state_opinions.values("pk").count()
+        total_judges = judges_qs.count()
+        currently_seated = judges_qs.filter(is_currently_seated=True).count()
+        date_range = state_opinions.aggregate(
+            first=models.Min("release_date"),
+            last=models.Max("release_date"),
+        )
+        cached_stats = {
+            "total_opinions": total_opinions,
+            "total_judges": total_judges,
+            "currently_seated": currently_seated,
+            "date_range": date_range,
+        }
+        _cache.set(_stats_key, cached_stats, 60 * 30)
+    total_opinions = cached_stats["total_opinions"]
+    total_judges = cached_stats["total_judges"]
+    currently_seated = cached_stats["currently_seated"]
+    date_range = cached_stats["date_range"]
 
     # Defer raw_text + html_content -- the state-landing card only
     # renders docket / court / disposition / title. Without this
@@ -173,10 +197,15 @@ def home(request):
 
     # tag-distinct-count uses an indexed M2M plus the same pre-resolved
     # court_ids, dodging the opinions -> courts -> states JOIN that the
-    # old `opinions__court__state=state` lookup forced.
-    total_tags_used = Tag.objects.filter(
-        opinions__court_id__in=court_ids,
-    ).distinct().count()
+    # old `opinions__court__state=state` lookup forced. Also goes through
+    # the state-stats cache bundle so the M2M distinct-count doesn't fire
+    # per request.
+    if "total_tags_used" not in cached_stats:
+        cached_stats["total_tags_used"] = (
+            Tag.objects.filter(opinions__court_id__in=court_ids).distinct().count()
+        )
+        _cache.set(_stats_key, cached_stats, 60 * 30)
+    total_tags_used = cached_stats["total_tags_used"]
     total_tags_available = Tag.objects.count()
 
     # Coverage staleness: surface an honest disclosure when the most recent
