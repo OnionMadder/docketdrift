@@ -54,8 +54,16 @@ stamp() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 # Clear any stale body from a previous heartbeat run -- otherwise a
 # current curl failure would surface the PRIOR success body in its
 # alert, which is misleading.
+#
+# --max-time 30s tolerates the gunicorn-worker DB-contention window
+# during the FIRST ~30 min of an embed run on a low-coverage state:
+# the WHERE embedding IS NULL batch fetch isn't selective yet and the
+# scan competes with the public site for raw_text reads, briefly
+# spiking /healthz response time. 5s was firing false alarms in that
+# window; 30s waits past it (and is still tight enough to catch real
+# outages since /healthz itself only does a SELECT 1).
 : > /tmp/healthz.body
-code=$(curl -sS --max-time 5 -o /tmp/healthz.body -w "%{http_code}" -H "Host: $HEALTHZ_HOST" "$HEALTHZ_URL" 2>/dev/null || echo "000")
+code=$(curl -sS --max-time 30 -o /tmp/healthz.body -w "%{http_code}" -H "Host: $HEALTHZ_HOST" "$HEALTHZ_URL" 2>/dev/null || echo "000")
 if [ "$code" != "200" ]; then
     echo "[$(stamp)] HEARTBEAT FAIL: /healthz returned $code" >&2
     if [ -s /tmp/healthz.body ]; then
