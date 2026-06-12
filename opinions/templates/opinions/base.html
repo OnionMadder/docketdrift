@@ -62,7 +62,10 @@ crawlers see structured data for every opinion + judge.
 <div class="wrapper">
   <header class="site-header">
     <div class="brand">
-      <a href="{% url 'opinions:home' %}">DocketDrift</a>
+      {# Always link back to the apex picker, not the current state's /
+         home. Detail templates' breadcrumbs already point at the apex
+         the same way -- this keeps the header consistent. #}
+      <a href="https://docketdrift.com/">DocketDrift</a>
       <p class="brand-subtitle">Real-time tracking of state judicial trends.</p>
     </div>
 
