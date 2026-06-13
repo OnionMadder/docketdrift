@@ -58,7 +58,14 @@ DEFAULT_MODEL = "voyage-law-2"
 DEFAULT_BATCH = 128
 # Voyage's per-batch token cap is 120K; leave headroom for our rough
 # 4-char-per-token estimate going low (legal text actually trends higher).
-DEFAULT_MAX_BATCH_TOKENS = 100_000
+# Voyage's hard limit is 120,000 tokens per request. Our estimate
+# (~4 chars/token via _estimate_tokens) is approximate -- a batch
+# packed under our 100K cap could still overshoot Voyage's 120K cap
+# once Voyage's own tokenizer counts. AZ has a small handful of
+# death-penalty appeals over 100K chars each that crossed the line
+# in batches that looked safe to us. Drop to 60K so even an "oops,
+# our estimate was off by 2x" outcome stays under Voyage's ceiling.
+DEFAULT_MAX_BATCH_TOKENS = 60_000
 # voyage-law-2's context window. Anything longer gets truncation=true'd
 # away, so we cap our estimate here too.
 MODEL_CONTEXT_TOKENS = 16_000
@@ -312,12 +319,17 @@ class Command(BaseCommand):
                     break
                 except BaseException as exc:
                     if attempt >= MAX_RETRIES:
-                        self.stderr.write(self.style.ERROR(
+                        # Raise CommandError instead of `return` so the
+                        # process exits non-zero. The supervisor wrapper
+                        # reads $? to decide whether to resurrect or stand
+                        # down -- a `return` here looked like "success" to
+                        # the shell and made the AZ wrapper falsely report
+                        # "all done" after the first Voyage 400 hit.
+                        raise CommandError(
                             f"\nAPI failed {MAX_RETRIES}x for this batch -- exiting. "
                             f"Re-run the command to resume from the same point.\n"
                             f"Last error: {type(exc).__name__}: {exc}"
-                        ))
-                        return
+                        )
                     self.stderr.write(self.style.WARNING(
                         f"  API error (attempt {attempt}/{MAX_RETRIES}) "
                         f"{type(exc).__name__}: {exc}; sleeping {RETRY_SLEEP_SECONDS}s..."
