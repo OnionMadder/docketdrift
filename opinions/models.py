@@ -335,6 +335,21 @@ class Opinion(models.Model):
             "Re-uploading without clearing raw_text won't re-extract."
         ),
     )
+    embedding_pending = models.BooleanField(
+        default=True,
+        help_text=(
+            "Set to False after embed_opinions writes a vector to the raw "
+            "SQL `embedding` VECTOR column. Indexed alongside court_id so "
+            "the embed batch fetch (`WHERE embedding_pending = TRUE AND "
+            "court_id IN (...)`) is a fast index scan instead of a full "
+            "table walk against the unindexable VECTOR column's IS NULL "
+            "predicate. Without this column, every embed batch on a "
+            "low-coverage state scanned the whole opinions_opinion table "
+            "and put the wrapper's lifetime at ~10 min before NFSN's "
+            "wallclock supervisor culled it for sustained CPU."
+        ),
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -343,6 +358,15 @@ class Opinion(models.Model):
         ordering = ["-release_date"]
         indexes = [
             models.Index(fields=["-release_date"]),
+            # Composite index used by embed_opinions' batch fetch. Order
+            # matters: embedding_pending first because it's the most
+            # selective filter once the corpus is mostly embedded (~3% of
+            # rows TRUE at peak); court_id second so the state filter
+            # narrows further inside that subset.
+            models.Index(
+                fields=["embedding_pending", "court_id"],
+                name="op_pending_court_idx",
+            ),
         ]
 
     def __str__(self):

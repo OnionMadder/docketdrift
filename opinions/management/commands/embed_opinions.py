@@ -235,11 +235,16 @@ class Command(BaseCommand):
                 f"({len(court_ids)} court(s))"
             )
 
-        # Count work remaining
+        # Count work remaining.
+        # Migration 0023 added the indexed `embedding_pending` column so
+        # we can stop using `WHERE embedding IS NULL` (which can't use
+        # an index because the embedding VECTOR column isn't indexable
+        # for NULL-ness). The composite index (embedding_pending,
+        # court_id) makes this sub-100ms regardless of corpus size.
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT COUNT(*) FROM opinions_opinion "
-                "WHERE embedding IS NULL AND raw_text != ''" + state_clause,
+                "WHERE embedding_pending = TRUE AND raw_text != ''" + state_clause,
                 state_params,
             )
             total_to_do = cursor.fetchone()[0]
@@ -268,10 +273,12 @@ class Command(BaseCommand):
         run_started = time.time()
 
         while embedded_total < total_to_do:
+            # Batch fetch uses embedding_pending (indexed) instead of
+            # embedding IS NULL (full table scan). See migration 0023.
             with connection.cursor() as cursor:
                 cursor.execute(
                     "SELECT id, raw_text FROM opinions_opinion "
-                    "WHERE embedding IS NULL AND raw_text != ''" + state_clause + " "
+                    "WHERE embedding_pending = TRUE AND raw_text != ''" + state_clause + " "
                     "ORDER BY id "
                     "LIMIT %s",
                     state_params + [batch_size],
@@ -354,9 +361,14 @@ class Command(BaseCommand):
                 try:
                     with connection.cursor() as cursor:
                         for (opinion_id, _), vec in zip(rows, embeddings):
+                            # Set both the VECTOR column AND the
+                            # indexed embedding_pending flag in one
+                            # write. The next batch fetch's index scan
+                            # immediately skips these rows.
                             cursor.execute(
                                 "UPDATE opinions_opinion "
-                                "SET embedding = Vec_FromText(%s) "
+                                "SET embedding = Vec_FromText(%s), "
+                                "    embedding_pending = FALSE "
                                 "WHERE id = %s",
                                 [json.dumps(vec), opinion_id],
                             )
