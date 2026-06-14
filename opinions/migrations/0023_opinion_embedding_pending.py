@@ -67,6 +67,18 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # Disable the per-statement timeout for THIS connection before
+        # the schema ops. The DATABASES init_command sets
+        # max_statement_time = 25, which is right for web requests but
+        # too tight for ALTER TABLE / CREATE INDEX on a 240K-row
+        # opinions_opinion -- both ran ~30s on the first attempt and got
+        # killed with errno 1317 ("Query execution was interrupted"),
+        # leaving the migration half-applied. The reverse no-ops because
+        # the reset only lives for this connection.
+        migrations.RunSQL(
+            "SET SESSION max_statement_time = 0",
+            reverse_sql=migrations.RunSQL.noop,
+        ),
         migrations.AddField(
             model_name="opinion",
             name="embedding_pending",
