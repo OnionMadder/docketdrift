@@ -23,11 +23,18 @@ votes-per-year SVG chart with `?vs=<other-slug>` overlay and a
 "compare" link on every co-panelist; `/compare/judges/?a=&b=` is a
 side-by-side dossier with a concordance + split-decision section.
 
-**Embed:** AZ run is supervised by a self-respawning wrapper
-script (`/home/private/docketdrift/_embed_az_loop.sh`) — it loops
-embed_opinions; heartbeat scheduled task watches `.embed_expected`
-marker + `.embed_last_exit` sentinel and resurrects after NFSN's
-~10-minute wallclock cull. NH finished cleanly on 2026-06-14.
+**Embed (2026-06-15 redesign):** the self-respawning daemon wrapper is
+GONE. Embedding is now driven by an NFSN **scheduled task** running
+`scripts/embed_tick.sh` every ~10 min. Each tick runs ONE bounded pass
+(`embed_opinions --max-runtime 480`), self-exits under NFSN's wallclock
+cull, and the next tick resumes via the indexed `embedding_pending`
+flag. Target state lives in `.embed_state` (one USPS code). A
+single-flight `flock` prevents overlap; `embed_opinions` raises (non-zero
+exit → NFSN emails) on any failure and rewrites a `.embed_progress`
+beacon each batch. `heartbeat.sh` is now a pure alerter — stale beacon
+with pending > 0 → email. No wrapper, no `.embed_expected`/`.embed_last_exit`
+sentinels, no resurrect logic. See *Deployment cheat sheet* below. NH
+finished cleanly on 2026-06-14; AZ in progress.
 
 **Future feature work** is scoped in `docs/ROADMAP.md` — Phases 13-21
 covering attorney extraction, citation treatment graph, holdings,
@@ -333,19 +340,23 @@ apart under any sustained load, max-requests is too aggressive.
 
 ### NFSN's ~10-minute wallclock cull on shared-hosting daemons
 
-Independent of max-requests above: NFSN's shared-hosting supervisor
-quietly SIGKILLs long-running daemon-style processes after roughly
-10 minutes. The wrapper instance loses no log output (SIGKILL is
-silent), the trap-EXIT doesn't fire, and the next process slot is
-reaped. This is policy, not load-dependent.
+NFSN's shared-hosting supervisor quietly SIGKILLs long-running
+daemon-style processes after roughly 10 minutes. SIGKILL is silent
+(no log, trap-EXIT doesn't fire). This is policy, not load-dependent.
 
-The 2026-06-14 supervisor pattern in `scripts/heartbeat.sh` handles
-it: the wrapper writes a `99` sentinel to `.embed_last_exit` at
-startup (overwritten on clean exit), so the heartbeat seeing
-"`.embed_expected` exists, wrapper not running, last exit = `99`"
-infers "killed by NFSN" and resurrects with `--skip-preflight`.
+**Don't fight the cull — don't run daemons.** The old approach (a
+self-respawning wrapper + heartbeat-resurrect + `99`-sentinel
+handshake) tried to survive the cull and bred a whole class of
+silent-death bugs (exit-0-on-failure, duration-based brake blind spots,
+missing-sentinel stand-down). It was removed on 2026-06-15.
 
-Don't fight the cull -- design around it.
+The replacement: `embed_opinions --max-runtime 480` makes each run
+SELF-EXIT cleanly well under the cull, and an NFSN scheduled task
+(`scripts/embed_tick.sh`, every ~10 min) just keeps invoking it.
+A killed pass is now harmless — the `.embed_progress` beacon is written
+every batch, the `flock` releases on death, and the next tick resumes.
+If you ever need another long-running job on NFSN, use this pattern
+(bounded command + scheduled task), NOT a resident daemon.
 
 ### Local SSH-jail egress to public docketdrift.com is flaky
 
@@ -386,39 +397,37 @@ with connection.cursor() as c:
         print(r[4], r[5], (r[7] or \"\")[:80])
 "'
 
-# Re-launch the self-respawning embed wrapper after a system-check
-# failure, a manual kill, or starting a new state. The wrapper sits at
-# /home/private/docketdrift/_embed_<state>_loop.sh and loops
-# embed_opinions until clean exit. The supervisor (scripts/heartbeat.sh
-# running every 10 min via NFSN scheduled task) will resurrect it on
-# NFSN's wallclock cull -- just don't call TaskStop on the wrapper
-# itself from your dev box.
-ssh docketdrift 'echo "_embed_az_loop.sh" > /home/private/docketdrift/.embed_expected
-  nohup /home/private/docketdrift/_embed_az_loop.sh \
-      >> /home/logs/embed_opinions.log 2>&1 < /dev/null & disown
-  sleep 8
-  ps -axww | grep -E "(_embed_az_loop|manage.py embed)" | grep -v grep'
+# EMBED PIPELINE (cron-tick model, 2026-06-15). No daemon, no wrapper.
+# An NFSN scheduled task runs scripts/embed_tick.sh every ~10 min; it
+# reads the target state from .embed_state and runs ONE bounded pass.
 
-# Build a wrapper for a NEW state from the committed template:
-ssh docketdrift 'sed "s/^STATE=NH$/STATE=AZ/" \
-      /home/private/docketdrift/scripts/embed_state_loop.sh \
-      > /home/private/docketdrift/_embed_az_loop.sh
-  chmod +x /home/private/docketdrift/_embed_az_loop.sh'
+# Start / switch the embedding target state (takes effect next tick):
+ssh docketdrift 'echo AZ > /home/private/docketdrift/.embed_state'
 
-# Stop the wrapper + supervisor (e.g. before a migration that needs
-# exclusive access to opinions_opinion). Removing the marker disarms
-# the supervisor BEFORE we kill the wrapper, so the heartbeat doesn't
-# immediately resurrect it.
-ssh docketdrift 'rm -f /home/private/docketdrift/.embed_expected
-  pkill -f _embed_az_loop.sh
-  pkill -f "manage.py embed_opinions"'
+# Pause embedding after the current pass (scheduled task stays registered;
+# it no-ops while .embed_state is absent). To resume, set .embed_state again.
+ssh docketdrift 'rm -f /home/private/docketdrift/.embed_state'
 
-# Verify the wrapper is healthy (process visible, log advancing)
-ssh docketdrift 'ps -axww | grep -E "_embed_.*_loop|manage.py embed" | grep -v grep; tail -3 /home/logs/embed_opinions.log'
+# Run a pass by hand (e.g. to watch it, or to push a state to completion
+# now). --max-runtime 0 = run until done; omit it to use the 0 default.
+ssh docketdrift 'cd /home/private/docketdrift && source .venv/bin/activate &&
+  python manage.py embed_opinions --state AZ --max-runtime 0'
 
-# Check how often the supervisor has been resurrecting the wrapper:
-ssh docketdrift 'echo "total launches: $(grep -c "wrapper.*starting embed_opinions" /home/logs/embed_opinions.log)"
-  echo "supervisor resurrects: $(grep -c "supervisor.*Resurrecting" /home/logs/embed_opinions.log)"'
+# Check progress: the beacon is "<unix_ts> <pending_remaining>".
+ssh docketdrift 'cd /home/private/docketdrift &&
+  echo "beacon: $(cat .embed_progress 2>/dev/null)";
+  tail -3 /home/logs/embed_opinions.log'
+
+# Is a pass running right now? (None between ticks is NORMAL.)
+ssh docketdrift 'ps -axww | grep -E "embed_tick|manage.py embed_opinions" | grep -v grep || echo "(idle between ticks)"'
+
+# REGISTER THE SCHEDULED TASK (one-time, NFSN member UI -- not scriptable):
+#   Manage Site -> Scheduled Tasks -> Add:
+#     Tag:      embed-tick
+#     Command:  /home/private/docketdrift/scripts/embed_tick.sh
+#     Schedule: every 10 minutes
+# The heartbeat (separate existing task) alerts if the beacon goes stale
+# with pending > 0 -- that's the only embed supervision now.
 ```
 
 ## Management commands reference
@@ -477,13 +486,14 @@ closed in the 2026-06-09 → 2026-06-12 session.
 
 1. ~~**Finish NH embed.**~~ ✅ Done 2026-06-14 — NH at 100%, ~$2 in
    Voyage cost. Wrapper exited 0 cleanly.
-2. **Finish AZ embed.** ~35K opinions left (~8% → 100%). The
-   self-respawning wrapper at `/home/private/docketdrift/_embed_az_loop.sh`
-   is running, supervised by heartbeat resurrect on NFSN's wallclock
-   cull. ETA depends on what the new (256-batch / 90K-token) defaults
-   actually deliver — see throughput-tweak commit `8cc6535`. If
-   sustained ~500 ops/hour holds, ~70 hours wall clock; ~$5-6 in
-   Voyage cost.
+2. **Finish AZ embed.** ~33.3K opinions left as of 2026-06-15. Now runs
+   via the cron-tick model (`scripts/embed_tick.sh` + `.embed_state=AZ`,
+   see *Deployment cheat sheet*). **Blocked on one manual step:** the
+   `embed-tick` NFSN scheduled task must be registered in the member UI
+   (not scriptable). Until then ticks don't fire and the heartbeat will
+   correctly alert that the beacon is stale. ETA once scheduled: ~1-2
+   days wall clock at the AZ rate (large opinions, API-latency-bound);
+   ~$5-6 Voyage cost.
 3. **Run `extract_statutes --state AZ`** to populate AZ's A.R.S.
    citation graph. Extractor module exists (`statutes_az.py`); it just
    hasn't been swept over the AZ corpus yet. ~10-15 min on NFSN.
@@ -594,17 +604,20 @@ sessions are listed here — see the prior CLAUDE.md if you need the
 
 ### Stability / supervisor (2026-06-14 sub-session)
 
-- `scripts/embed_state_loop.sh` (new) — repo-committed source of
-  truth for the on-NFSN `_embed_<state>_loop.sh` wrappers. Has
-  preflight `manage.py check` gate, rapid-fail brake (4 sub-60s
-  exits aborts the loop with stderr alert), `99` sentinel write at
-  startup so SIGKILL-with-no-trap is distinguishable from clean exit,
-  and `--skip-preflight` arg the supervisor passes on resurrects.
-- `scripts/heartbeat.sh` (new) — runs every 10 min via NFSN scheduled
-  task. Probes `/healthz`, checks for wrapper liveness against the
-  `.embed_expected` marker, and ACTS as the supervisor when the
-  wrapper is missing: reads `.embed_last_exit`, decides resurrect
-  vs. alert based on the exit code semantics defined in the wrapper.
+- `scripts/embed_state_loop.sh` — **DELETED 2026-06-15.** Was the
+  self-respawning daemon wrapper; replaced by the cron-tick model
+  (`scripts/embed_tick.sh`). Its rapid-fail brake / `99`-sentinel /
+  `--skip-preflight` machinery bred the silent-death bug class and is
+  gone. See *NFSN's ~10-minute wallclock cull* gotcha.
+- `scripts/embed_tick.sh` (new 2026-06-15) — thin stateless cron entry.
+  Reads target state from `.embed_state`, `exec`s one bounded
+  `embed_opinions --max-runtime 480` pass. No loop, no sentinels.
+  Registered as an NFSN scheduled task every ~10 min.
+- `scripts/heartbeat.sh` — runs every 10 min via NFSN scheduled task.
+  Probes `/healthz`. **No longer supervises/resurrects the embed**
+  (rewritten 2026-06-15): it only ALERTS when the `.embed_progress`
+  beacon is stale with pending > 0. The resurrect/exit-code/pgrep logic
+  is gone.
 - `scripts/preflight.sh` (new) — pre-push check that catches
   multi-line `{# #}` template comments and decorator-orphan
   SyntaxErrors before they hit production.
@@ -721,10 +734,10 @@ sessions are listed here — see the prior CLAUDE.md if you need the
 - `docs/STATE_ROLLOUT.md` — restructured for future contributors,
   697 lines, Day 1/2/3 timeline + standalone gotcha sections (commit
   `4511c2b`).
-- `/home/private/docketdrift/_embed_nh_loop.sh` (NFSN, not in repo) —
-  self-respawning wrapper. The pattern is general: write the wrapper
-  on NFSN, kick via `nohup ... < /dev/null & disown`, never call
-  `TaskStop` on the launcher.
+- `/home/private/docketdrift/_embed_<state>_loop.sh` (NFSN, not in repo)
+  — **removed 2026-06-15** along with `.embed_expected` / `.embed_last_exit`.
+  The self-respawning-wrapper pattern is retired; embedding is a bounded
+  command driven by an NFSN scheduled task (`scripts/embed_tick.sh`).
 
 ### Migrations
 
