@@ -496,7 +496,16 @@ def opinion_list(request):
         # DESC instead of full-scan-then-sort) but can't outrun a stale
         # corpus. One cheap indexed MAX drives it.
         page_obj = None
-        landing_anchor = qs.aggregate(_m=models.Max("release_date"))["_m"]
+        # Reuse the cached state-stats bundle for BOTH the whole-corpus
+        # count and the recency anchor -- they're the same values home()
+        # already caches. Computing them here as two uncached aggregates
+        # (a full-corpus COUNT and a MAX) on every default-landing request
+        # was tripping max_statement_time under crawler load. The count is
+        # still the WHOLE corpus, so the "X opinions indexed" header stays
+        # honest even though the list is windowed.
+        stats = _state_landing_stats(state, court_ids)
+        total_count = stats["total_opinions"]
+        landing_anchor = (stats.get("date_range") or {}).get("last")
         if landing_anchor:
             landing_window = landing_anchor - timedelta(days=365)
             opinions = list(
@@ -505,9 +514,6 @@ def opinion_list(request):
             )
         else:
             opinions = []
-        # The count is the WHOLE corpus though -- the "X opinions
-        # indexed" header doesn't lie even if the list is windowed.
-        total_count = qs.values("pk").count()
 
     # Snippet generation. For keyword searches, pull a ~240-char window
     # around the FIRST occurrence of the query in each opinion's
