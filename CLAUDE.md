@@ -28,7 +28,11 @@ GONE. Embedding is now driven by an NFSN **scheduled task** running
 `scripts/embed_tick.sh` every ~10 min. Each tick runs ONE bounded pass
 (`embed_opinions --max-runtime 480`), self-exits under NFSN's wallclock
 cull, and the next tick resumes via the indexed `embedding_pending`
-flag. Target state lives in `.embed_state` (one USPS code). A
+flag. Target state lives in `.embed_state` (one USPS code). Embedding
+only runs in an **overnight window** (00:00–06:00 `America/Phoenix`, gated
+in `embed_tick.sh`) so it doesn't contend with daytime crawler traffic —
+outside the window each tick is a no-op (a manual `embed_opinions` run
+bypasses the gate). A
 single-flight `flock` prevents overlap; `embed_opinions` raises (non-zero
 exit → NFSN emails) on any failure and rewrites a `.embed_progress`
 beacon each batch. `heartbeat.sh` is now a pure alerter — stale beacon
@@ -102,6 +106,21 @@ WILL NOT render to the user.
 nested-string brackets inside an f-string are a `SyntaxError`.
 Use `%`-formatting or `.format()` for dict-key lookups in scripts that
 will run on production.
+
+### Function-local imports in a conditional branch → UnboundLocalError
+
+A `from datetime import timedelta` (or any import/assignment) placed
+**inside an `if` branch** makes that name **function-local for the entire
+function** — Python decides local-vs-global at compile time. Any *other*
+code path that uses the name without having executed that branch raises
+`UnboundLocalError` at runtime: not at import, not at `manage.py check`,
+only when that path runs. This shipped a live 500 on bare `/opinions/` —
+the no-search path used `timedelta`, but it was imported only inside the
+search branch, so it was unbound on the default landing. It hid because
+the search path worked and the system check passed. **Import at module
+scope**, or import locally in *every* branch that uses the name. Especially
+watch the filtered/default and search/no-search branch splits in
+`opinion_list` and `home`.
 
 ### NumPy on NFSN's FreeBSD is broken
 
@@ -400,6 +419,11 @@ with connection.cursor() as c:
 # EMBED PIPELINE (cron-tick model, 2026-06-15). No daemon, no wrapper.
 # An NFSN scheduled task runs scripts/embed_tick.sh every ~10 min; it
 # reads the target state from .embed_state and runs ONE bounded pass.
+# Embedding only runs OVERNIGHT (00:00-06:00 America/Phoenix, gated in
+# embed_tick.sh via EMBED_START_HOUR/EMBED_END_HOUR) so it doesn't contend
+# with daytime crawler traffic; outside the window each tick is a no-op.
+# To widen/move the window, edit those two constants (EMBED_END_HOUR=24 =
+# all day). A manual run (below) bypasses the window entirely.
 
 # Start / switch the embedding target state (takes effect next tick):
 ssh docketdrift 'echo AZ > /home/private/docketdrift/.embed_state'
