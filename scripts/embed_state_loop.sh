@@ -34,6 +34,19 @@ MIN_RUN_SECONDS=60
 MAX_FAIL_STREAK=4
 STATUS_FILE=/home/private/docketdrift/.embed_last_exit
 
+# --skip-preflight (passed by the heartbeat supervisor on resurrection
+# but NOT on first manual launch) makes us skip the manage.py check
+# preflight. Each preflight costs ~30s and on NFSN's 10-minute wallclock
+# cull policy we were paying that 30s every ~10 minutes of runtime --
+# 5+ minutes per hour of preflight overhead at the steady-state
+# resurrection rate. The supervisor only resurrects after seeing a
+# previous instance crash with no rapid-fail brake firing, which means
+# the last preflight passed; redundant.
+SKIP_PREFLIGHT=0
+if [ "${1:-}" = "--skip-preflight" ]; then
+    SKIP_PREFLIGHT=1
+fi
+
 cd /home/private/docketdrift
 
 stamp() { date -u +%Y-%m-%dT%H:%M:%SZ; }
@@ -52,12 +65,16 @@ write_status() { echo "$1" > "$STATUS_FILE"; }
 write_status 99
 trap 'write_status $?' EXIT
 
-echo "[$(stamp)] [wrapper] preflight: manage.py check"
-if ! /home/private/docketdrift/.venv/bin/python -u manage.py check; then
-    echo "[$(stamp)] [wrapper] ABORT: manage.py check failed. Fix and relaunch." >&2
-    exit 2
+if [ $SKIP_PREFLIGHT -eq 0 ]; then
+    echo "[$(stamp)] [wrapper] preflight: manage.py check"
+    if ! /home/private/docketdrift/.venv/bin/python -u manage.py check; then
+        echo "[$(stamp)] [wrapper] ABORT: manage.py check failed. Fix and relaunch." >&2
+        exit 2
+    fi
+    echo "[$(stamp)] [wrapper] preflight ok. starting loop (state=$STATE)"
+else
+    echo "[$(stamp)] [wrapper] supervisor resurrect (preflight skipped). starting loop (state=$STATE)"
 fi
-echo "[$(stamp)] [wrapper] preflight ok. starting loop (state=$STATE)"
 
 fail_streak=0
 while true; do

@@ -103,10 +103,15 @@ if [ -f "$EMBED_MARKER" ]; then
                 ;;
             *)
                 # Crash, kill, NFSN supervisor cull. Resurrect.
+                # --skip-preflight tells the wrapper not to re-run
+                # manage.py check -- the previous instance passed it,
+                # and the supervisor only gets here after a non-brake
+                # death, so the build is known-good. Saves ~30s/restart
+                # on NFSN's ~10-min cull cycle.
                 wrapper_path="/home/private/docketdrift/$wrapper_name"
                 if [ -x "$wrapper_path" ]; then
                     echo "[$(stamp)] [supervisor] $wrapper_name died (last exit=$last_exit). Resurrecting."
-                    nohup "$wrapper_path" >> "$EMBED_LOG" 2>&1 < /dev/null & disown
+                    nohup "$wrapper_path" --skip-preflight >> "$EMBED_LOG" 2>&1 < /dev/null & disown
                 else
                     echo "[$(stamp)] HEARTBEAT FAIL: $wrapper_name marked expected but $wrapper_path is missing or not executable" >&2
                     fail=1

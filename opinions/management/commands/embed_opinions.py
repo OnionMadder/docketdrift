@@ -55,17 +55,15 @@ DEFAULT_MODEL = "voyage-law-2"
 # ~5-10K tokens each, so 128-doc batches blow that token cap immediately.
 # We use --batch-size as a HARD CAP on rows fetched per iteration and let
 # --max-batch-tokens dynamically pack the batch under Voyage's limit.
-DEFAULT_BATCH = 128
-# Voyage's per-batch token cap is 120K; leave headroom for our rough
-# 4-char-per-token estimate going low (legal text actually trends higher).
+DEFAULT_BATCH = 256
 # Voyage's hard limit is 120,000 tokens per request. Our estimate
 # (~4 chars/token via _estimate_tokens) is approximate -- a batch
 # packed under our 100K cap could still overshoot Voyage's 120K cap
 # once Voyage's own tokenizer counts. AZ has a small handful of
 # death-penalty appeals over 100K chars each that crossed the line
-# in batches that looked safe to us. Drop to 60K so even an "oops,
+# in batches that looked safe to us. Drop to 90K so even an "oops,
 # our estimate was off by 2x" outcome stays under Voyage's ceiling.
-DEFAULT_MAX_BATCH_TOKENS = 60_000
+DEFAULT_MAX_BATCH_TOKENS = 90_000
 # voyage-law-2's context window. Anything longer gets truncation=true'd
 # away, so we cap our estimate here too.
 MODEL_CONTEXT_TOKENS = 16_000
