@@ -23,6 +23,10 @@
 #     echo AZ > /home/private/docketdrift/.embed_state   # start/switch
 #     rm     /home/private/docketdrift/.embed_state       # stop after the
 #                                                         # current pass
+#
+# Embedding is gated to an overnight window (see EMBED_TZ / EMBED_*_HOUR
+# below) so it doesn't contend with daytime crawler traffic. Outside that
+# window every tick is a no-op.
 set -u
 
 BASE=/home/private/docketdrift
@@ -34,6 +38,26 @@ PYTHON="$BASE/.venv/bin/python"
 MAX_RUNTIME=480
 
 cd "$BASE" || exit 1
+
+# --- overnight-only window -------------------------------------------------
+# Embedding contends with the public site's DB (notably the per-opinion
+# similar-opinions VEC scan that ClaudeBot triggers on every opinion page),
+# so we only embed overnight in Onion's local time. The NFSN scheduled task
+# keeps firing every ~10 min 24/7; OUTSIDE the window this is a near-instant
+# no-op -- Django never even starts. A zoneinfo name keeps it DST-correct
+# (America/Phoenix = Arizona, which doesn't observe DST anyway, so it's a
+# fixed UTC-7). Window is [START, END) in EMBED_TZ. To run all day again,
+# set EMBED_START_HOUR=0 and EMBED_END_HOUR=24. A manual run bypasses this
+# gate entirely (it calls embed_opinions directly, not this script).
+EMBED_TZ="America/Phoenix"
+EMBED_START_HOUR=0     # inclusive (00:00 local)
+EMBED_END_HOUR=6       # exclusive (06:00 local)
+
+hour=$(TZ="$EMBED_TZ" date +%H)
+hour=${hour#0}         # "08"/"09" -> "8"/"9" so [ ] doesn't choke on octal
+if [ "$hour" -lt "$EMBED_START_HOUR" ] || [ "$hour" -ge "$EMBED_END_HOUR" ]; then
+    exit 0
+fi
 
 # No state configured -> nothing to embed. Silent no-op (exit 0) so the
 # scheduled task can stay registered between corpora.
