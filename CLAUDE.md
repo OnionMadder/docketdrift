@@ -285,9 +285,16 @@ ssh docketdrift 'curl -sS -H "Host: mn.docketdrift.com" http://10.0.175.75:8000/
   Supreme single-page roster.
 - `appeals2.az.gov` is yet another DNN host, different paths.
 
-Workaround for these: Playwright on Onion's local Windows box (residential
-IP isn't blocked), drop output PDFs/JSON to a watched folder, NFSN-side
-process picks them up. See task #41.
+Workaround: a REAL browser on Onion's residential Windows box. **NOTE
+(2026-06-15): a residential IP alone is NOT enough** — Akamai fingerprints
+the client, so `curl` / `requests` / even Playwright's `request` API all
+403 from the residential IP too. What gets through is Playwright driving the
+installed Chrome (`channel="chrome"`, headed); images must be pulled with an
+in-page same-origin `fetch` (the request API is fingerprinted as well). The
+NH Supreme **justice roster** is scraped this way by
+`scripts/nh_scraper/scrape_nh_justices.py` → `scripts/fetch_judge_photos.py`
+→ `localize_judge_photos` (see the judge-photo pipeline). NH **opinions**
+and AZ-COA judge bios are still TODO (#41).
 
 ### `embedding IS NULL` is unindexable; use the `embedding_pending` shadow column
 
@@ -469,7 +476,8 @@ ssh docketdrift 'ps -axww | grep -E "embed_tick|manage.py embed_opinions" | grep
 | `suggest_tags [--rescore-all] [--limit N]` | Score opinions vs tags via VEC_DISTANCE_COSINE | global | yes |
 | `extract_statutes [--state <CODE>] [--force]` | Pull statute citations. Now multi-state via the `opinions/parsing/statutes.py` dispatcher (MN: `Minn. Stat.`, NH: `RSA`, AZ: `A.R.S.`). | per state (optional) | yes |
 | `resolve_judges --state <CODE> [--create-missing] [--since YYYY-MM-DD]` | Match byline+panel to existing Judge rows; `--create-missing` mints new ones. Hybrid: state parser fills what it knows, generic byline extractor fills the rest. | per state | yes |
-| `scrape_judges <state> [--dry-run]` | Scrape current-roster bios. Supports `mn` (mncourts.gov sitemap) + `az` (azcourts.gov MeettheJustices single page). NH/AZ-COA blocked by Akamai — needs #41 Playwright path. | per state | yes |
+| `scrape_judges <state> [--dry-run]` | Scrape current-roster bios. Supports `mn` (mncourts.gov sitemap) + `az` (azcourts.gov single page). NH is Akamai-blocked → scraped off-platform by `scripts/nh_scraper/` (residential Playwright) instead. AZ-COA still TODO (#41). | per state | yes |
+| `localize_judge_photos [--dry-run]` | Repoint every judge's `photo_url` to a SELF-HOSTED `/static/opinions/judges/` portrait (no hotlinks to court sites that could go down) + apply scraped NH bios, from the committed `opinions/data/judge_localization.json` manifest. Run after `collectstatic` + restart. Portraits are downloaded locally by `scripts/fetch_judge_photos.py`. | global | yes |
 | `reconcile_az_judges [--dry-run]` | One-shot merge of duplicate AZ Judge rows from the first scrape_judges run | AZ-specific | yes (no-op after merge) |
 | `backfill_dispositions` | Parse dispositions from raw_text into `disposition` field | global | yes |
 | `manage.py check` | Django system checks (incl. opinions.E001 multi-line `{# #}` guard) | global | n/a |
@@ -541,16 +549,16 @@ closed in the 2026-06-09 → 2026-06-12 session.
 
 ### Priority 2 — close coverage gaps
 
-9. **Playwright-on-Windows scrapers** (#41) for the three Akamai-blocked
-   judge / opinion sites:
-   - NH Supreme (`courts.nh.gov`) — current corpus is only through
-     2026-06-03 because of this block; we manually scp 2026 PDFs via
-     `ingest_pdfs` instead.
-   - AZ COA Div 1 (`coa1.azcourts.gov`)
-   - AZ COA Div 2 (`appeals2.az.gov`)
-   Output drops PDFs/JSON to a watched folder; NFSN-side `scrape_judges`
-   ingests them. Without this, NH stays behind CL by a quarter-or-so
-   and AZ COA judge bios are missing.
+9. **Playwright-on-Windows scrapers** (#41) for the Akamai-blocked sites:
+   - NH Supreme **judges** (`courts.nh.gov`) — ✅ DONE 2026-06-15 via
+     `scripts/nh_scraper/scrape_nh_justices.py` (Playwright + real Chrome,
+     `channel="chrome"`). The 5 seated justices now have official bios +
+     appointment dates + self-hosted portraits.
+   - NH Supreme **opinions** (`courts.nh.gov`) — still blocked; corpus only
+     through 2026-06-03, we manually scp 2026 PDFs via `ingest_pdfs`. The
+     same real-Chrome approach could fetch the slip opinions next.
+   - AZ COA Div 1 (`coa1.azcourts.gov`) + Div 2 (`appeals2.az.gov`) judge
+     bios — still TODO (DNN hosts).
 10. **Backfill `reporter_cite` field on Opinion.** The NH parser already
     extracts the citation line (`2026 N.H. 1`); making it a queryable
     field unlocks paste-the-cite search on the public site (current
