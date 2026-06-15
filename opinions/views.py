@@ -500,6 +500,11 @@ def opinion_list(request):
         # DESC instead of full-scan-then-sort) but can't outrun a stale
         # corpus. One cheap indexed MAX drives it.
         page_obj = None
+        # `timedelta` is imported locally inside the search branch above,
+        # which makes it a function-local name everywhere in opinion_list --
+        # so on this no-search path it is otherwise unbound. Import it here
+        # too. (See module TODO: hoist datetime imports to module scope.)
+        from datetime import timedelta
         # Reuse the cached state-stats bundle for BOTH the whole-corpus
         # count and the recency anchor -- they're the same values home()
         # already caches. Computing them here as two uncached aggregates
