@@ -39,7 +39,11 @@ CACHE_SEC_DOSSIER_LIST = 3600    # current-judges (1 hour)
 CACHE_SEC_HOME = 900             # state home (15 min -- new opinions land via cron)
 CACHE_SEC_STATIC = 86400         # about / privacy / support (24 hours)
 CACHE_SEC_ROBOTS = 86400         # /robots.txt (24 hours)
-CACHE_SEC_STATE_STATS = 1800     # state-landing stats bundle (30 min)
+CACHE_SEC_STATE_STATS = 7200     # state-landing stats bundle (2 hr). MUST
+# exceed the hourly precompute_explore_tags warming interval -- at 30 min it
+# expired mid-hour and real requests paid the cold rebuild (the recurring
+# state-landing slowness). Counts change only on weekly ingest + editor
+# activity, so 2 hr staleness is fine.
 
 
 # MariaDB's default ft_min_word_len is 4. Shorter queries can't match via
