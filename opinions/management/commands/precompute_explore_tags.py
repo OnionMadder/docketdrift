@@ -18,8 +18,10 @@ queries and writes the same value. No DB writes.
 
 Cost: 20 MATCH-COUNTs * N live states once per run. On the current
 3-state corpus that's ~60 cheap-when-warm-but-each-2s-when-cold
-queries, all under the per-statement timeout. ~10-30 seconds
-wall-clock per run.
+queries. The command lifts its per-statement timeout (it's background
+warming, not a web request) so a contended run -- e.g. one overlapping
+the overnight embed window -- completes instead of tripping 1969 and
+crashing. ~10-30 seconds wall-clock per run.
 
 Usage::
 
@@ -63,6 +65,19 @@ class Command(BaseCommand):
         # Local import: pulls in opinions.views only when the command
         # actually runs, avoiding any import-time cycle at startup.
         from opinions.views import _state_court_ids, _state_landing_stats
+
+        # Lift this connection's per-statement timeout. settings' 25s
+        # init_command cap protects gunicorn workers, but the FULLTEXT
+        # MATCH-COUNTs and stats-bundle aggregates below are background
+        # warming work that can legitimately run longer under DB contention
+        # (e.g. an hourly run overlapping the overnight embed window).
+        # Without this, a contended query trips 1969 (max_statement_time
+        # exceeded) and the whole warmer crashes -- leaving the cache cold,
+        # the opposite of the goal. Skipped on non-MariaDB (local SQLite).
+        from django.db import connection
+        if connection.vendor == "mysql":
+            with connection.cursor() as cursor:
+                cursor.execute("SET SESSION max_statement_time = 0")
 
         for s in states:
             # Invalidate then rebuild so the warming run reflects fresh
