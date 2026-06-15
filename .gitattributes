@@ -1,0 +1,6 @@
+# Shell scripts MUST keep LF line endings. They run on NFSN's FreeBSD via
+# /bin/sh; a CRLF makes the kernel fail to find the interpreter ("bad
+# interpreter: No such file or directory"). Committing from Windows
+# (core.autocrlf=true) would otherwise risk CRLF creeping in and silently
+# breaking the embed cron tick / heartbeat.
+*.sh text eol=lf
