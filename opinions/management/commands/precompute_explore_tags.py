@@ -6,11 +6,12 @@ in the persistent FileBasedCache), the first request after expiry
 pays the whole cost -- ~2-6 seconds depending on contention. Crawlers
 hitting state landings concurrently can multiply this across workers.
 
-This command rebuilds each live state's explore_tags cache entry
-proactively, BEFORE the TTL expires. Schedule it via NFSN's Scheduled
-Tasks UI (Manage Site -> Scheduled Tasks) at a cadence shorter than
-the cache TTL -- recommended: hourly. Real-user requests then always
-hit a warm cache.
+This command rebuilds each live state's explore_tags cache entry AND
+its state-landing-stats bundle (opinion/judge counts, date range,
+distinct tags used) proactively, BEFORE the TTL expires. Schedule it
+via NFSN's Scheduled Tasks UI (Manage Site -> Scheduled Tasks) at a
+cadence shorter than the cache TTL -- recommended: hourly. Real-user
+requests then always hit a warm cache for both.
 
 Idempotent: if the cache is already warm, the build re-uses the same
 queries and writes the same value. No DB writes.
@@ -59,14 +60,24 @@ class Command(BaseCommand):
             self.stdout.write("No live states to warm.")
             return
 
+        # Local import: pulls in opinions.views only when the command
+        # actually runs, avoiding any import-time cycle at startup.
+        from opinions.views import _state_court_ids, _state_landing_stats
+
         for s in states:
             # Invalidate then rebuild so the warming run reflects fresh
-            # counts even if something else just touched the cache.
+            # counts even if something else just touched the cache. Warm
+            # BOTH per-state caches the landing/apex pages read: the
+            # explore-tags cloud AND the state-stats bundle. The stats
+            # bundle was previously never pre-warmed, so every TTL expiry
+            # hit a real user with the full cold aggregate cost.
             cache.delete(f"explore_tags_sized:{s.code}")
+            cache.delete(f"state_landing_stats:{s.code}")
             t0 = time.time()
             sized = _get_sized_tags(s)
+            _state_landing_stats(s, _state_court_ids(s))
             elapsed = time.time() - t0
             self.stdout.write(
-                f"  {s.code}: {len(sized)} tags warmed in {elapsed:.1f}s"
+                f"  {s.code}: {len(sized)} tags + stats warmed in {elapsed:.1f}s"
             )
         self.stdout.write(self.style.SUCCESS("Done."))

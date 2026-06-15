@@ -13,7 +13,9 @@ All rendering goes through the ``opinions/*.html`` templates in
 dark/neon design system loaded via the base template.
 """
 import re
+from datetime import date, timedelta
 
+from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.db import connection, models
 from django.db.models import Q
@@ -37,6 +39,7 @@ CACHE_SEC_DOSSIER_LIST = 3600    # current-judges (1 hour)
 CACHE_SEC_HOME = 900             # state home (15 min -- new opinions land via cron)
 CACHE_SEC_STATIC = 86400         # about / privacy / support (24 hours)
 CACHE_SEC_ROBOTS = 86400         # /robots.txt (24 hours)
+CACHE_SEC_STATE_STATS = 1800     # state-landing stats bundle (30 min)
 
 
 # MariaDB's default ft_min_word_len is 4. Shorter queries can't match via
@@ -92,6 +95,50 @@ DEFAULT_COVERAGE_LAG_NOTE = (
 STALE_DAYS_THRESHOLD = 30
 
 
+def _state_court_ids(state):
+    """Court PKs for a state, resolved in Python.
+
+    Lets queries filter on the indexed ``court_id`` instead of JOINing
+    opinions -> courts -> states (the court table is a handful of rows per
+    state). Centralizes the idiom that was copy-pasted across home,
+    opinion_list, and the sitemaps.
+    """
+    return list(state.courts.values_list("id", flat=True))
+
+
+def _state_landing_stats(state, court_ids):
+    """Cached bundle of the slow per-state scalar aggregates.
+
+    Opinion count, judge counts, release-date range, and distinct tags
+    used -- each a full-index scan that competes with the embed pipeline
+    on the same MariaDB instance. Built in ONE shot and cached as a single
+    entry so neither a real request nor the precompute warmer recomputes
+    them per call. ``precompute_explore_tags`` calls this too, so the
+    bundle is genuinely pre-warmed for real users (it previously was not,
+    despite a comment claiming so).
+    """
+    key = f"state_landing_stats:{state.code}"
+    bundle = cache.get(key)
+    if bundle is None:
+        state_opinions = Opinion.objects.filter(court_id__in=court_ids)
+        judges_qs = Judge.objects.filter(state=state)
+        bundle = {
+            "total_opinions": state_opinions.values("pk").count(),
+            "total_judges": judges_qs.count(),
+            "currently_seated": judges_qs.filter(is_currently_seated=True).count(),
+            "date_range": state_opinions.aggregate(
+                first=models.Min("release_date"),
+                last=models.Max("release_date"),
+            ),
+            "total_tags_used": (
+                Tag.objects.filter(opinions__court_id__in=court_ids)
+                .distinct().count()
+            ),
+        }
+        cache.set(key, bundle, CACHE_SEC_STATE_STATS)
+    return bundle
+
+
 @cache_control(public=True, max_age=CACHE_SEC_HOME)
 def home(request):
     """Apex state-picker OR per-state landing page.
@@ -113,7 +160,13 @@ def home(request):
     if state is None:
         live = list(State.objects.filter(is_live=True).order_by("name"))
         for s in live:
-            s.opinion_count = Opinion.objects.filter(court__state=s).count()
+            # Cached bundle (court_id-resolved) instead of an uncached
+            # opinions -> courts -> states JOIN-COUNT per state on the
+            # busiest page. Shared with the per-state landing and warmed
+            # by precompute_explore_tags.
+            s.opinion_count = _state_landing_stats(
+                s, _state_court_ids(s)
+            )["total_opinions"]
         return render(request, "opinions/apex.html", {
             "states": live,
             "active_nav": "opinions",
@@ -127,86 +180,39 @@ def home(request):
         return redirect(f"{reverse('opinions:opinion_list')}?{request.GET.urlencode()}")
 
     # State landing.
-    # Pre-resolve court_ids the same way opinion_list does. The previous
-    # `Opinion.objects.filter(court__state=state)` JOINed opinions ->
-    # courts -> states on every aggregate (count, MIN/MAX, recent-5),
-    # which on the 60K-row MN corpus took 12+ seconds under embed
-    # contention -- enough to time out the public state-landing page.
-    # The court table is a handful of rows per state; resolving in
-    # Python first turns every aggregate into an FK-indexed scan.
-    court_ids = list(state.courts.values_list("id", flat=True))
-
+    court_ids = _state_court_ids(state)
     state_opinions = Opinion.objects.filter(court_id__in=court_ids)
 
-    # Cache the slow scalar aggregates as a single state-stats bundle.
-    # Each one is a full-table or full-index scan that competes with
-    # embed_opinions' raw_text fetch on the same MariaDB instance --
-    # under contention the bundle was running 22+ seconds even with
-    # the court_id pre-resolve in place. The bundle changes only on
-    # corpus ingest (weekly) and editor activity, so a 30-minute TTL
-    # is dramatically over-fresh. The persistent FileBasedCache holds
-    # it across gunicorn restarts; precompute_explore_tags also
-    # rebuilds it as part of the warming run.
-    from django.core.cache import cache as _cache
-    _stats_key = f"state_landing_stats:{state.code}"
-    cached_stats = _cache.get(_stats_key)
-    if cached_stats is None:
-        judges_qs = Judge.objects.filter(state=state)
-        total_opinions = state_opinions.values("pk").count()
-        total_judges = judges_qs.count()
-        currently_seated = judges_qs.filter(is_currently_seated=True).count()
-        date_range = state_opinions.aggregate(
-            first=models.Min("release_date"),
-            last=models.Max("release_date"),
-        )
-        cached_stats = {
-            "total_opinions": total_opinions,
-            "total_judges": total_judges,
-            "currently_seated": currently_seated,
-            "date_range": date_range,
-        }
-        _cache.set(_stats_key, cached_stats, 60 * 30)
-    total_opinions = cached_stats["total_opinions"]
-    total_judges = cached_stats["total_judges"]
-    currently_seated = cached_stats["currently_seated"]
-    date_range = cached_stats["date_range"]
-
-    # Defer raw_text + html_content -- the state-landing card only
-    # renders docket / court / disposition / title. Without this
-    # defer, every state-landing request pulled 5 * ~100KB of TEXT
-    # column across the wire for nothing (just 5 rows, but each row
-    # is huge). Same defer trick judge_detail and statute_detail
-    # already use.
-    #
-    # Pre-scope to release_date >= today - 180 days. Without the date
-    # window, MariaDB's optimizer kept choosing a full-scan-then-sort
-    # plan on the 60K-row MN corpus (24s+ on a 5-row LIMIT) instead of
-    # walking the indexed release_date DESC. Bounding the date range
-    # makes the index scan the only sensible plan even when the IN
-    # filter is small. 180 days easily exceeds the publish cadence for
-    # any active state -- the landing card NEVER wants stale opinions
-    # anyway.
-    from datetime import date as _date, timedelta as _td
-    latest_window = _date.today() - _td(days=180)
-    latest_opinions = list(
-        state_opinions.defer("raw_text", "html_content")
-        .filter(release_date__gte=latest_window)
-        .select_related("court")
-        .order_by("-release_date")[:5]
-    )
-
-    # tag-distinct-count uses an indexed M2M plus the same pre-resolved
-    # court_ids, dodging the opinions -> courts -> states JOIN that the
-    # old `opinions__court__state=state` lookup forced. Also goes through
-    # the state-stats cache bundle so the M2M distinct-count doesn't fire
-    # per request.
-    if "total_tags_used" not in cached_stats:
-        cached_stats["total_tags_used"] = (
-            Tag.objects.filter(opinions__court_id__in=court_ids).distinct().count()
-        )
-        _cache.set(_stats_key, cached_stats, 60 * 30)
-    total_tags_used = cached_stats["total_tags_used"]
+    # Slow scalar aggregates come from one cached bundle (also pre-warmed
+    # by precompute_explore_tags) rather than being recomputed per request.
+    stats = _state_landing_stats(state, court_ids)
+    total_opinions = stats["total_opinions"]
+    total_judges = stats["total_judges"]
+    currently_seated = stats["currently_seated"]
+    date_range = stats["date_range"]
+    total_tags_used = stats["total_tags_used"]
     total_tags_available = Tag.objects.count()
+
+    # Recent-opinions card. Anchor the window to the corpus's NEWEST
+    # opinion, not to today: a fixed today-180d window rendered an EMPTY
+    # card for any state whose latest opinion is >180d old (exactly the
+    # case the staleness banner exists for) while the page still claimed N
+    # opinions indexed. Anchoring to date_range["last"] keeps the window
+    # bounded -- so MariaDB walks the indexed release_date DESC instead of
+    # full-scan-then-sort -- AND guarantees it contains the newest rows.
+    # Defer the 50-100KB TEXT columns; the card renders only docket /
+    # court / disposition / title.
+    last_filed = date_range.get("last") if date_range else None
+    if last_filed:
+        latest_window = last_filed - timedelta(days=180)
+        latest_opinions = list(
+            state_opinions.defer("raw_text", "html_content")
+            .filter(release_date__gte=latest_window)
+            .select_related("court")
+            .order_by("-release_date")[:5]
+        )
+    else:
+        latest_opinions = []
 
     # Coverage staleness: surface an honest disclosure when the most recent
     # opinion in our corpus is more than STALE_DAYS_THRESHOLD old. Reason
@@ -214,11 +220,9 @@ def home(request):
     # because we can't scrape the court site directly; MN: should rarely
     # fire because we ingest weekly via direct CL).
     coverage_note = None
-    last_filed = date_range.get("last") if date_range else None
     if last_filed:
-        from datetime import date as _date
         from django.utils.safestring import mark_safe
-        days_stale = (_date.today() - last_filed).days
+        days_stale = (date.today() - last_filed).days
         if days_stale > STALE_DAYS_THRESHOLD:
             reason_html = COVERAGE_LAG_NOTES.get(state.code, DEFAULT_COVERAGE_LAG_NOTE)
             coverage_note = {
@@ -297,11 +301,13 @@ def _attach_match_snippets(opinions, query):
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             snippets = {row[0]: row[1] or "" for row in cursor.fetchall()}
-    except Exception:
-        # Don't 500 the search page over a snippet failure. Typical
-        # causes: MAX_STATEMENT_TIME tripped on a slow snippet query,
-        # transient connection drop. The search results render fine
-        # without snippets.
+    except BaseException:
+        # Catch BaseException, not Exception. NFSN's SSL socket raises
+        # KeyboardInterrupt on EINTR (a BaseException), which would
+        # otherwise escape this handler and 500 the whole search page --
+        # the exact footgun documented in CLAUDE.md. Snippets are a UX
+        # nice-to-have; a failure here (also: MAX_STATEMENT_TIME tripped,
+        # transient connection drop) must never take down search results.
         import logging
         logging.getLogger(__name__).warning(
             "_attach_match_snippets failed; returning without snippets",
@@ -370,7 +376,7 @@ def opinion_list(request):
     # on every queryset evaluation (especially the paginator's COUNT(*)).
     # Was running 30s+ live against the now-tripled corpus; goes to
     # ~100ms with the FK-index-only count via court_id__in.
-    court_ids = list(state.courts.values_list("id", flat=True))
+    court_ids = _state_court_ids(state)
 
     qs = (
         Opinion.objects.filter(court_id__in=court_ids)
@@ -482,24 +488,23 @@ def opinion_list(request):
         # via ``.values("pk")`` to keep the join out of the COUNT. Defer
         # the body columns -- list views don't render them.
         #
-        # Scope to release_date >= today - 365 days. Without the date
-        # window, MariaDB's optimizer kept choosing a full-scan-then-sort
-        # plan on the 60K-row MN corpus for the LIMIT 10 fetch -- 12s+
-        # total request time, tripping NFSN's proxy timeout. Bounding
-        # the date range makes the indexed release_date DESC scan the
-        # only sensible plan. 365 days easily exceeds the publish
-        # cadence of HOME_LANDING_SIZE opinions across all live states
-        # (MN/NH/AZ all publish multiple per week); "show me everything"
-        # is what the filter paths are for, this branch only serves the
-        # default landing list.
-        from datetime import date as _date, timedelta as _td
-        landing_window = _date.today() - _td(days=365)
+        # Anchor the recency window to the corpus's NEWEST opinion rather
+        # than to today. A fixed today-365d window rendered an EMPTY list
+        # under a non-zero "N opinions indexed" header for any state whose
+        # latest opinion is >365d old. Anchoring to the corpus max keeps
+        # the window bounded (so MariaDB walks the indexed release_date
+        # DESC instead of full-scan-then-sort) but can't outrun a stale
+        # corpus. One cheap indexed MAX drives it.
         page_obj = None
-        opinions = list(
-            qs.defer("raw_text", "html_content")
-            .filter(release_date__gte=landing_window)
-            [:HOME_LANDING_SIZE]
-        )
+        landing_anchor = qs.aggregate(_m=models.Max("release_date"))["_m"]
+        if landing_anchor:
+            landing_window = landing_anchor - timedelta(days=365)
+            opinions = list(
+                qs.defer("raw_text", "html_content")
+                .filter(release_date__gte=landing_window)[:HOME_LANDING_SIZE]
+            )
+        else:
+            opinions = []
         # The count is the WHOLE corpus though -- the "X opinions
         # indexed" header doesn't lie even if the list is windowed.
         total_count = qs.values("pk").count()
@@ -742,7 +747,7 @@ def tag_index(request):
         # starvation we kept hitting -- crawlers / bots hammering
         # /tag/ multiplied it across concurrent requests.
         from django.db.models import Count, Q
-        court_ids = list(state.courts.values_list("id", flat=True))
+        court_ids = _state_court_ids(state)
         tags_qs = tags_qs.annotate(
             state_opinion_count=Count(
                 "opinions",
@@ -1384,9 +1389,13 @@ def healthz(request):
             status=200,
             content_type="application/json",
         )
-    except Exception as exc:
+    except Exception:
+        # Log the detail server-side; do NOT echo it to this unauthenticated
+        # endpoint (DB error text can leak host / SQL state / internals).
+        import logging
+        logging.getLogger(__name__).warning("healthz DB probe failed", exc_info=True)
         return HttpResponse(
-            json.dumps({"status": "error", "detail": str(exc)[:200]}),
+            json.dumps({"status": "error"}),
             status=503,
             content_type="application/json",
         )
@@ -1591,7 +1600,7 @@ def sitemap_index(request):
         # without this, three concurrent crawl bots were enough to
         # queue 60K-row JOIN COUNTs behind each other and time out
         # everything else on the worker.
-        court_ids = list(state.courts.values_list("id", flat=True))
+        court_ids = _state_court_ids(state)
         # Only advertise the statutes sitemap when at least one citation
         # has been extracted -- otherwise it serves an empty <urlset> and
         # wastes a crawl budget round-trip.
@@ -1606,6 +1615,7 @@ def sitemap_index(request):
     return HttpResponse("\n".join(lines), content_type="application/xml; charset=utf-8")
 
 
+@cache_control(public=True, max_age=CACHE_SEC_SITEMAP)
 @cache_page(60 * 60)
 @vary_on_headers("Host")
 def sitemap_static(request):
@@ -1636,6 +1646,7 @@ def sitemap_static(request):
     return HttpResponse("\n".join(lines), content_type="application/xml; charset=utf-8")
 
 
+@cache_control(public=True, max_age=CACHE_SEC_SITEMAP)
 @cache_page(60 * 60)
 @vary_on_headers("Host")
 def sitemap_judges(request):
@@ -1658,6 +1669,7 @@ def sitemap_judges(request):
     return HttpResponse("\n".join(lines), content_type="application/xml; charset=utf-8")
 
 
+@cache_control(public=True, max_age=CACHE_SEC_SITEMAP)
 @cache_page(60 * 60)
 @vary_on_headers("Host")
 def sitemap_tags(request):
@@ -1678,6 +1690,7 @@ def sitemap_tags(request):
     return HttpResponse("\n".join(lines), content_type="application/xml; charset=utf-8")
 
 
+@cache_control(public=True, max_age=CACHE_SEC_SITEMAP)
 @cache_page(60 * 60)
 @vary_on_headers("Host")
 def sitemap_statutes(request):
@@ -1696,7 +1709,7 @@ def sitemap_statutes(request):
         # Same pre-resolve trick the sitemap_index now uses -- avoids
         # an opinions -> courts -> states JOIN on a multi-tens-of-
         # thousands-row table just to enumerate statute slugs.
-        court_ids = list(state.courts.values_list("id", flat=True))
+        court_ids = _state_court_ids(state)
         slugs = (
             StatuteCitation.objects.filter(opinion__court_id__in=court_ids)
             .order_by()
@@ -1710,6 +1723,7 @@ def sitemap_statutes(request):
     return HttpResponse("\n".join(lines), content_type="application/xml; charset=utf-8")
 
 
+@cache_control(public=True, max_age=CACHE_SEC_SITEMAP)
 @cache_page(60 * 60)
 @vary_on_headers("Host")
 def sitemap_opinions(request, chunk: int):
@@ -1728,7 +1742,7 @@ def sitemap_opinions(request, chunk: int):
     # Pre-resolve court_ids so the chunk SELECT doesn't JOIN courts +
     # states. Each chunk is 25K rows; the JOIN turned this into a
     # multi-second query at the very tail of the corpus.
-    court_ids = list(state.courts.values_list("id", flat=True))
+    court_ids = _state_court_ids(state)
     offset = (chunk - 1) * SITEMAP_CHUNK_SIZE
     rows = list(
         Opinion.objects.filter(court_id__in=court_ids)
