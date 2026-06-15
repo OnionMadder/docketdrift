@@ -531,7 +531,10 @@ def opinion_list(request):
     # Cached per-query, so repeat searches cost nothing. Skips silently
     # on local SQLite (no VECTOR column) and when Voyage isn't configured.
     semantic_opinions = []
-    if search_q and not disp_filter:
+    # Same crawler guard as opinion_detail: a bot crawling search-result
+    # URLs shouldn't trigger the Voyage embed + VEC scan.
+    from opinions.middleware import request_is_crawler
+    if search_q and not disp_filter and not request_is_crawler(request):
         from opinions.semantic import get_query_embedding, search_similar_opinions
         embedding = get_query_embedding(search_q)
         if embedding:
@@ -593,12 +596,18 @@ def opinion_detail(request, case_number):
     except Opinion.DoesNotExist:
         raise Http404("Opinion not found")
 
-    # Similar-opinions widget. Uses the opinion's own stored embedding
-    # (no Voyage call), so this is effectively free at request time --
-    # one cosine-distance query against the corpus. Returns empty list
-    # on SQLite (no VECTOR column) or when the opinion has no embedding.
-    from opinions.semantic import similar_to_opinion
-    similar_ids = similar_to_opinion(opinion, limit=5)
+    # Similar-opinions widget. One cosine-distance (VEC_DISTANCE_COSINE)
+    # query against the corpus using the opinion's own stored embedding.
+    # SKIP it for crawlers: they don't use the widget, and at crawl scale
+    # (ClaudeBot et al. hitting every opinion page) one vector scan per hit
+    # saturated the single DB worker and 500'd uncached pages site-wide.
+    # Returns empty on SQLite (no VECTOR column) or no embedding too.
+    from opinions.middleware import request_is_crawler
+    if request_is_crawler(request):
+        similar_ids = []
+    else:
+        from opinions.semantic import similar_to_opinion
+        similar_ids = similar_to_opinion(opinion, limit=5)
     similar_opinions = []
     if similar_ids:
         ordering = {pk: i for i, pk in enumerate(similar_ids)}

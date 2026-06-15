@@ -38,6 +38,50 @@ BLOCKED_CRAWLER_TOKENS = (
 )
 
 
+# Crawlers we ALLOW (they index content we want surfaced) but which still
+# hit per-page URLs at high volume. Views serve them the full page but skip
+# expensive per-page extras -- specifically the similar-opinions
+# VEC_DISTANCE_COSINE scan, which at crawl scale fired one vector scan per
+# opinion page and saturated the single DB worker. Bots don't use that
+# widget anyway.
+INDEXER_CRAWLER_TOKENS = (
+    "googlebot",
+    "google-extended",
+    "bingbot",
+    "duckduckbot",
+    "gptbot",
+    "oai-searchbot",
+    "chatgpt-user",
+    "claudebot",
+    "anthropic-ai",
+    "claude-web",
+    "perplexitybot",
+    "ccbot",
+    "applebot",
+    "amazonbot",
+    "bytespider",
+    "facebookexternalhit",
+    "meta-externalagent",
+)
+
+
+def request_is_crawler(request) -> bool:
+    """True if the request's User-Agent is a known crawler/indexer.
+
+    Used by views to skip expensive per-page extras (e.g. the
+    similar-opinions vector scan) for bots that crawl every page but never
+    use those widgets. Matches both the hard-blocked SEO bots and the
+    allowed indexers; the former never reach a view, but including them
+    keeps this a complete crawler check.
+    """
+    ua = (request.META.get("HTTP_USER_AGENT") or "").lower()
+    if not ua:
+        return False
+    return any(
+        token in ua for token in BLOCKED_CRAWLER_TOKENS + INDEXER_CRAWLER_TOKENS
+    )
+
+
 class CrawlerBlockMiddleware:
     """Reject noisy SEO crawlers with 429 before any view runs.
 
