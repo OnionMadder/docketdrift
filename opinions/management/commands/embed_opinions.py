@@ -2,8 +2,15 @@
 
 Designed for unattended overnight runs:
 
-- **Resumable.** Each run picks up rows where ``embedding IS NULL``. Safe
-  to interrupt with Ctrl+C or restart after a crash; just re-run.
+- **Resumable.** Each run picks up rows where ``embedding_pending IS
+  TRUE`` (indexed). Safe to interrupt with Ctrl+C, a kill, or NFSN's
+  wallclock cull, then restart -- it resumes from the same point.
+- **Bounded.** ``--max-runtime`` stops a run cleanly after N seconds,
+  leaving the rest for the next invocation. The cron tick uses this to
+  stay under NFSN's ~10-minute wallclock cull.
+- **Single-flight.** An advisory ``flock`` prevents two runs (an
+  overrunning cron tick + the next tick, or a manual run + a tick) from
+  embedding the same rows twice.
 - **Rate-limited.** Default 60 batches/min matches Voyage's free tier;
   raise via ``--rpm`` if you're on paid (600 RPM).
 - **Truncating.** ``truncation=True`` lets Voyage auto-truncate any
@@ -30,10 +37,13 @@ Usage::
     # Higher throughput if on Voyage paid tier:
     .venv/bin/python manage.py embed_opinions --rpm 600
 
-Background-friendly invocation on NFSN (close SSH, come back tomorrow)::
-
-    nohup .venv/bin/python manage.py embed_opinions \\
-        > /home/private/docketdrift/embed.log 2>&1 &
+On NFSN this is driven by a SCHEDULED TASK, not a resident daemon:
+``scripts/embed_tick.sh`` runs one bounded pass (``--max-runtime 480``)
+every ~10 minutes, exits cleanly under NFSN's wallclock cull, and the
+next tick resumes. No self-respawning wrapper, no sentinel files -- the
+NFSN scheduler is the supervisor and emails on any non-zero exit. The
+heartbeat only watches the ``.embed_progress`` beacon for a stall. See
+``scripts/embed_tick.sh`` for the runbook.
 
 Requires VOYAGE_API_KEY in environment (typically in .env). Get one at
 voyageai.com -- free tier is enough for the initial 60K corpus run.
@@ -87,6 +97,23 @@ RETRY_SLEEP_SECONDS = 30
 DB_MAX_RETRIES = 5
 DB_RETRY_SLEEP_SECONDS = 5
 
+# Cron-tick model. embed_opinions is driven by an NFSN scheduled task
+# (scripts/embed_tick.sh) every ~10 min, not a self-respawning daemon.
+# 0 = run until the corpus is fully embedded (the default; right for a
+# manual full run). The cron tick passes --max-runtime 480 so each pass
+# exits cleanly well under NFSN's ~10-minute wallclock cull and the next
+# tick resumes via the indexed embedding_pending flag.
+DEFAULT_MAX_RUNTIME = 0
+# Single-flight advisory lock so an overrunning tick never overlaps the
+# next one (and a manual run never collides with a tick). flock is
+# released automatically when the process dies -- no stale-lock cleanup.
+LOCK_FILENAME = ".embed.lock"
+# Progress beacon the heartbeat reads to confirm the pipeline is alive and
+# advancing: a single line "<unix_ts> <pending_remaining>". Rewritten
+# every batch and at clean exit. A stale beacon with pending > 0 means
+# ticks aren't running or aren't finishing -> heartbeat alerts.
+PROGRESS_FILENAME = ".embed_progress"
+
 VOYAGE_EMBED_URL = "https://api.voyageai.com/v1/embeddings"
 # Per-request HTTP timeout. Embed inference on a token-packed batch of
 # legal text can take 10-30s; pad generously.
@@ -130,6 +157,56 @@ def _voyage_embed(texts: list[str], model: str, api_key: str) -> tuple[list[list
     embeddings = [item["embedding"] for item in payload["data"]]
     tokens = payload.get("usage", {}).get("total_tokens", 0)
     return embeddings, tokens
+
+
+def _runtime_dir() -> str:
+    """Directory for the lock + progress beacon files (the repo root)."""
+    from django.conf import settings
+    return str(settings.BASE_DIR)
+
+
+def _disable_statement_timeout() -> None:
+    """Lift this connection's per-statement timeout.
+
+    settings.py sets ``max_statement_time = 25`` via ``init_command`` on
+    every new MariaDB connection to protect gunicorn workers. The embed
+    batch queries are background work that can legitimately run longer, so
+    we lift the cap. MUST be re-called after any reconnect: a fresh
+    connection re-runs init_command and silently restores the 25s cap.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute("SET SESSION max_statement_time = 0")
+
+
+def _acquire_singleflight_lock():
+    """Take an advisory single-flight lock; return the held fd or None.
+
+    Uses ``fcntl.flock`` (POSIX only). This is reached only after the
+    MariaDB-vendor check, so local Windows/SQLite never gets here. Returns
+    the open file object on success -- the CALLER must keep a reference for
+    the process lifetime to hold the lock (it releases when the fd closes /
+    the process dies). Returns None if another run already holds it.
+    """
+    import fcntl
+
+    path = os.path.join(_runtime_dir(), LOCK_FILENAME)
+    fh = open(path, "w")
+    try:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (BlockingIOError, OSError):
+        fh.close()
+        return None
+    return fh
+
+
+def _write_progress(remaining: int) -> None:
+    """Rewrite the heartbeat's progress beacon. Best-effort, never raises."""
+    try:
+        path = os.path.join(_runtime_dir(), PROGRESS_FILENAME)
+        with open(path, "w") as fh:
+            fh.write("%d %d\n" % (int(time.time()), max(0, remaining)))
+    except BaseException:
+        pass
 
 
 class Command(BaseCommand):
@@ -183,24 +260,45 @@ class Command(BaseCommand):
                 "corpus before tackling the next."
             ),
         )
+        parser.add_argument(
+            "--max-runtime",
+            type=int,
+            default=DEFAULT_MAX_RUNTIME,
+            help=(
+                "Stop cleanly after roughly this many seconds, leaving any "
+                "remaining work for the next run (it resumes via the indexed "
+                "embedding_pending flag). 0 = run until the corpus is done "
+                f"(default {DEFAULT_MAX_RUNTIME}; use for manual full runs). "
+                "The cron tick (scripts/embed_tick.sh) passes 480 to stay "
+                "under NFSN's ~10-minute wallclock cull."
+            ),
+        )
 
-    def handle(self, *args, limit, batch_size, max_batch_tokens, rpm, model, state, **options):
+    def handle(self, *args, limit, batch_size, max_batch_tokens, rpm, model,
+               state, max_runtime, **options):
         if connection.vendor != "mysql":
             raise CommandError(
                 f"Embedding requires MariaDB / MySQL (got {connection.vendor!r}). "
                 "Local SQLite dev doesn't have a VECTOR column."
             )
 
-        # Disable the per-statement timeout set by docketdrift_site.settings's
-        # init_command. That 25s cap protects gunicorn workers from runaway
-        # queries on the public site, but the batch-fetch SELECT here
-        # legitimately runs ~30-60s on the embedding-IS-NULL scan of a
-        # multi-tens-of-thousands-row corpus. Without this, every batch
-        # tripped 1969 ("max_statement_time exceeded"), the wrapper saw
-        # rapid failures, and the rapid-fail brake aborted the loop.
-        # 0 = no limit (the MariaDB default).
-        with connection.cursor() as cursor:
-            cursor.execute("SET SESSION max_statement_time = 0")
+        # Single-flight: bail cleanly if another run already holds the
+        # lock. Exit 0 -- this is the EXPECTED outcome under the every-10-min
+        # cron cadence whenever a previous tick is still running. `lock_fh`
+        # MUST stay referenced for the whole run so the advisory lock is
+        # held until the process exits (do not close it).
+        lock_fh = _acquire_singleflight_lock()  # noqa: F841 (held for lifetime)
+        if lock_fh is None:
+            self.stdout.write(
+                "Another embed run holds the lock; skipping this tick."
+            )
+            return
+
+        # Lift the per-statement timeout set by settings' init_command (the
+        # 25s cap protects gunicorn workers but is too tight for the startup
+        # COUNT on a low-coverage state). Re-applied after any reconnect --
+        # see the DB-retry block below.
+        _disable_statement_timeout()
 
         api_key = os.environ.get("VOYAGE_API_KEY")
         if not api_key:
@@ -248,6 +346,9 @@ class Command(BaseCommand):
             total_to_do = cursor.fetchone()[0]
 
         if total_to_do == 0:
+            # Refresh the beacon to pending=0 so the heartbeat treats the
+            # state as complete and never alerts on a stale beacon.
+            _write_progress(0)
             self.stdout.write(self.style.SUCCESS(
                 "All opinions already embedded. Nothing to do."
             ))
@@ -269,8 +370,21 @@ class Command(BaseCommand):
         embedded_total = 0
         tokens_total = 0
         run_started = time.time()
+        # max_runtime=0 means "no budget" (manual full run); the cron tick
+        # passes a budget so it exits under NFSN's wallclock cull.
+        deadline = run_started + max_runtime if max_runtime else None
 
         while embedded_total < total_to_do:
+            # Stop cleanly when the time budget is spent; the next run
+            # resumes from the same point via embedding_pending.
+            if deadline is not None and time.time() >= deadline:
+                self.stdout.write(
+                    f"Reached --max-runtime ({max_runtime}s) after "
+                    f"{embedded_total:,} this run; stopping cleanly. "
+                    "Remaining work resumes on the next run."
+                )
+                break
+
             # Batch fetch uses embedding_pending (indexed) instead of
             # embedding IS NULL (full table scan). See migration 0023.
             with connection.cursor() as cursor:
@@ -375,12 +489,16 @@ class Command(BaseCommand):
                     # BaseException not Exception -- see _voyage_embed retry
                     # comment above for why; same NFSN SSL-interrupt logic.
                     if db_attempt >= DB_MAX_RETRIES:
-                        self.stderr.write(self.style.ERROR(
+                        # Raise (non-zero exit), do NOT `return` (exit 0).
+                        # A bare return looked like "all done" to the shell
+                        # and made the supervisor tear down -- the same
+                        # silent-success bug fixed on the API path above.
+                        # A non-zero scheduled-task exit makes NFSN email.
+                        raise CommandError(
                             f"\nDB failed {DB_MAX_RETRIES}x for this batch -- exiting. "
                             f"Re-run to resume from the same point.\n"
                             f"Last error: {type(db_exc).__name__}: {db_exc}"
-                        ))
-                        return
+                        )
                     self.stderr.write(self.style.WARNING(
                         f"  DB error (attempt {db_attempt}/{DB_MAX_RETRIES}) "
                         f"{type(db_exc).__name__}: {db_exc}; "
@@ -391,6 +509,13 @@ class Command(BaseCommand):
                     except BaseException:
                         pass
                     time.sleep(DB_RETRY_SLEEP_SECONDS)
+                    # The fresh connection re-ran init_command, restoring the
+                    # 25s cap; re-lift it so the rest of the run keeps the
+                    # intended unlimited statement time.
+                    try:
+                        _disable_statement_timeout()
+                    except BaseException:
+                        pass
 
             embedded_total += len(rows)
             elapsed_total = time.time() - run_started
@@ -406,6 +531,20 @@ class Command(BaseCommand):
                 f"eta={eta_sec/60:>4.0f}min",
                 ending="\n",
             )
+            # Refresh the beacon every batch so the heartbeat sees forward
+            # progress even if this run is later killed mid-flight.
+            _write_progress(total_to_do - embedded_total)
+
+        # Accurate end-of-run beacon: re-count true remaining so the
+        # heartbeat sees 0 when the corpus is fully embedded (rather than a
+        # stale positive from the per-batch estimate).
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT COUNT(*) FROM opinions_opinion "
+                "WHERE embedding_pending = TRUE AND raw_text != ''" + state_clause,
+                state_params,
+            )
+            _write_progress(cursor.fetchone()[0])
 
         elapsed_total = time.time() - run_started
         cost = tokens_total / 1_000_000 * PRICE_PER_M_TOKENS_USD
