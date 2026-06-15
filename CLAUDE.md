@@ -6,28 +6,34 @@ to make the next session productive within the first 5 minutes.
 
 ## Where things stand right now
 
-(Numbers as of session-end 2026-06-12.)
+(Numbers as of session-end 2026-06-15.)
 
 Three states live, all on subdomains of `docketdrift.com`:
 
 | State | Subdomain | Opinions | Embedded | Judges | Panel votes | Statute cites | Date range |
 |---|---|---|---|---|---|---|---|
 | MN (flagship) | `mn.docketdrift.com` | 60,375 | 100% | 124 | 9,914 | 124,858 | 1851 to current |
-| NH (beta) | `nh.docketdrift.com` | 20,715 | 57.6% | 69 | 17,161 | 79,384 | Through 2026-06-03 |
-| AZ (beta) | `az.docketdrift.com` | 38,066 | 0.1% | 139 | 142 | 0 | Through 2026-06-05 |
+| NH (beta) | `nh.docketdrift.com` | 20,715 | **100%** | 69 | 17,161 | 79,384 | Through 2026-06-03 |
+| AZ (beta) | `az.docketdrift.com` | 38,066 | ~8% & climbing | 139 | 142 | 0 (extractor ready, not yet swept) | Through 2026-06-05 |
 
 The apex `docketdrift.com` shows three live state tiles. About page is
 trimmed; the full anti-hallucination disclosure + ML-architecture
-breakdown live on `/how-we-differ/`. Judge pages now carry a
+breakdown live on `/how-we-differ/`. Judge pages carry a
 votes-per-year SVG chart with `?vs=<other-slug>` overlay and a
 "compare" link on every co-panelist; `/compare/judges/?a=&b=` is a
 side-by-side dossier with a concordance + split-decision section.
 
-**Embed:** NH-only run is supervised by a self-respawning wrapper
-script (`/home/private/docketdrift/_embed_nh_loop.sh`) — it loops
-embed_opinions, waits 30s on any non-zero exit, restarts. AZ embed is
-intentionally deferred; flip the wrapper to `--state AZ` once NH
-completes.
+**Embed:** AZ run is supervised by a self-respawning wrapper
+script (`/home/private/docketdrift/_embed_az_loop.sh`) — it loops
+embed_opinions; heartbeat scheduled task watches `.embed_expected`
+marker + `.embed_last_exit` sentinel and resurrects after NFSN's
+~10-minute wallclock cull. NH finished cleanly on 2026-06-14.
+
+**Future feature work** is scoped in `docs/ROADMAP.md` — Phases 13-21
+covering attorney extraction, citation treatment graph, holdings,
+smart alerts, brief cite-checker, firm networks, opinion diff, and a
+public read API. Numbering picks up where `STATE_ROLLOUT.md` (Phase
+12 = weekly cron) leaves off.
 
 **Right after this session:** see *Open work, ranked* below.
 
@@ -257,6 +263,90 @@ Workaround for these: Playwright on Onion's local Windows box (residential
 IP isn't blocked), drop output PDFs/JSON to a watched folder, NFSN-side
 process picks them up. See task #41.
 
+### `embedding IS NULL` is unindexable; use the `embedding_pending` shadow column
+
+`Opinion.embedding` is a raw-SQL VECTOR column (added by migration,
+not declared as a Django field). MariaDB cannot index NULL-ness on
+that column, so the embed_opinions hot-loop SELECT
+`WHERE embedding IS NULL ...` does a full-table scan on every batch.
+At low embedded-coverage on a new state (e.g. AZ at 1-5%) that scan
+takes 25-30 seconds per batch -- long enough that NFSN's wallclock
+supervisor culls the wrapper before it makes meaningful progress.
+
+The 2026-06-14 fix in migration 0023 adds an indexed
+`embedding_pending` BooleanField that shadows the same state. The
+composite index on `(embedding_pending, court_id)` makes the batch
+fetch sub-100ms regardless of corpus size. `embed_opinions` flips the
+flag in the same UPDATE statement that writes the vector, so the two
+fields stay consistent without a trigger.
+
+If you ever need to migrate the `embedding` VECTOR column itself
+(e.g. NOT NULL constraint for VECTOR INDEX) **set max_statement_time
+to 0 inside the migration first** (see next gotcha) -- otherwise the
+ALTER will run past the 25s cap.
+
+### Long migrations trip max_statement_time = 25
+
+`settings.py` sets `init_command: "SET SESSION max_statement_time =
+25"` on every MariaDB connection. That cap is right for web requests
+but too tight for any migration that touches a 240K-row opinions_opinion
+table -- ALTER TABLE + CREATE INDEX both ran ~30s on 2026-06-14 and
+got killed mid-statement with errno 1317 ("Query execution was
+interrupted"), leaving the schema half-applied.
+
+Fix in the migration itself, not by editing settings:
+
+```python
+operations = [
+    migrations.RunSQL(
+        "SET SESSION max_statement_time = 0",
+        reverse_sql=migrations.RunSQL.noop,
+    ),
+    # ... schema ops ...
+]
+```
+
+The SET only affects the migration's connection, so web traffic
+continues to have the 25s ceiling. Migration 0023 ships this pattern.
+
+### gunicorn worker recycle every ~3 minutes -> cyclical user-visible slowness
+
+`run.sh` originally had `--max-requests 200 --max-requests-jitter
+50`. With `--workers 1` and any sustained traffic (crawlers +
+heartbeat + precompute cron + real users), the single worker hit
+recycle every 150-250 requests -- which on the live site landed at
+every 2-5 minutes. Each recycle, the new worker pays cold-DB-
+connection + cold-FileBasedCache + cold-template-compile cost on its
+first batch of requests, and that batch stalls 5-20 seconds. Users
+hit it as "sometimes the page loads instantly, sometimes it hangs for
+15-20 seconds" cycles every few minutes.
+
+Fixed 2026-06-14 by bumping to `--max-requests 5000 --max-requests-
+jitter 500` (25x). Django doesn't actually leak meaningful memory in
+normal operation; the original 200 was paying for a problem we don't
+have. A typical recycle now happens every ~75-90 minutes during
+sustained traffic, basically invisible to real users.
+
+Diagnose by grepping for `Worker exiting` in
+`/home/logs/daemon_gunicorn.log`. If the timestamps are < 10 min
+apart under any sustained load, max-requests is too aggressive.
+
+### NFSN's ~10-minute wallclock cull on shared-hosting daemons
+
+Independent of max-requests above: NFSN's shared-hosting supervisor
+quietly SIGKILLs long-running daemon-style processes after roughly
+10 minutes. The wrapper instance loses no log output (SIGKILL is
+silent), the trap-EXIT doesn't fire, and the next process slot is
+reaped. This is policy, not load-dependent.
+
+The 2026-06-14 supervisor pattern in `scripts/heartbeat.sh` handles
+it: the wrapper writes a `99` sentinel to `.embed_last_exit` at
+startup (overwritten on clean exit), so the heartbeat seeing
+"`.embed_expected` exists, wrapper not running, last exit = `99`"
+infers "killed by NFSN" and resurrects with `--skip-preflight`.
+
+Don't fight the cull -- design around it.
+
 ### Local SSH-jail egress to public docketdrift.com is flaky
 
 Curls from inside `ssh docketdrift '...'` to `https://docketdrift.com/`
@@ -296,17 +386,39 @@ with connection.cursor() as c:
         print(r[4], r[5], (r[7] or \"\")[:80])
 "'
 
-# Re-launch the self-respawning NH embed wrapper after a system-check
-# failure or a manual kill. The wrapper sits at
-# /home/private/docketdrift/_embed_nh_loop.sh and loops embed_opinions
-# until clean exit; never call TaskStop on it.
-ssh docketdrift 'nohup /home/private/docketdrift/_embed_nh_loop.sh \
-    >> /home/logs/embed_opinions.log 2>&1 < /dev/null & disown
-  sleep 5
-  ps -axww | grep -E "(_embed_nh_loop|manage.py embed)" | grep -v grep'
+# Re-launch the self-respawning embed wrapper after a system-check
+# failure, a manual kill, or starting a new state. The wrapper sits at
+# /home/private/docketdrift/_embed_<state>_loop.sh and loops
+# embed_opinions until clean exit. The supervisor (scripts/heartbeat.sh
+# running every 10 min via NFSN scheduled task) will resurrect it on
+# NFSN's wallclock cull -- just don't call TaskStop on the wrapper
+# itself from your dev box.
+ssh docketdrift 'echo "_embed_az_loop.sh" > /home/private/docketdrift/.embed_expected
+  nohup /home/private/docketdrift/_embed_az_loop.sh \
+      >> /home/logs/embed_opinions.log 2>&1 < /dev/null & disown
+  sleep 8
+  ps -axww | grep -E "(_embed_az_loop|manage.py embed)" | grep -v grep'
+
+# Build a wrapper for a NEW state from the committed template:
+ssh docketdrift 'sed "s/^STATE=NH$/STATE=AZ/" \
+      /home/private/docketdrift/scripts/embed_state_loop.sh \
+      > /home/private/docketdrift/_embed_az_loop.sh
+  chmod +x /home/private/docketdrift/_embed_az_loop.sh'
+
+# Stop the wrapper + supervisor (e.g. before a migration that needs
+# exclusive access to opinions_opinion). Removing the marker disarms
+# the supervisor BEFORE we kill the wrapper, so the heartbeat doesn't
+# immediately resurrect it.
+ssh docketdrift 'rm -f /home/private/docketdrift/.embed_expected
+  pkill -f _embed_az_loop.sh
+  pkill -f "manage.py embed_opinions"'
 
 # Verify the wrapper is healthy (process visible, log advancing)
-ssh docketdrift 'ps -axww | grep -E "_embed_nh_loop|manage.py embed" | grep -v grep; tail -3 /home/logs/embed_opinions.log'
+ssh docketdrift 'ps -axww | grep -E "_embed_.*_loop|manage.py embed" | grep -v grep; tail -3 /home/logs/embed_opinions.log'
+
+# Check how often the supervisor has been resurrecting the wrapper:
+ssh docketdrift 'echo "total launches: $(grep -c "wrapper.*starting embed_opinions" /home/logs/embed_opinions.log)"
+  echo "supervisor resurrects: $(grep -c "supervisor.*Resurrecting" /home/logs/embed_opinions.log)"'
 ```
 
 ## Management commands reference
@@ -363,13 +475,15 @@ closed in the 2026-06-09 → 2026-06-12 session.
 
 ### Priority 1 — close NH/AZ gaps
 
-1. **Finish NH embed.** ~8,790 NH opinions left (57.6% → 100%). The
-   self-respawning wrapper at `/home/private/docketdrift/_embed_nh_loop.sh`
-   is running; tail `/home/logs/embed_opinions.log`. ETA ~3.5h at the
-   current ~0.7/s rate; ~$1 in Voyage cost.
-2. **Embed AZ corpus.** ~38K opinions still at 0.1%. After NH finishes,
-   flip the wrapper's `--state NH` to `--state AZ` (or write
-   `_embed_az_loop.sh`). ~13-15 hr wall clock, ~$8-10.
+1. ~~**Finish NH embed.**~~ ✅ Done 2026-06-14 — NH at 100%, ~$2 in
+   Voyage cost. Wrapper exited 0 cleanly.
+2. **Finish AZ embed.** ~35K opinions left (~8% → 100%). The
+   self-respawning wrapper at `/home/private/docketdrift/_embed_az_loop.sh`
+   is running, supervised by heartbeat resurrect on NFSN's wallclock
+   cull. ETA depends on what the new (256-batch / 90K-token) defaults
+   actually deliver — see throughput-tweak commit `8cc6535`. If
+   sustained ~500 ops/hour holds, ~70 hours wall clock; ~$5-6 in
+   Voyage cost.
 3. **Run `extract_statutes --state AZ`** to populate AZ's A.R.S.
    citation graph. Extractor module exists (`statutes_az.py`); it just
    hasn't been swept over the AZ corpus yet. ~10-15 min on NFSN.
@@ -473,10 +587,65 @@ closed in the 2026-06-09 → 2026-06-12 session.
 
 ## Key files added or substantially changed this session
 
-For orientation when looking at the repo with fresh eyes. Only items
-added or meaningfully changed in the **2026-06-09 → 2026-06-12**
-session are listed here — see the prior CLAUDE.md if you need the
+For orientation when looking at the repo with fresh eyes. Items
+added or meaningfully changed in the **2026-06-09 → 2026-06-15**
+sessions are listed here — see the prior CLAUDE.md if you need the
 2026-06-08 cut.
+
+### Stability / supervisor (2026-06-14 sub-session)
+
+- `scripts/embed_state_loop.sh` (new) — repo-committed source of
+  truth for the on-NFSN `_embed_<state>_loop.sh` wrappers. Has
+  preflight `manage.py check` gate, rapid-fail brake (4 sub-60s
+  exits aborts the loop with stderr alert), `99` sentinel write at
+  startup so SIGKILL-with-no-trap is distinguishable from clean exit,
+  and `--skip-preflight` arg the supervisor passes on resurrects.
+- `scripts/heartbeat.sh` (new) — runs every 10 min via NFSN scheduled
+  task. Probes `/healthz`, checks for wrapper liveness against the
+  `.embed_expected` marker, and ACTS as the supervisor when the
+  wrapper is missing: reads `.embed_last_exit`, decides resurrect
+  vs. alert based on the exit code semantics defined in the wrapper.
+- `scripts/preflight.sh` (new) — pre-push check that catches
+  multi-line `{# #}` template comments and decorator-orphan
+  SyntaxErrors before they hit production.
+- `opinions/views.py:healthz` (new) — single-`SELECT 1` health probe
+  endpoint. No template, no cache, no auth.
+- `opinions/paginators.py:NoJoinCountPaginator` — refined to chain
+  `.select_related(None).order_by()` before counting. `.values("pk")`
+  alone wasn't always enough.
+- `run.sh` — `--max-requests 200 → 5000` (25x). The original setting
+  was causing user-visible cyclical slowness every few minutes.
+- `docketdrift_site/settings.py` — added FileBasedCache backend with
+  `_cache_dir = os.environ.get("DOCKETDRIFT_CACHE_DIR")` (persistent
+  across worker recycles); added DATABASES OPTIONS
+  `init_command: "SET SESSION max_statement_time = 25"`; lowered
+  CONN_MAX_AGE 60s → 30s to shrink the post-KILL-QUERY poison window;
+  bumped explore_tags cache TTL 15min → 2hr.
+- `opinions/context_processors.py:explore_tags_sized` — pre-resolved
+  court_ids in the per-tag MATCH-AGAINST COUNTs so the context
+  processor doesn't fire 20+ JOIN-COUNTs per templated response.
+
+### Indexable embed flag (2026-06-15 sub-session)
+
+- `opinions/models.py:Opinion.embedding_pending` — new BooleanField,
+  default True, db_index'd via composite `(embedding_pending,
+  court_id)` named `op_pending_court_idx`. Shadow of the raw VECTOR
+  column's IS-NULL state, but indexable.
+- `opinions/migrations/0023_opinion_embedding_pending.py` (new) — adds
+  the column, the composite index, and a RunPython that backfills
+  `embedding_pending = FALSE` from existing `embedding IS NOT NULL`
+  state. Starts with `migrations.RunSQL("SET SESSION
+  max_statement_time = 0")` so the schema ops don't trip the
+  per-statement timeout from settings.
+- `opinions/management/commands/embed_opinions.py` — uses
+  `embedding_pending = TRUE` in both the count and batch-fetch
+  SELECTs; flips the flag in the per-row UPDATE alongside the
+  vector. Also raises CommandError instead of `return` on API
+  exhaust so the supervisor reads a real non-zero exit code.
+  Defaults bumped: `DEFAULT_BATCH 128 → 256`,
+  `DEFAULT_MAX_BATCH_TOKENS 60K → 90K`.
+
+### Earlier in the session (2026-06-09 → 2026-06-12)
 
 ### New modules / commands
 
@@ -559,9 +728,12 @@ session are listed here — see the prior CLAUDE.md if you need the
 
 ### Migrations
 
-No model schema migrations this session — all the new work fit into
-existing tables. `Opinion.reporter_cite` would be the next migration
-when item #10 lands.
+- `0023_opinion_embedding_pending` (2026-06-14) — adds the indexed
+  shadow flag described above. RunPython backfill ran ~5:47 wall
+  clock on the 240K-row table.
+
+`Opinion.reporter_cite` is the next anticipated migration when
+roadmap item #10 lands.
 
 ## Memory: how Onion likes to work
 
