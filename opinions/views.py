@@ -802,9 +802,12 @@ def current_judges(request):
     grouped = {}
     for j in selected:
         grouped.setdefault(j.court.name if j.court else "Other / unassigned", []).append(j)
+    # Order groups by court level (a CharField: "APPEALS" < "SUPREME"),
+    # unassigned last. The default must be a str too, or the no-court group's
+    # int default mixes types and TypeErrors the sort.
     groups = sorted(
         grouped.items(),
-        key=lambda kv: min((jj.court.level for jj in kv[1] if jj.court), default=999),
+        key=lambda kv: min((jj.court.level for jj in kv[1] if jj.court), default="~~"),
     )
     for _label, members in groups:
         if era == "current":
