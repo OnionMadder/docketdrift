@@ -250,6 +250,18 @@ class Opinion(models.Model):
         max_length=64,
         help_text="Docket number as published, e.g. 'A23-0123'.",
     )
+    reporter_cite = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text=(
+            "Canonical reporter citation OTHERS use to cite this opinion, "
+            "e.g. '2026 N.H. 7' (NH neutral cite). Populated by the state "
+            "parser. The resolution key for the OpinionCitation graph and "
+            "for paste-a-cite search routing."
+        ),
+    )
     title = models.TextField(help_text="Case caption / title.")
     release_date = models.DateField(db_index=True)
     is_precedential = models.BooleanField(default=True)
@@ -520,6 +532,9 @@ class Opinion(models.Model):
             if result.case_name and not self.title:
                 self.title = result.case_name
                 changed.append("title")
+            if result.reporter_cite and not self.reporter_cite:
+                self.reporter_cite = result.reporter_cite
+                changed.append("reporter_cite")
             if result.release_date and not self.release_date:
                 self.release_date = result.release_date
                 changed.append("release_date")

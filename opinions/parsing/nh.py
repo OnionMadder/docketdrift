@@ -163,6 +163,13 @@ class NewHampshireParser(StateParser):
             if 4 <= len(name) <= 400:
                 result.case_name = name
                 result.confidence["case_name"] = 0.9
+            # Neutral reporter cite, e.g. "2026 N.H. 7" -- the exact form
+            # every other NH opinion uses to cite this one (the graph's
+            # resolution key) and what a lawyer pastes into search.
+            result.reporter_cite = "%s N.H. %s" % (
+                m_cite.group("year"), m_cite.group("volume")
+            )
+            result.confidence["reporter_cite"] = 0.95
 
         # --- Release date (Opinion Issued) ---------------------------------
         m_filed = OPINION_ISSUED_RE.search(raw_text)

@@ -409,6 +409,18 @@ def opinion_list(request):
         date_cutoff = date.today() - timedelta(days=365 * years_back)
         qs = qs.filter(release_date__gte=date_cutoff)
     if search_q:
+        # Reporter-cite shortcut. A pasted reporter cite ("2026 N.H. 7")
+        # lands directly on that opinion -- same one-click routing as
+        # statutes + dockets. Match the stored reporter_cite (whitespace-
+        # normalized) within this state's courts.
+        _cite_q = " ".join(search_q.split())
+        _cited = (
+            Opinion.objects.filter(court_id__in=court_ids, reporter_cite__iexact=_cite_q)
+            .only("case_number").first()
+        )
+        if _cited:
+            from django.urls import reverse
+            return redirect(reverse("opinions:detail", kwargs={"case_number": _cited.case_number}))
         # Statute-cite shortcut. If the query parses as a statute citation
         # under the current state's grammar, redirect straight to the
         # statute page. Saves the user a hop through the search results

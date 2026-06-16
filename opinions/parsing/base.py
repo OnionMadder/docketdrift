@@ -36,6 +36,7 @@ class ParsedOpinion:
 
     case_number: Optional[str] = None
     case_name: Optional[str] = None
+    reporter_cite: Optional[str] = None
     release_date: Optional[date] = None
     is_precedential: Optional[bool] = None
     disposition: Optional[str] = None
