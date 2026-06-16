@@ -13,7 +13,7 @@ Three states live, all on subdomains of `docketdrift.com`:
 | State | Subdomain | Opinions | Embedded | Judges | Panel votes | Statute cites | Date range |
 |---|---|---|---|---|---|---|---|
 | MN (flagship) | `mn.docketdrift.com` | 60,375 | 100% | 124 | 9,914 | 124,858 | 1851 to current |
-| NH (beta) | `nh.docketdrift.com` | 20,715 | **100%** | 69 | 17,161 | 79,384 | Through 2026-06-03 |
+| NH (beta) | `nh.docketdrift.com` | 20,717 | **100%** | 69 | 17,161 | 79,384 | Through 2026-06-11 |
 | AZ (beta) | `az.docketdrift.com` | 38,066 | ~8% & climbing | 139 | 142 | 0 (extractor ready, not yet swept) | Through 2026-06-05 |
 
 The apex `docketdrift.com` shows three live state tiles. About page is
@@ -294,7 +294,8 @@ in-page same-origin `fetch` (the request API is fingerprinted as well). The
 NH Supreme **justice roster** is scraped this way by
 `scripts/nh_scraper/scrape_nh_justices.py` → `scripts/fetch_judge_photos.py`
 → `localize_judge_photos` (see the judge-photo pipeline). NH **opinions**
-and AZ-COA judge bios are still TODO (#41).
+are fetched the same way by `scripts/nh_scraper/scrape_nh_opinions.py` →
+`ingest_pdfs --state NH --court supreme`. AZ-COA judge bios are still TODO (#41).
 
 ### `embedding IS NULL` is unindexable; use the `embedding_pending` shadow column
 
@@ -554,9 +555,12 @@ closed in the 2026-06-09 → 2026-06-12 session.
      `scripts/nh_scraper/scrape_nh_justices.py` (Playwright + real Chrome,
      `channel="chrome"`). The 5 seated justices now have official bios +
      appointment dates + self-hosted portraits.
-   - NH Supreme **opinions** (`courts.nh.gov`) — still blocked; corpus only
-     through 2026-06-03, we manually scp 2026 PDFs via `ingest_pdfs`. The
-     same real-Chrome approach could fetch the slip opinions next.
+   - NH Supreme **opinions** (`courts.nh.gov`) — ✅ scraper DONE 2026-06-15
+     via `scripts/nh_scraper/scrape_nh_opinions.py` (`--since <ISO date>` →
+     downloads slip-opinion PDFs past Akamai → `ingest_pdfs --state NH
+     --court supreme`, which dedups on `(court, case_number)`). Corpus is
+     current through 2026-06-11; re-run periodically (then embed NH) to stay
+     current rather than waiting on CourtListener.
    - AZ COA Div 1 (`coa1.azcourts.gov`) + Div 2 (`appeals2.az.gov`) judge
      bios — still TODO (DNN hosts).
 10. **Backfill `reporter_cite` field on Opinion.** The NH parser already
