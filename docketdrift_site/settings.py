@@ -94,6 +94,12 @@ if not DEBUG:
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
 
+# Google Analytics (GA4) measurement ID. Injected into every page <head> via
+# the site_extras context processor + base.html -- but ONLY in production:
+# empty under DEBUG so local dev pageviews don't pollute the property. The ID
+# is a public client-side token, safe to commit.
+GOOGLE_ANALYTICS_ID = "" if DEBUG else "G-S0N1P743C0"
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",

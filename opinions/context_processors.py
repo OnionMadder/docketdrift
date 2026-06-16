@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 
+from django.conf import settings
 from django.core.cache import cache
 from django.db import connection
 
@@ -182,4 +183,5 @@ def site_extras(request):
     return {
         "EXPLORE_TAGS": tags,
         "DISPOSITION_BUCKETS": DISPOSITION_BUCKETS,
+        "GOOGLE_ANALYTICS_ID": getattr(settings, "GOOGLE_ANALYTICS_ID", ""),
     }

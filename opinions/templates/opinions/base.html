@@ -7,6 +7,17 @@
 <meta name="description" content="{% block description %}Real-time tracking of state judicial trends.{% endblock %}">
 <meta name="theme-color" content="#0a0011">
 
+{# Google Analytics (GA4) -- prod only; GOOGLE_ANALYTICS_ID is empty in dev #}
+{% if GOOGLE_ANALYTICS_ID %}
+<script async src="https://www.googletagmanager.com/gtag/js?id={{ GOOGLE_ANALYTICS_ID }}"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', '{{ GOOGLE_ANALYTICS_ID }}');
+</script>
+{% endif %}
+
 {% comment %}
 Canonical + Open Graph + Twitter cards. Pages override the og_title /
 og_description / og_url blocks where the title block alone isn't enough.
