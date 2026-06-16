@@ -207,6 +207,23 @@ Related: when sorting those groups in Python, keep the sort key one type
 raises `TypeError: '<' not supported between 'str' and 'int'`. `current_judges`
 hit both in the same change.
 
+### `aggregate(Min/Max(release_date))` over a `court_id__in` filter scans the corpus
+
+`Opinion.objects.filter(court_id__in=ids).aggregate(Min("release_date"), Max("release_date"))`
+does NOT use the `release_date` index — under the `court_id__in` filter
+MariaDB scans every matching row for the min/max. On MN's 60K-row corpus
+that's 25s+ → `1969` when the cache is cold under load, which **500'd the
+apex + every state landing + `/opinions/`** (the `_state_landing_stats`
+bundle, 2026-06-16) and cascaded into site-wide worker saturation. Use the
+indexed `ORDER BY ... LIMIT 1` instead — it walks the `release_date` index
+and returns in ~20ms:
+```python
+first = qs.order_by("release_date").values_list("release_date", flat=True).first()
+last  = qs.order_by("-release_date").values_list("release_date", flat=True).first()
+```
+(The per-judge variant in `judge_detail` is the same pattern but bounded to
+one judge's opinions — ~2.4s worst case — so it's left as an aggregate.)
+
 ### Similar-opinions semantic search needs a date_cutoff
 
 `VEC_DISTANCE_COSINE` over the state's full corpus is O(N) because the
