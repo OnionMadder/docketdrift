@@ -725,27 +725,90 @@ def request_state_thanks(request):
 
 @cache_control(public=True, max_age=CACHE_SEC_DOSSIER_LIST)
 def current_judges(request):
-    """Roster of currently-seated judges. State-scoped: redirects to apex
-    when accessed without a state subdomain (no roster to show without one)."""
+    """Judge roster, filterable by era.
+
+    Defaults to the currently-seated bench (``?era=current``). ``?era=all``
+    shows every judge on record; ``?era=<decade>`` (e.g. ``2010``) shows judges
+    active that decade. A judge's active span is derived from the opinions they
+    sat on (``panel_votes``), so byline-learned historical judges place into
+    eras even without an appointment date. State-scoped; redirects to apex
+    without a state subdomain."""
     state = getattr(request, "state", None)
     if state is None:
         return redirect("/")
 
-    judges = (
-        Judge.objects.filter(state=state, is_currently_seated=True)
+    era = (request.GET.get("era") or "current").strip().lower()
+
+    # One annotated pass: active span = first/last release_date over the
+    # opinions each judge participated in. Roster is small (~70-140 rows per
+    # state) and each era URL is CDN-cached via @cache_control.
+    judges = list(
+        Judge.objects.filter(state=state)
         .select_related("court")
-        .order_by("court__level", "role", "full_name")
+        .annotate(
+            first_op=models.Min("panel_votes__opinion__release_date"),
+            last_op=models.Max("panel_votes__opinion__release_date"),
+        )
     )
-    # Group by court for display.
+
+    def span(j):
+        return (j.first_op.year if j.first_op else None,
+                j.last_op.year if j.last_op else None)
+
+    # Decades present in the data (newest first) -> filter chips.
+    yrs = [y for j in judges for y in span(j) if y]
+    decades = []
+    if yrs:
+        decades = list(range((max(yrs) // 10) * 10, (min(yrs) // 10) * 10 - 10, -10))
+
+    if era == "all":
+        selected, heading = list(judges), "All judges on record"
+    elif era.isdigit() and int(era) in decades:
+        d = int(era)
+        selected = [j for j in judges
+                    if all(span(j)) and span(j)[0] <= d + 9 and span(j)[1] >= d]
+        heading = "Judges active in the %ds" % d
+    else:
+        era = "current"
+        selected = [j for j in judges if j.is_currently_seated]
+        heading = "Current bench"
+
+    # Tenure label per tile.
+    for j in selected:
+        f, l = span(j)
+        if j.is_currently_seated:
+            if j.appointment_date:
+                j.tenure_label = "Seated %d" % j.appointment_date.year
+            elif f:
+                j.tenure_label = "On the bench since %d" % f
+            else:
+                j.tenure_label = "Currently seated"
+        elif f and l:
+            j.tenure_label = "Active %d" % f if f == l else "Active %d–%d" % (f, l)
+        else:
+            j.tenure_label = "Former judge"
+
+    # Group by court; order groups Supreme-first (by court level).
     grouped = {}
-    for j in judges:
-        court_label = j.court.name if j.court else "Unassigned"
-        grouped.setdefault(court_label, []).append(j)
-    groups = list(grouped.items())
+    for j in selected:
+        grouped.setdefault(j.court.name if j.court else "Other / unassigned", []).append(j)
+    groups = sorted(
+        grouped.items(),
+        key=lambda kv: min((jj.court.level for jj in kv[1] if jj.court), default=999),
+    )
+    for _label, members in groups:
+        if era == "current":
+            members.sort(key=lambda j: (j.role or "zz", j.full_name))
+        else:  # most-recently-active first
+            members.sort(key=lambda j: (-(j.last_op.year if j.last_op else 0), j.full_name))
+
     return render(request, "opinions/current_judges.html", {
         "state": state,
         "judge_groups": groups,
-        "total_count": judges.count(),
+        "total_count": len(selected),
+        "era": era,
+        "decades": decades,
+        "heading": heading,
         "active_nav": "judges",
     })
 

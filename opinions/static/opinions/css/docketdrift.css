@@ -352,6 +352,42 @@
 }
 
 /* Tag cloud chips -- click pre-fills the search box. */
+/* Judge-roster era filter: Current bench / All / by decade. Pills match the
+   tag-chip aesthetic; .is-active marks the selected era in neon-pink. */
+.era-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0 0 1.6rem;
+}
+.era-chip {
+  display: inline-block;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  padding: 0.3rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 43, 179, 0.22);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-dim);
+  text-decoration: none;
+  transition: background var(--transition), color var(--transition), box-shadow var(--transition), border-color var(--transition);
+  line-height: 1.2;
+}
+.era-chip:hover,
+.era-chip:focus-visible {
+  color: var(--neon-cyan);
+  border-color: var(--neon-cyan);
+  box-shadow: 0 0 8px rgba(38, 255, 230, 0.3);
+  border-bottom: none;
+}
+.era-chip.is-active {
+  background: rgba(255, 43, 179, 0.12);
+  color: var(--neon-pink);
+  border-color: var(--neon-pink);
+  box-shadow: 0 0 8px rgba(255, 43, 179, 0.3);
+}
+
 .tag-cloud {
   list-style: none;
   padding: 0;

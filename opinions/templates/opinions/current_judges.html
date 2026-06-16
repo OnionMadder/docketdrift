@@ -1,5 +1,5 @@
 {% extends "opinions/base.html" %}
-{% block title %}{{ state.name }} appellate judges &middot; Current roster &middot; DocketDrift{% endblock %}
+{% block title %}{{ state.name }} judges &middot; {{ heading }} &middot; DocketDrift{% endblock %}
 {% block description %}Currently-seated judges of the {{ state.name }} Supreme Court and Court of Appeals. {{ total_count }} judge{{ total_count|pluralize }} on the bench, with photos, appointment dates, and dossiers linking to their full voting records.{% endblock %}
 
 {% block og_title %}{{ state.name }} appellate judges &middot; Current roster{% endblock %}
@@ -43,15 +43,29 @@
   <ol>
     <li><a href="https://docketdrift.com/">DocketDrift</a></li>
     <li><a href="{% url 'opinions:home' %}">{{ state.name }}</a></li>
-    <li aria-current="page">Current Judges</li>
+    <li aria-current="page">Judges</li>
   </ol>
 </nav>
 
 <div class="glossy-frame">
-  <h1>{{ state.name }} Current Judges</h1>
+  <h1>{{ state.name }} Judges</h1>
   <p class="subtle-lead">
-    Currently-seated judges of the {{ state.name }} Supreme Court and Court of Appeals. Roster sourced from the official judicial site. <strong>{{ total_count }}</strong> judge{{ total_count|pluralize }} on the bench.
+    {% if era == "current" %}
+      Currently-seated judges of the {{ state.name }} Supreme Court and Court of Appeals, sourced from the official judicial site. <strong>{{ total_count }}</strong> on the bench.
+    {% elif era == "all" %}
+      Every {{ state.name }} appellate judge on record &mdash; <strong>{{ total_count }}</strong> in all &mdash; placed by the years they sat on opinions.
+    {% else %}
+      <strong>{{ total_count }}</strong> {{ state.name }} appellate judge{{ total_count|pluralize }} active in the {{ era }}s, by the opinions they sat on.
+    {% endif %}
   </p>
+
+  <nav class="era-filter" aria-label="Filter judges by era">
+    <a href="?era=current" class="era-chip{% if era == 'current' %} is-active{% endif %}">Current bench</a>
+    <a href="?era=all" class="era-chip{% if era == 'all' %} is-active{% endif %}">All</a>
+    {% for d in decades %}
+      <a href="?era={{ d }}" class="era-chip{% if era == d|stringformat:'s' %} is-active{% endif %}">{{ d }}s</a>
+    {% endfor %}
+  </nav>
 
   {% if judge_groups %}
     {% for court_label, judges in judge_groups %}
@@ -64,13 +78,15 @@
       <div class="cast-grid">
         {% for judge in judges %}
           <article class="entity-tile judicial">
-            <span class="role-chip judicial">{{ judge.get_role_display|default:"Judge" }}</span>
+            {% if judge.role and judge.role != "UNKNOWN" %}
+              <span class="role-chip judicial">{{ judge.get_role_display }}</span>
+            {% endif %}
             {% if judge.photo_url %}
               <img src="{{ judge.photo_url }}" alt="Portrait of {{ judge.full_name }}" class="cast-thumb" loading="lazy">
             {% endif %}
             <h3><a href="{% url 'opinions:judge_detail' slug=judge.slug %}">{{ judge.full_name }}</a></h3>
-            {% if judge.appointment_date %}
-              <p class="affiliation"><strong>Seated:</strong> {{ judge.appointment_date|date:"Y" }}</p>
+            {% if judge.tenure_label %}
+              <p class="affiliation">{{ judge.tenure_label }}</p>
             {% endif %}
             {% if judge.bio_summary %}
               <p class="cast-summary">{{ judge.bio_summary|truncatewords:30 }}</p>
@@ -81,8 +97,7 @@
       </div>
     {% endfor %}
   {% else %}
-    <p class="glitch-line">Roster scraper coming in the next build push &mdash; the data model is ready, awaiting ingestion from mncourts.gov.</p>
-    <p>In the meantime, judges populated through opinion parsing (as the parser matches bylines against CourtListener's people index) will appear here automatically when their <code>is_currently_seated</code> flag is set.</p>
+    <p class="glitch-line">No judges found for this period.</p>
   {% endif %}
 </div>
 {% endblock %}
