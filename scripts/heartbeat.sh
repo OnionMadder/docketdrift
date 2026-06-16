@@ -14,12 +14,13 @@
 #
 # Checks performed:
 #   1. /healthz responds 200. Exercises Django + the MariaDB pool.
-#   2. Embed progress: if a target state is configured (.embed_state) and
-#      work remains, the .embed_progress beacon embed_opinions rewrites
-#      each batch must be fresh. A stale beacon with pending > 0 means the
-#      embed_tick scheduled task isn't running or its passes are failing
-#      (NFSN also emails directly on a non-zero tick exit -- this is the
-#      backstop for "task not firing at all").
+#   2. Embed progress: DURING the overnight embed window (EMBED_*_HOUR), if a
+#      target state is configured and work remains, the .embed_progress beacon
+#      embed_opinions rewrites each batch must be fresh. A stale beacon with
+#      pending > 0 IN-WINDOW means the embed_tick task isn't running or its
+#      passes are failing. OUTSIDE the window a stale beacon is EXPECTED
+#      (embedding is intentionally paused) and is NOT alerted. (NFSN also
+#      emails directly on a non-zero tick exit -- backstop for "not firing".)
 set -u
 
 HEALTHZ_URL="http://10.0.175.75:8000/healthz"
@@ -52,30 +53,44 @@ if [ "$code" != "200" ]; then
 fi
 
 # --- (2) Embed progress (cron-tick model) ---------------------------------
-# Only meaningful when a state is configured for embedding.
+# Only meaningful (a) when a target state is configured AND (b) INSIDE the
+# overnight embed window. Outside the window a stale beacon is EXPECTED --
+# embedding is intentionally paused -- so we must NOT alert on it. Keep
+# EMBED_TZ / EMBED_*_HOUR in sync with scripts/embed_tick.sh.
+EMBED_TZ="America/Phoenix"
+EMBED_START_HOUR=0
+EMBED_END_HOUR=6
 if [ -s "$EMBED_STATE" ]; then
-    target_state=$(head -n 1 "$EMBED_STATE" | tr -d '[:space:]')
-    if [ ! -f "$EMBED_PROGRESS" ]; then
-        echo "[$(stamp)] HEARTBEAT FAIL: .embed_state=$target_state but no $EMBED_PROGRESS beacon. Has the embed_tick scheduled task run at all?" >&2
-        fail=1
-    else
-        # Beacon line is "<unix_ts> <pending_remaining>" written by
-        # embed_opinions. Read the pending count (field 2), defaulting to 0
-        # and forcing numeric so a malformed/partial write can't crash us.
-        pending=$(awk '{print $2}' "$EMBED_PROGRESS" 2>/dev/null)
-        case "$pending" in
-            ''|*[!0-9]*) pending=0 ;;
-        esac
-        # Use the file mtime as "time of last completed batch". If BOTH stat
-        # forms fail, leave mtime empty and SKIP the age check rather than
-        # treating it as epoch 0 (which would fire a false stall alert).
-        mtime=$(stat -f %m "$EMBED_PROGRESS" 2>/dev/null || stat -c %Y "$EMBED_PROGRESS" 2>/dev/null || echo "")
-        if [ "$pending" -gt 0 ] && [ -n "$mtime" ]; then
-            now=$(date +%s)
-            age_min=$(( (now - mtime) / 60 ))
-            if [ "$age_min" -gt "$EMBED_STALL_MIN" ]; then
-                echo "[$(stamp)] HEARTBEAT FAIL: embed beacon stale ${age_min}m (threshold ${EMBED_STALL_MIN}m) with $pending opinion(s) still pending for $target_state. The embed_tick task isn't advancing -- check Scheduled Tasks + tail $EMBED_LOG." >&2
-                fail=1
+    ph_hour=$(TZ="$EMBED_TZ" date +%H); ph_hour=${ph_hour#0}
+    if [ "$ph_hour" -ge "$EMBED_START_HOUR" ] && [ "$ph_hour" -lt "$EMBED_END_HOUR" ]; then
+        target_state=$(head -n 1 "$EMBED_STATE" | tr -d '[:space:]')
+        if [ ! -f "$EMBED_PROGRESS" ]; then
+            echo "[$(stamp)] HEARTBEAT FAIL: .embed_state=$target_state but no $EMBED_PROGRESS beacon. Has the embed_tick scheduled task run at all?" >&2
+            fail=1
+        else
+            # Beacon line is "<unix_ts> <pending_remaining>". Read pending
+            # (field 2), forcing numeric so a partial write can't crash us.
+            pending=$(awk '{print $2}' "$EMBED_PROGRESS" 2>/dev/null)
+            case "$pending" in
+                ''|*[!0-9]*) pending=0 ;;
+            esac
+            mtime=$(stat -f %m "$EMBED_PROGRESS" 2>/dev/null || stat -c %Y "$EMBED_PROGRESS" 2>/dev/null || echo "")
+            if [ "$pending" -gt 0 ] && [ -n "$mtime" ]; then
+                now=$(date +%s)
+                # Measure staleness from the LATER of the beacon mtime and
+                # today's window open, so a beacon left stale overnight doesn't
+                # false-alert in the first minutes after the window opens
+                # (before the night's first tick has refreshed it).
+                window_open=$(TZ="$EMBED_TZ" date -v0H -v0M -v0S +%s 2>/dev/null || echo "")
+                base=$mtime
+                if [ -n "$window_open" ] && [ "$window_open" -gt "$mtime" ]; then
+                    base=$window_open
+                fi
+                age_min=$(( (now - base) / 60 ))
+                if [ "$age_min" -gt "$EMBED_STALL_MIN" ]; then
+                    echo "[$(stamp)] HEARTBEAT FAIL: embed beacon stale ${age_min}m (threshold ${EMBED_STALL_MIN}m) with $pending opinion(s) pending for $target_state DURING the embed window. embed_tick isn't advancing -- check Scheduled Tasks + tail $EMBED_LOG." >&2
+                    fail=1
+                fi
             fi
         fi
     fi
