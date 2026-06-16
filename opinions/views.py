@@ -739,17 +739,27 @@ def current_judges(request):
 
     era = (request.GET.get("era") or "current").strip().lower()
 
-    # One annotated pass: active span = first/last release_date over the
-    # opinions each judge participated in. Roster is small (~70-140 rows per
-    # state) and each era URL is CDN-cached via @cache_control.
-    judges = list(
-        Judge.objects.filter(state=state)
-        .select_related("court")
-        .annotate(
-            first_op=models.Min("panel_votes__opinion__release_date"),
-            last_op=models.Max("panel_votes__opinion__release_date"),
+    # Active span = first/last release_date over the opinions each judge
+    # participated in. Done as TWO cheap queries, NOT a Min/Max annotation on
+    # the Judge queryset -- the latter forces a GROUP BY over every judge
+    # column (incl. the bio_summary TEXT field) across the panel-vote join,
+    # which blows past max_statement_time. Here the aggregate groups ONLY by
+    # judge_id; spans are attached in Python. Roster is small (~70-140/state).
+    from opinions.models import PanelVote
+    judges = list(Judge.objects.filter(state=state).select_related("court"))
+    spans = {
+        r["judge_id"]: (r["first_op"], r["last_op"])
+        for r in (
+            PanelVote.objects.filter(judge_id__in=[j.id for j in judges])
+            .values("judge_id")
+            .annotate(
+                first_op=models.Min("opinion__release_date"),
+                last_op=models.Max("opinion__release_date"),
+            )
         )
-    )
+    }
+    for j in judges:
+        j.first_op, j.last_op = spans.get(j.id, (None, None))
 
     def span(j):
         return (j.first_op.year if j.first_op else None,
