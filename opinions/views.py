@@ -130,10 +130,18 @@ def _state_landing_stats(state, court_ids):
             "total_opinions": state_opinions.values("pk").count(),
             "total_judges": judges_qs.count(),
             "currently_seated": judges_qs.filter(is_currently_seated=True).count(),
-            "date_range": state_opinions.aggregate(
-                first=models.Min("release_date"),
-                last=models.Max("release_date"),
-            ),
+            # Release-date range via the indexed ORDER BY ... LIMIT 1, NOT
+            # aggregate(Min/Max): MariaDB won't use the release_date index for
+            # MIN/MAX under the court_id__in filter -- it scans the whole
+            # corpus (25s+ -> 1969 when the cache is cold under load, which
+            #500s the apex + every landing). ORDER BY release_date LIMIT 1
+            # walks the index and returns in ~20ms. Keys stay first/last.
+            "date_range": {
+                "first": state_opinions.order_by("release_date")
+                .values_list("release_date", flat=True).first(),
+                "last": state_opinions.order_by("-release_date")
+                .values_list("release_date", flat=True).first(),
+            },
             "total_tags_used": (
                 Tag.objects.filter(opinions__court_id__in=court_ids)
                 .distinct().count()
