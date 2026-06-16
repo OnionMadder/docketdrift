@@ -452,7 +452,10 @@ with connection.cursor() as c:
 # embed_tick.sh via EMBED_START_HOUR/EMBED_END_HOUR) so it doesn't contend
 # with daytime crawler traffic; outside the window each tick is a no-op.
 # To widen/move the window, edit those two constants (EMBED_END_HOUR=24 =
-# all day). A manual run (below) bypasses the window entirely.
+# all day) -- AND the matching EMBED_START_HOUR/EMBED_END_HOUR in
+# scripts/heartbeat.sh, which gates its stall check to the same window so it
+# doesn't false-alert on the (expected) stale beacon while embedding is
+# paused. A manual run (below) bypasses the window entirely.
 
 # Start / switch the embedding target state (takes effect next tick):
 ssh docketdrift 'echo AZ > /home/private/docketdrift/.embed_state'
