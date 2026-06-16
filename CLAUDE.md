@@ -186,6 +186,27 @@ first turns a JOIN+COUNT(*) into an FK-index lookup. `opinion_list` does
 this; `statute_detail` does an equivalent trick with `id__in` over a
 pre-materialized list.
 
+### Don't `.annotate(Min/Max(...))` on a queryset you also `select_related`
+
+`Judge.objects.select_related("court").annotate(first=Min("panel_votes__opinion__release_date"))`
+forces a `GROUP BY` over **every selected column** — including the
+`bio_summary` TEXT field and all of `court`'s columns — across the
+panel-vote join. Grouping on TEXT spools a temp table + filesort and
+blows past `max_statement_time` (1969) even for a ~70-row roster. This
+shipped a live 500 on `/current-judges/?era=all` (2026-06-15). Aggregate
+in a SEPARATE query keyed on the FK id only, then join in Python:
+```python
+spans = {r["judge_id"]: (r["first_op"], r["last_op"]) for r in
+    PanelVote.objects.filter(judge_id__in=ids)
+        .values("judge_id")                       # GROUP BY judge_id alone
+        .annotate(first_op=Min("opinion__release_date"),
+                  last_op=Max("opinion__release_date"))}
+```
+Related: when sorting those groups in Python, keep the sort key one type
+— a `default=999` (int) fallback beside a CharField `court.level` (str)
+raises `TypeError: '<' not supported between 'str' and 'int'`. `current_judges`
+hit both in the same change.
+
 ### Similar-opinions semantic search needs a date_cutoff
 
 `VEC_DISTANCE_COSINE` over the state's full corpus is O(N) because the
