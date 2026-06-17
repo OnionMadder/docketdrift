@@ -717,6 +717,67 @@ class StatuteCitation(models.Model):
         ]
         ordering = ["opinion", "text_offset"]
 
+
+class OpinionCitation(models.Model):
+    """A citation FROM one opinion TO another case -- a citation-graph edge.
+
+    ``citing_opinion`` references ``cited_reference`` (a reporter cite). When
+    that cite resolves to an opinion in our corpus, ``cited_opinion`` is set
+    (an INTERNAL edge); otherwise it stays null (external authority -- federal,
+    other-state, or an NH opinion we don't hold). Built by
+    ``extract_citations``; the extractor dedups to one row per
+    (citing_opinion, cited_reference). This is DocketDrift's KeyCite/Shepard's
+    layer -- "who cites this, and how."
+    """
+
+    class Treatment(models.TextChoices):
+        CITED = "CITED", "Cited"
+        FOLLOWED = "FOLLOWED", "Followed"
+        DISTINGUISHED = "DISTINGUISHED", "Distinguished"
+        OVERRULED = "OVERRULED", "Overruled"
+        CRITICIZED = "CRITICIZED", "Criticized"
+        EXPLAINED = "EXPLAINED", "Explained"
+
+    cited_reference = models.CharField(
+        max_length=64,
+        db_index=True,
+        help_text="Reporter cite as referenced, e.g. '2026 N.H. 7'. Always set.",
+    )
+    treatment = models.CharField(
+        max_length=16,
+        choices=Treatment.choices,
+        default=Treatment.CITED,
+        db_index=True,
+        help_text="How the citing opinion treats the cited case (Phase 14b classifier; default CITED).",
+    )
+    context = models.TextField(
+        blank=True,
+        default="",
+        help_text="Text window around the citation -- for treatment cues + display.",
+    )
+    text_offset = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    cited_opinion = models.ForeignKey(
+        "Opinion",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="citations_received",
+        help_text="Resolved target opinion in our corpus; null for external authority.",
+    )
+    citing_opinion = models.ForeignKey(
+        "Opinion",
+        on_delete=models.CASCADE,
+        related_name="citations_made",
+    )
+
+    class Meta:
+        ordering = ["citing_opinion", "text_offset"]
+
+    def __str__(self):
+        target = self.cited_opinion_id or self.cited_reference
+        return f"{self.citing_opinion_id} -> {target} ({self.treatment})"
+
     def __str__(self):
         return f"{self.reference_display} in opinion {self.opinion_id}"
 
