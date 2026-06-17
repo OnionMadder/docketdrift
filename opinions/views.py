@@ -610,6 +610,34 @@ def opinion_list(request):
     })
 
 
+@cache_control(public=True, max_age=86400)
+def opinion_pdf(request, case_number):
+    """Stream an opinion's stored PDF.
+
+    Media files aren't web-served on NFSN (no Apache/WhiteNoise media route),
+    so we serve the file through gunicorn. This is a click-to-download, not a
+    hot path, so the per-request thread cost is fine. State-scoped exactly
+    like opinion_detail.
+    """
+    import os
+    from django.http import FileResponse
+
+    state = getattr(request, "state", None)
+    qs = Opinion.objects.defer("raw_text", "html_content")
+    if state is not None:
+        qs = qs.filter(court__state=state)
+    try:
+        opinion = qs.get(case_number=case_number)
+    except Opinion.DoesNotExist:
+        raise Http404("Opinion not found")
+    if not opinion.pdf_file:
+        raise Http404("No PDF available for this opinion.")
+    filename = os.path.basename(opinion.pdf_file.name) or ("%s.pdf" % case_number)
+    return FileResponse(
+        opinion.pdf_file.open("rb"), as_attachment=True, filename=filename
+    )
+
+
 @cache_control(public=True, max_age=CACHE_SEC_DETAIL)
 def opinion_detail(request, case_number):
     """Single-opinion detail. Scoped to the current state subdomain when set."""

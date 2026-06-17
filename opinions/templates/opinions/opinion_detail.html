@@ -95,7 +95,7 @@
 
   {% if opinion.pdf_file or opinion.source_url %}
     <div class="opinion-actions">
-      {% if opinion.pdf_file %}<a href="{{ opinion.pdf_file.url }}">Download PDF</a>{% endif %}
+      {% if opinion.pdf_file %}<a href="{% url 'opinions:opinion_pdf' case_number=opinion.case_number %}">Download PDF</a>{% endif %}
       {% if opinion.source_url %}<a href="{{ opinion.source_url }}" target="_blank" rel="noopener">View on CourtListener</a>{% endif %}
     </div>
   {% endif %}
