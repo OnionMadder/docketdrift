@@ -24,6 +24,7 @@ from django.db import connection
 
 from opinions.models import Court, Opinion, OpinionCitation, State
 from opinions.parsing.citations import extract_citations
+from opinions.parsing.treatment import classify_treatment
 
 BATCH = 200
 DB_MAX_RETRIES = 5
@@ -93,6 +94,7 @@ class Command(BaseCommand):
                                     citing_opinion_id=op.id,
                                     cited_opinion_id=target,
                                     cited_reference=c.reporter_cite,
+                                    treatment=classify_treatment(c.context),
                                     context=c.context[:500],
                                     text_offset=c.text_offset,
                                 ))

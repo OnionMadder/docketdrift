@@ -673,9 +673,31 @@ def opinion_detail(request, case_number):
         )
         similar_opinions.sort(key=lambda op: ordering.get(op.pk, 999))
 
+    # Citation graph (Phase 14): who cites this opinion (grouped by treatment)
+    # and what it cites. FK-indexed lookups; opinion_detail is CDN-cached.
+    from collections import Counter
+    cited_by = list(
+        opinion.citations_received
+        .select_related("citing_opinion", "citing_opinion__court")
+        .order_by("-citing_opinion__release_date")
+    )
+    cites = list(
+        opinion.citations_made
+        .select_related("cited_opinion", "cited_opinion__court")
+        .order_by("text_offset")
+    )
+    _counts = Counter(e.treatment for e in cited_by)
+    _labels = [("OVERRULED", "Overruled"), ("DISTINGUISHED", "Distinguished"),
+               ("CRITICIZED", "Criticized"), ("FOLLOWED", "Followed"),
+               ("EXPLAINED", "Explained")]
+    treatment_summary = [(lbl, _counts[k]) for k, lbl in _labels if _counts.get(k)]
+
     return render(request, "opinions/opinion_detail.html", {
         "opinion": opinion,
         "similar_opinions": similar_opinions,
+        "cited_by": cited_by,
+        "cites": cites,
+        "treatment_summary": treatment_summary,
         # Pass the search query explicitly. Templates resolving
         # ``request.GET.q`` raise MultiValueDictKeyError when ``q``
         # isn't in the URL -- Django 5's template engine no longer
