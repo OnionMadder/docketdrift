@@ -6,7 +6,7 @@ to make the next session productive within the first 5 minutes.
 
 ## Where things stand right now
 
-(Numbers as of session-end 2026-06-15.)
+(Numbers as of session-end 2026-06-23.)
 
 Three states live, all on subdomains of `docketdrift.com`:
 
@@ -14,7 +14,7 @@ Three states live, all on subdomains of `docketdrift.com`:
 |---|---|---|---|---|---|---|---|
 | MN (flagship) | `mn.docketdrift.com` | 60,375 | 100% | 124 | 9,914 | 124,858 | 1851 to current |
 | NH (beta) | `nh.docketdrift.com` | 20,717 | **100%** | 69 | 17,161 | 79,384 | Through 2026-06-11 |
-| AZ (beta) | `az.docketdrift.com` | 38,066 | ~8% & climbing | 139 | 142 | 0 (extractor ready, not yet swept) | Through 2026-06-05 |
+| AZ (beta) | `az.docketdrift.com` | 38,071 | **100%** | 139 | 142 | 0 (extractor ready, not yet swept) | Through 2026-06-05 |
 
 The apex `docketdrift.com` shows three live state tiles. About page is
 trimmed; the full anti-hallucination disclosure + ML-architecture
@@ -22,6 +22,39 @@ breakdown live on `/how-we-differ/`. Judge pages carry a
 votes-per-year SVG chart with `?vs=<other-slug>` overlay and a
 "compare" link on every co-panelist; `/compare/judges/?a=&b=` is a
 side-by-side dossier with a concordance + split-decision section.
+
+**Citation engine (NEW, 2026-06-16 — our KeyCite/Shepard's layer, NH-first).**
+`Opinion.reporter_cite` is each opinion's canonical cite (NH neutral cites like
+`2026 N.H. 7`; populated by the NH parser, backfilled by
+`backfill_reporter_cite`). Paste a reporter cite into search → routes straight
+to the opinion (like statute/docket cites). `extract_citations` parses opinion
+bodies for references to other opinions, resolves them against `reporter_cite`
+into the `OpinionCitation` graph (citing→cited) with a regex-classified
+`treatment` (followed/distinguished/overruled/criticized/explained; default
+cited). `opinion_detail` renders a "Citing references / Authorities cited"
+panel (`_treatment_panel.html`) with treatment badges. **NH-only so far** —
+MN/AZ reporter cites are reporter-assigned post-publication and aren't in our
+opinion text, so they await a CourtListener cite backfill. Files:
+`parsing/citations*.py`, `parsing/treatment.py`, `extract_citations`,
+`backfill_reporter_cite`, migrations 0024 (reporter_cite) + 0025
+(OpinionCitation).
+
+**NH is the proving ground** (Onion's rule, 2026-06-16): build + verify every
+new feature on NH first — smallest, cleanest, self-resolving corpus (neutral
+cites make its data self-referential in a way MN/AZ aren't) — then roll out to
+MN/AZ. NH-first is the plan, not a compromise. The citation engine is the first
+feature built this way.
+
+**Other recent work (2026-06-15→23):** all judge portraits are now SELF-HOSTED
+static assets, no hotlinks (`localize_judge_photos` + `scripts/fetch_judge_photos.py`);
+NH Supreme justice cards populated + NH opinions current to 2026-06-11 (both via
+the residential-Playwright `scripts/nh_scraper/`); `/current-judges/` browses
+prior judges by decade (`?era=<decade>`/`all`, active spans derived from panel
+votes); opinion PDFs serve via the `opinion_pdf` FileResponse view (NFSN doesn't
+web-serve `/media/`); GA4 analytics added site-wide. The 2026-06-16
+landing/apex 500 outage was the `_state_landing_stats` date_range Min/Max
+scanning the corpus under `court_id__in` — fixed to an indexed
+`ORDER BY release_date LIMIT 1` (see the gotcha section).
 
 **Embed (2026-06-15 redesign):** the self-respawning daemon wrapper is
 GONE. Embedding is now driven by an NFSN **scheduled task** running
@@ -37,8 +70,8 @@ single-flight `flock` prevents overlap; `embed_opinions` raises (non-zero
 exit → NFSN emails) on any failure and rewrites a `.embed_progress`
 beacon each batch. `heartbeat.sh` is now a pure alerter — stale beacon
 with pending > 0 → email. No wrapper, no `.embed_expected`/`.embed_last_exit`
-sentinels, no resurrect logic. See *Deployment cheat sheet* below. NH
-finished cleanly on 2026-06-14; AZ in progress.
+sentinels, no resurrect logic. See *Deployment cheat sheet* below. **Both NH
+and AZ are now 100% embedded** (AZ finished across the overnight windows).
 
 **Future feature work** is scoped in `docs/ROADMAP.md` — Phases 13-21
 covering attorney extraction, citation treatment graph, holdings,
@@ -513,10 +546,12 @@ ssh docketdrift 'ps -axww | grep -E "embed_tick|manage.py embed_opinions" | grep
 | `load_cl_bulk --subset-dir <dir> --state <CODE>` | Load filtered CL bulk-dump CSVs | yes | yes |
 | `scripts/cl_bulk_filter.py --state <CODE>` | Filter local CL bulk dump (~50GB sweep) to one state | yes | yes |
 | `ingest_pdfs --dir <path> --state <CODE> --court <slug>` | Bulk-ingest a directory of opinion PDFs. Uses the state's registered parser to populate fields; SHA-256 dedup; optional `--no-pdf`; `--dry-run` for preview. **Used for Akamai-blocked states where CL lags.** | per state | yes (skips existing on `(court, case_number)`) |
-| `embed_opinions [--state <CODE>] [--limit N]` | Voyage embeddings on raw_text → VECTOR column. `--state` restricts to one state's courts. | per state (optional) | yes (`WHERE embedding IS NULL`) |
+| `embed_opinions [--state <CODE>] [--limit N] [--max-runtime N]` | Voyage embeddings on raw_text → VECTOR column. `--state` restricts to one state's courts; `--max-runtime` self-limits (cron tick passes 480). | per state (optional) | yes (`WHERE embedding_pending = TRUE`) |
 | `embed_tags [--force]` | Voyage embeddings of Tag.label+description | global | yes (`embedded_at` skip) |
 | `suggest_tags [--rescore-all] [--limit N]` | Score opinions vs tags via VEC_DISTANCE_COSINE | global | yes |
 | `extract_statutes [--state <CODE>] [--force]` | Pull statute citations. Now multi-state via the `opinions/parsing/statutes.py` dispatcher (MN: `Minn. Stat.`, NH: `RSA`, AZ: `A.R.S.`). | per state (optional) | yes |
+| `extract_citations [--state <CODE>]` | Build the `OpinionCitation` graph: parse opinion bodies for cites to other opinions, resolve against `reporter_cite`, classify treatment (`parsing/citations*.py` + `parsing/treatment.py`). **NH-only** (neutral cites); MN/AZ await a reporter-cite backfill. Batched + retry-reconnect. | per state (optional) | yes (rebuilds each opinion's edges) |
+| `backfill_reporter_cite [--state <CODE>]` | Populate `Opinion.reporter_cite` from the state parser (NH neutral cites). Idempotent (fills empty only); batched + retry-reconnect. | per state (optional) | yes |
 | `resolve_judges --state <CODE> [--create-missing] [--since YYYY-MM-DD]` | Match byline+panel to existing Judge rows; `--create-missing` mints new ones. Hybrid: state parser fills what it knows, generic byline extractor fills the rest. | per state | yes |
 | `scrape_judges <state> [--dry-run]` | Scrape current-roster bios. Supports `mn` (mncourts.gov sitemap) + `az` (azcourts.gov single page). NH is Akamai-blocked → scraped off-platform by `scripts/nh_scraper/` (residential Playwright) instead. AZ-COA still TODO (#41). | per state | yes |
 | `localize_judge_photos [--dry-run]` | Repoint every judge's `photo_url` to a SELF-HOSTED `/static/opinions/judges/` portrait (no hotlinks to court sites that could go down) + apply scraped NH bios, from the committed `opinions/data/judge_localization.json` manifest. Run after `collectstatic` + restart. Portraits are downloaded locally by `scripts/fetch_judge_photos.py`. | global | yes |
@@ -560,14 +595,9 @@ closed in the 2026-06-09 → 2026-06-12 session.
 
 1. ~~**Finish NH embed.**~~ ✅ Done 2026-06-14 — NH at 100%, ~$2 in
    Voyage cost. Wrapper exited 0 cleanly.
-2. **Finish AZ embed.** ~33.3K opinions left as of 2026-06-15. Now runs
-   via the cron-tick model (`scripts/embed_tick.sh` + `.embed_state=AZ`,
-   see *Deployment cheat sheet*). **Blocked on one manual step:** the
-   `embed-tick` NFSN scheduled task must be registered in the member UI
-   (not scriptable). Until then ticks don't fire and the heartbeat will
-   correctly alert that the beacon is stale. ETA once scheduled: ~1-2
-   days wall clock at the AZ rate (large opinions, API-latency-bound);
-   ~$5-6 Voyage cost.
+2. ~~**Finish AZ embed.**~~ ✅ Done 2026-06-23 — AZ at **100%** (38,071
+   embedded). The `embed-tick` scheduled task is registered and runs in the
+   overnight window (00:00–06:00 Phoenix); AZ finished across those windows.
 3. **Run `extract_statutes --state AZ`** to populate AZ's A.R.S.
    citation graph. Extractor module exists (`statutes_az.py`); it just
    hasn't been swept over the AZ corpus yet. ~10-15 min on NFSN.
@@ -604,11 +634,14 @@ closed in the 2026-06-09 → 2026-06-12 session.
      current rather than waiting on CourtListener.
    - AZ COA Div 1 (`coa1.azcourts.gov`) + Div 2 (`appeals2.az.gov`) judge
      bios — still TODO (DNN hosts).
-10. **Backfill `reporter_cite` field on Opinion.** The NH parser already
-    extracts the citation line (`2026 N.H. 1`); making it a queryable
-    field unlocks paste-the-cite search on the public site (current
-    statute-cite redirect handles RSA/Minn. Stat./A.R.S. but not
-    reporter cites). Migration + populate command.
+10. ~~**Backfill `reporter_cite` field on Opinion.**~~ ✅ Done 2026-06-16
+    (citation engine Phase 16) — `reporter_cite` populated for NH (140 neutral
+    cites), paste-a-cite search live, plus the full `OpinionCitation` graph +
+    treatment panel (Phase 14). **NEXT UP: roll the citation engine out to
+    MN/AZ.** Blocked on a CourtListener reporter-cite backfill (MN/AZ cites are
+    reporter-assigned post-publication, not in our opinion text); then add a
+    per-state `citations_<mn|az>.py` extractor + run `extract_citations`. This
+    is the headline next feature — see the citation-engine note up top.
 
 ### Priority 3 — editorial throughput
 
