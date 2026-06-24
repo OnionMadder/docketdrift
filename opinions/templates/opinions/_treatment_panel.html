@@ -28,6 +28,7 @@ treatment_summary -- all set by the opinion_detail view.
 
   {% if cites %}
     <h2{% if cited_by %} class="cite-block-sep"{% endif %}>Authorities cited</h2>
+    <p class="subtle-lead">Identified automatically; this list may not be exhaustive.</p>
     <ul class="cite-list">
       {% for e in cites %}
         <li>
