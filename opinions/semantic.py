@@ -56,18 +56,24 @@ def _run_vector_query(sql: str, params) -> list:
     runs next and 500s -- the connection-poison cascade documented in
     CLAUDE.md that takes pages down site-wide, not just the slow one.
 
-    So: catch ANY DatabaseError, drop the poisoned connection (Django
-    transparently reopens a clean one on next use), and return [] so the
-    caller degrades gracefully -- no similar-opinions widget / keyword-only
-    search -- instead of bubbling a 500 and poisoning the pool.
-    """
-    from django.db import DatabaseError
+    So: catch the failure, drop the poisoned connection (Django transparently
+    reopens a clean one on next use), and return [] so the caller degrades
+    gracefully -- no similar-opinions widget / keyword-only search -- instead
+    of bubbling a 500 and poisoning the pool.
 
+    We catch ``Exception``, not just ``django.db.DatabaseError``: the
+    max_statement_time KILL frequently lands while reading result rows
+    (``fetchall``), which Django does NOT route through its error-translation
+    layer, so it surfaces as a RAW ``pymysql.err.OperationalError`` that is
+    not a subclass of DatabaseError. Catching Exception covers both the
+    django-wrapped (execute-time) and raw-pymysql (fetch-time) forms while
+    still letting KeyboardInterrupt/SystemExit (BaseException) propagate.
+    """
     try:
         with connection.cursor() as cursor:
             cursor.execute(sql, params)
             return cursor.fetchall()
-    except DatabaseError as exc:
+    except Exception as exc:
         logger.warning("vector query failed (%s); dropping connection", exc)
         try:
             connection.close()
