@@ -2124,6 +2124,24 @@ button.cta-primary {
   color: var(--text-bright);
 }
 
+/* Search-results notices: over-broad term capped, or a degraded (timed-out)
+   search. Calm, informative -- not an error. The --warn variant is for the
+   degraded case (search couldn't finish), the base for the capped case. */
+.search-notice {
+  margin: 0 0 1rem;
+  padding: 0.55rem 0.9rem;
+  background: rgba(0, 217, 255, 0.07);
+  border: 1px solid rgba(0, 217, 255, 0.22);
+  border-radius: 3px;
+  font-size: 0.86rem;
+  color: var(--text-bright);
+}
+
+.search-notice--warn {
+  background: rgba(255, 196, 87, 0.08);
+  border-color: rgba(255, 196, 87, 0.30);
+}
+
 .opinion-find-banner a {
   color: var(--neon-cyan);
   text-decoration: none;

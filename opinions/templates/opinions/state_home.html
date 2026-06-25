@@ -45,8 +45,20 @@
   <h1>{{ state.name }} Appellate Opinions</h1>
   <p class="subtle-lead">
     Published opinions of the {{ state.name }} Supreme Court and Court of Appeals, collated from public records.
-    <strong>{{ total_count }}</strong> opinion{{ total_count|pluralize }}{% if is_filtered %} matched{% else %} indexed{% endif %}{% if page_obj and page_obj.paginator.num_pages > 1 %}; showing {{ page_obj.start_index }}&ndash;{{ page_obj.end_index }}{% elif not is_filtered %}; ten most recent below{% endif %}.
+    <strong>{{ total_count }}{% if fulltext_capped %}+{% endif %}</strong> opinion{{ total_count|pluralize }}{% if is_filtered %} matched{% else %} indexed{% endif %}{% if page_obj and page_obj.paginator.num_pages > 1 %}; showing {{ page_obj.start_index }}&ndash;{{ page_obj.end_index }}{% elif not is_filtered %}; ten most recent below{% endif %}.
   </p>
+
+  {% if search_degraded %}
+    <p class="search-notice search-notice--warn">
+      That search was too broad to finish in time. Add another word, or use the
+      <strong>Outcomes</strong> filter in the sidebar, to narrow it down.
+    </p>
+  {% elif fulltext_capped %}
+    <p class="search-notice">
+      &ldquo;{{ search_q }}&rdquo; matches a very large number of opinions &mdash; showing a
+      capped set (newest first). Add another word to see precise, complete results.
+    </p>
+  {% endif %}
 
   {% if disp_filter or search_q %}
     <div class="active-filters">

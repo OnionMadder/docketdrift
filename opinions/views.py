@@ -51,6 +51,20 @@ CACHE_SEC_STATE_STATS = 7200     # state-landing stats bundle (2 hr). MUST
 # FULLTEXT so we fall back to LIKE for them.
 FULLTEXT_MIN_QUERY_LEN = 4
 
+# Hard cap on FULLTEXT candidate rows. InnoDB FULLTEXT scores EVERY matching
+# document, so an ultra-common term ("negligence" -> 15K matches) makes an
+# unbounded COUNT(*) + ORDER BY release_date run 20-25s, blow the 25s
+# max_statement_time, get KILLed, and POISON the pooled connection (errno
+# 1969/188) -> site-wide 500 cascade (see CLAUDE.md "cosine scan POISONS the
+# connection pool"). A plain LIMIT lets InnoDB stop pulling from the fulltext
+# index early (~2s at 500 vs 24s unbounded). We fetch up to CAP+1 candidate
+# ids straight from the index, then count/date-filter/sort/paginate over that
+# bounded id set. NOTE: only court_id may sit beside MATCH in the candidate
+# query -- a release_date range there makes the optimizer drop the fulltext
+# index and defeats the early-stop, so the date window is applied AFTER, on
+# the bounded PK set.
+FULLTEXT_CANDIDATE_CAP = 500
+
 
 # Page size when the user has filtered or searched (power-user mode).
 # 60K MN opinions / 50 per page = ~1,200 pages -- comfortable to navigate
@@ -361,6 +375,49 @@ def _attach_match_snippets(opinions, query):
         op.snippet_html = mark_safe(ellipsis + highlighted + " &hellip;")
 
 
+def _fulltext_candidate_ids(search_q, court_ids):
+    """Bounded FULLTEXT candidate fetch for a keyword search.
+
+    Returns ``(ids, capped)`` where ``ids`` is up to ``FULLTEXT_CANDIDATE_CAP``
+    matching opinion ids pulled straight from the fulltext index, and
+    ``capped`` is True when there were MORE matches than the cap (the term is
+    over-broad). Returns ``(None, False)`` if the query is killed / errors --
+    the caller degrades to "no results" instead of 500ing.
+
+    Why this shape (see FULLTEXT_CANDIDATE_CAP): the LIMIT is what keeps an
+    ultra-common term from scoring the whole corpus and blowing the statement
+    timeout. Only ``court_id`` may join MATCH here -- a ``release_date`` range
+    defeats the fulltext index, so the date window is applied by the caller on
+    the returned (bounded) id set. Self-bound to 12s and, on any failure,
+    closes the connection so a KILLed query can't poison the pool for the next
+    request (same defense as semantic._run_vector_query).
+    """
+    placeholders = ",".join(["%s"] * len(court_ids))
+    sql = (
+        "SET STATEMENT max_statement_time=12 FOR "
+        "SELECT id FROM opinions_opinion "
+        "WHERE court_id IN (" + placeholders + ") "
+        "AND MATCH(raw_text, title) AGAINST (%s IN BOOLEAN MODE) "
+        "LIMIT %s"
+    )
+    params = list(court_ids) + ['"%s"' % search_q, FULLTEXT_CANDIDATE_CAP + 1]
+    try:
+        with connection.cursor() as c:
+            c.execute(sql, params)
+            ids = [row[0] for row in c.fetchall()]
+    except BaseException:
+        # The KILL on a timeout can leave the pooled connection interrupted
+        # (errno 1969/188); discard it so the NEXT request gets a clean one.
+        # BaseException (not Exception) because NFSN's SSL socket can raise
+        # KeyboardInterrupt on EINTR. Degrade, never cascade.
+        try:
+            connection.close()
+        except BaseException:
+            pass
+        return None, False
+    return ids[:FULLTEXT_CANDIDATE_CAP], len(ids) > FULLTEXT_CANDIDATE_CAP
+
+
 @csrf_exempt  # search is POSTed (keeps the query out of the URL); read-only, no state to forge
 @cache_control(public=True, max_age=CACHE_SEC_HOME)
 def opinion_list(request):
@@ -417,6 +474,11 @@ def opinion_list(request):
         from datetime import date, timedelta
         date_cutoff = date.today() - timedelta(days=365 * years_back)
         qs = qs.filter(release_date__gte=date_cutoff)
+    # search_degraded: the FULLTEXT query was killed (degrade, don't 500).
+    # fulltext_capped: the term matched more than FULLTEXT_CANDIDATE_CAP rows,
+    # so results are a bounded subset and the template should say "narrow it."
+    search_degraded = False
+    fulltext_capped = False
     if search_q:
         # Reporter-cite shortcut. A pasted reporter cite ("2026 N.H. 7")
         # lands directly on that opinion -- same one-click routing as
@@ -474,16 +536,19 @@ def opinion_list(request):
             # column is small so the scan is still fast.
             qs = qs.filter(case_number__icontains=search_q)
         elif use_fulltext:
-            # FULLTEXT-only. The index handles MATCH AGAINST in
-            # milliseconds even on raw_text columns. Phrase-quoted in
-            # BOOLEAN MODE so multi-word queries match as exact phrases.
-            qs = qs.extra(
-                where=[
-                    "MATCH(opinions_opinion.raw_text, opinions_opinion.title) "
-                    "AGAINST (%s IN BOOLEAN MODE)"
-                ],
-                params=[f'"{search_q}"'],
-            )
+            # FULLTEXT, but BOUNDED. An unbounded MATCH + COUNT + ORDER BY
+            # release_date runs 20-25s on a common term and poisons the
+            # connection pool (see FULLTEXT_CANDIDATE_CAP). Instead pull a
+            # capped set of candidate ids from the fulltext index, then let the
+            # rest of the view count/sort/paginate over that bounded id set --
+            # the date window (already on qs) now applies as a fast PK filter.
+            ft_ids, fulltext_capped = _fulltext_candidate_ids(search_q, court_ids)
+            if ft_ids is None:
+                # Query killed/errored -> degrade to no results, never cascade.
+                search_degraded = True
+                qs = qs.none()
+            else:
+                qs = qs.filter(id__in=ft_ids)
         else:
             qs = qs.filter(
                 Q(case_number__icontains=search_q)
@@ -572,7 +637,7 @@ def opinion_list(request):
     # Same crawler guard as opinion_detail: a bot crawling search-result
     # URLs shouldn't trigger the Voyage embed + VEC scan.
     from opinions.middleware import request_is_crawler
-    if search_q and not disp_filter and not request_is_crawler(request):
+    if search_q and not disp_filter and not search_degraded and not request_is_crawler(request):
         from opinions.semantic import get_query_embedding, search_similar_opinions
         embedding = get_query_embedding(search_q)
         if embedding:
@@ -616,6 +681,10 @@ def opinion_list(request):
         "disp_filter": disp_filter,
         "disp_label": disp_label,
         "from_opinion_list": True,
+        # Over-broad term: results are a bounded subset of the matches.
+        "fulltext_capped": fulltext_capped,
+        # FULLTEXT query was killed; we degraded instead of 500ing.
+        "search_degraded": search_degraded,
     })
 
 
