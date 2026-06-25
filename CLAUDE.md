@@ -267,6 +267,41 @@ candidate set to a 3-year window around the source opinion's
 release_date. Don't remove this cap without first migrating embeddings
 to NOT NULL + creating the actual VECTOR index.
 
+### A slow cosine scan POISONS the connection pool → site-wide 500s
+
+The same O(N) `VEC_DISTANCE_COSINE` scan (above) is more dangerous than
+"just slow." On a dense state (MN/AZ, recent-year density) a cold scan can
+cross the 25s `max_statement_time`; MariaDB KILLs it, and the KILL leaves
+the **pooled** connection in an interrupted state. The *next* request to
+reuse that connection 500s with errno **188** ("Operation was interrupted")
+or **1317** on whatever it runs next — so one slow opinion page cascades
+500s onto unrelated pages site-wide until `CONN_HEALTH_CHECKS` cycles the
+connection out. `?q=` search-result links amplify it: the unique query
+string busts the CDN cache, so every visit re-runs the scan at origin.
+(This caused the 2026-06-24 burst of 500s. Crawlers are skip-listed via
+`request_is_crawler`, so the triggers are real users + `?q=` traffic — and
+browser-UA curl testing of MN/AZ opinion pages, which bypasses the skip.
+Don't load-test the similar-opinions widget against MN/AZ from a browser UA.)
+
+Three defenses now live in `semantic.py:_run_vector_query` + `opinion_detail`
+(2026-06-24); keep all three until the VECTOR INDEX lands:
+1. **Catch + drop the connection.** `_run_vector_query` wraps both cosine
+   SELECTs in `except Exception` (NOT just `DatabaseError` — the KILL often
+   lands during `fetchall`, surfacing as a RAW `pymysql.err.OperationalError`
+   that is not a DatabaseError subclass), then `connection.close()` so the
+   poisoned connection is discarded, and returns `[]` (page degrades to no
+   widget instead of 500ing).
+2. **Per-opinion cache.** `opinion_detail` caches the result keyed on the
+   opinion id (NOT the URL), 24h, so all `?q=` variants share one scan.
+3. **Self-bound the scan.** `SET STATEMENT max_statement_time=12 FOR <select>`
+   caps a cold scan at 12s (vs the 25s session cap) so the single worker
+   can't stall the full 25s. NH (~215ms) never reaches the bound.
+
+The real fix is roadmap #14 (migrate `embedding` → NOT NULL + VECTOR INDEX,
+turning the scan into a sub-100ms indexed lookup) — now unblocked since all
+three states are 100% embedded. See the `date_cutoff` gotcha above and the
+"Pooled MariaDB connection retains 'interrupted' state" gotcha below.
+
 ### `.values("pk")` alone doesn't strip select_related from COUNT
 
 Django's `QuerySet.count()` clones the underlying Query. On some
