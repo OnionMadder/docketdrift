@@ -158,12 +158,19 @@ def search_similar_opinions(
         return [row[0] for row in cursor.fetchall()]
 
 
-def similar_to_opinion(opinion, limit: int = 5) -> list[int]:
+def similar_to_opinion(opinion, limit: int = 5, with_scores: bool = False):
     """Return opinion IDs most similar to ``opinion``, excluding itself.
 
     Used by the "Similar opinions" widget on detail pages. Doesn't touch
     Voyage at all -- we already have ``opinion.embedding`` stored, so this
     is a pure DB-side cosine-distance lookup.
+
+    With ``with_scores=False`` (default, unchanged contract) returns a
+    ``list[int]`` of opinion IDs nearest first. With ``with_scores=True``
+    returns a ``list[tuple[int, float]]`` of ``(opinion_id, cosine_distance)``
+    in the same order -- the caller turns the distance into a "% similar"
+    quality cue. The underlying query is identical either way; the flag
+    only controls whether the already-selected ``dist`` column is surfaced.
 
     Performance gate: this query is an O(N) full scan over the state's
     opinion embeddings because MariaDB's VECTOR INDEX requires NOT NULL
@@ -210,4 +217,8 @@ def similar_to_opinion(opinion, limit: int = 5) -> list[int]:
 
     with connection.cursor() as cursor:
         cursor.execute("\n".join(sql), params)
-        return [row[0] for row in cursor.fetchall()]
+        rows = cursor.fetchall()
+
+    if with_scores:
+        return [(row[0], row[1]) for row in rows]
+    return [row[0] for row in rows]

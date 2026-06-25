@@ -661,16 +661,30 @@ def opinion_detail(request, case_number):
     # Returns empty on SQLite (no VECTOR column) or no embedding too.
     from opinions.middleware import request_is_crawler
     if request_is_crawler(request):
-        similar_ids = []
+        similar_pairs = []
     else:
         from opinions.semantic import similar_to_opinion
-        similar_ids = similar_to_opinion(opinion, limit=5)
+        # with_scores=True -> [(opinion_id, cosine_distance), ...] so we can
+        # surface a subtle "% similar" cue on the NH card (proving-ground).
+        similar_pairs = similar_to_opinion(opinion, limit=5, with_scores=True)
     similar_opinions = []
-    if similar_ids:
-        ordering = {pk: i for i, pk in enumerate(similar_ids)}
+    if similar_pairs:
+        ordering = {pk: i for i, (pk, _dist) in enumerate(similar_pairs)}
+        dist_by_id = {pk: dist for pk, dist in similar_pairs}
         similar_opinions = list(
-            Opinion.objects.filter(pk__in=similar_ids).select_related("court")
+            Opinion.objects.filter(pk__in=ordering)
+            .select_related("court")
+            .defer("raw_text", "html_content")  # 50-100KB TEXT cols, unused here
         )
+        for op in similar_opinions:
+            # Cosine distance lives in [0, 2]; similarity% = (1 - dist) * 100,
+            # clamped to [0, 100] and rounded. voyage-law-2 same-state legal
+            # opinions cluster high, so this reads ~75-97% -- a quality cue,
+            # not a precision claim. 0 hides the badge (effectively never).
+            d = dist_by_id.get(op.pk)
+            op.similarity_pct = (
+                max(0, min(100, round((1 - d) * 100))) if d is not None else 0
+            )
         similar_opinions.sort(key=lambda op: ordering.get(op.pk, 999))
 
     # Citation graph (Phase 14): who cites this opinion (grouped by treatment)

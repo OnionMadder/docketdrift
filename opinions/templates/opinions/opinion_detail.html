@@ -101,6 +101,51 @@
   {% endif %}
 </div>
 
+{% if similar_opinions and opinion.court.state.code == 'NH' %}
+  {% comment %}
+  NH-only polished "Similar opinions" surface (proving-ground rollout).
+  Sits directly under the opinion metadata so an attorney triaging a result
+  can pivot to related authority without scrolling past the full opinion
+  text. MN/AZ keep the legacy bottom-of-page table (block further down).
+  The cosine query is already computed in opinion_detail (skipped for
+  crawlers) -- this only relocates + restyles the same data, so no new
+  latency. Each opinion carries .similarity_pct from the view.
+  {% endcomment %}
+  <section class="glossy-frame similar-panel" aria-label="Similar opinions">
+    <div class="similar-panel__head">
+      <h2>
+        <span class="semantic-badge semantic-badge--cyan">Similar opinions</span>
+        What else reads like this case
+      </h2>
+      <p class="subtle-lead">
+        Nearest neighbours by cosine similarity of voyage-law-2 embeddings
+        &mdash; ranked on legal subject matter, not keyword overlap.
+      </p>
+    </div>
+    <ol class="similar-list">
+      {% for op in similar_opinions %}
+        <li class="similar-item">
+          <a class="similar-item__link" href="{% url 'opinions:detail' case_number=op.case_number %}">
+            <span class="similar-item__title">{{ op.title|truncatechars:90 }}</span>
+            <span class="similar-item__meta">
+              {% if op.reporter_cite %}<span class="similar-cite">{{ op.reporter_cite }}</span>{% endif %}
+              <span class="court-pill court-pill--{{ op.court.level_slug }}" title="{{ op.court.name }}">{{ op.court.short_label }}</span>
+              <span class="similar-date">{{ op.release_date|date:"M j, Y" }}</span>
+              {% if op.disposition %}<span class="case-status disposition-{{ op.disposition_class }}">{{ op.disposition }}</span>{% endif %}
+            </span>
+          </a>
+          {% if op.similarity_pct %}
+            <span class="similar-score" title="Cosine similarity of voyage-law-2 embeddings">
+              <span class="similar-score__num">{{ op.similarity_pct }}%</span>
+              <span class="similar-score__label">similar</span>
+            </span>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ol>
+  </section>
+{% endif %}
+
 {% include "opinions/_treatment_panel.html" %}
 
 <div class="glossy-frame">
@@ -120,7 +165,12 @@
   {% endif %}
 </div>
 
-{% if similar_opinions %}
+{% if similar_opinions and opinion.court.state.code != 'NH' %}
+  {% comment %}
+  Legacy bottom-of-page table for MN/AZ. NH renders the polished card
+  directly under the metadata instead (proving-ground rollout) -- guarded
+  above so the same data never appears twice on an NH page.
+  {% endcomment %}
   <div class="glossy-frame">
     <h2>
       <span class="semantic-badge">Semantically similar</span>
