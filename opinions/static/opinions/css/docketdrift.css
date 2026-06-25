@@ -2048,14 +2048,61 @@ button.cta-primary {
   outline: none;
 }
 
-/* When a paragraph is the URL-fragment target, briefly flash it so the
-   user can spot where the deep-link landed. */
+/* When a paragraph is the URL-fragment target, keep a steady subtle marker
+   so the user can still see where the deep-link landed after the flash. */
 .opinion-body .op-para:target {
   background: rgba(0, 217, 255, 0.06);
   border-left: 2px solid var(--neon-cyan);
   padding-left: 0.75rem;
   margin-left: -0.75rem;
   border-radius: 0 3px 3px 0;
+}
+
+/* Landing flash (NH deep-links). The NH opinion script adds .para-flash on
+   arrival at #para-N and on each pilcrow click; the paragraph pulses cyan
+   once and fades over ~2s, settling into the steadier :target marker above.
+   Class-driven rather than a :target animation so re-clicking the SAME
+   paragraph re-fires the pulse (a :target animation wouldn't restart). */
+@keyframes paraFlash {
+  0%   { background: rgba(0, 217, 255, 0.26); }
+  100% { background: transparent; }
+}
+.opinion-body .op-para.para-flash {
+  animation: paraFlash 2s ease-out 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Skip the pulse; the persistent :target marker still shows the landing. */
+  .opinion-body .op-para.para-flash { animation: none; }
+}
+
+/* Pilcrow copy-to-clipboard affordance (NH only). The base .op-para-anchor
+   style is above; the NH script tags each anchor .op-para-anchor--copy and
+   flips .is-copied for ~1.6s after a successful copy to show a confirmation
+   bubble. MN/AZ keep the plain navigate-on-click anchor (no JS tagging). */
+.op-para-anchor.op-para-anchor--copy {
+  cursor: pointer;
+  position: relative;
+}
+.op-para-anchor.is-copied {
+  color: var(--neon-cyan);
+  background: rgba(0, 217, 255, 0.14);
+}
+.op-para-anchor.is-copied::after {
+  content: "Copied";
+  position: absolute;
+  left: 50%;
+  bottom: 135%;
+  transform: translateX(-50%);
+  background: var(--neon-cyan);
+  color: #04121a;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 0.12rem 0.45rem;
+  border-radius: 3px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 5;
 }
 
 /* Marks inside the opinion body (from ?q= highlighting). */

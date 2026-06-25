@@ -231,4 +231,103 @@ takes precedence. Browser-native smooth-scroll, no library.
 })();
 </script>
 {% endif %}
+
+{% if opinion.court.state.code == 'NH' %}
+{% comment %}
+NH-only (proving-ground rollout): cite-anchored deep links. The paragraph
+markup -- <p id="para-N"> + the ¶N pilcrow self-links -- is emitted for every
+state by format_opinion_text, so MN/AZ already deep-link via the browser's
+native #fragment scroll. This script only adds the polish layer on NH:
+  - flash the target paragraph on arrival + on every in-page hash change,
+  - smooth-scroll hash changes,
+  - turn each pilcrow into a click-to-copy "share this paragraph" link.
+Vanilla JS, no dependencies. Honors prefers-reduced-motion.
+{% endcomment %}
+<script>
+(function () {
+  var body = document.querySelector(".opinion-body");
+  if (!body) return;
+
+  var reduce = window.matchMedia &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function paraTarget(hash) {
+    if (!hash || hash.indexOf("#para-") !== 0) return null;
+    // ids are para-<digits>; getElementById needs no CSS escaping.
+    return document.getElementById(hash.slice(1));
+  }
+
+  function flash(el) {
+    if (!el) return;
+    el.classList.remove("para-flash");
+    void el.offsetWidth;            // reflow so the animation restarts
+    el.classList.add("para-flash");
+  }
+
+  function goTo(el) {
+    if (!el) return;
+    el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
+    flash(el);
+  }
+
+  // Arrival on #para-N (native scroll already fired; we add the pulse).
+  goTo(paraTarget(window.location.hash));
+  // Clicking another in-page anchor: smooth-scroll + pulse the new target.
+  window.addEventListener("hashchange", function () {
+    goTo(paraTarget(window.location.hash));
+  });
+
+  // Pilcrows become click-to-copy share links.
+  var anchors = body.querySelectorAll(".op-para-anchor");
+  for (var i = 0; i < anchors.length; i++) {
+    anchors[i].classList.add("op-para-anchor--copy");
+    anchors[i].title = "Copy link to this paragraph";
+  }
+
+  function confirmCopied(a) {
+    a.classList.add("is-copied");
+    window.setTimeout(function () { a.classList.remove("is-copied"); }, 1600);
+  }
+
+  function legacyCopy(text, a) {
+    try {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      confirmCopied(a);
+    } catch (err) { /* clipboard blocked; the hash + flash still work */ }
+  }
+
+  body.addEventListener("click", function (e) {
+    var a = e.target.closest ? e.target.closest(".op-para-anchor") : null;
+    if (!a) return;
+    e.preventDefault();
+    var hash = a.getAttribute("href");                 // "#para-N"
+    var url = location.origin + location.pathname + hash;
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(
+        function () { confirmCopied(a); },
+        function () { legacyCopy(url, a); }
+      );
+    } else {
+      legacyCopy(url, a);
+    }
+
+    // Make the URL shareable without a hashchange jump, then scroll + pulse
+    // ourselves. replaceState keeps history clean and doesn't fire hashchange.
+    var target = document.getElementById(hash.slice(1));
+    if (target) {
+      if (history.replaceState) { history.replaceState(null, "", hash); }
+      goTo(target);
+    }
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}
