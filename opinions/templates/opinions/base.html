@@ -110,7 +110,17 @@ crawlers see structured data for every opinion + judge.
     </nav>
 
     <div class="search-module">
-      <form action="{% if request.state %}{% url 'opinions:opinion_list' %}{% else %}{% url 'opinions:home' %}{% endif %}" method="get" role="search">
+      {% comment %}
+      Search is POSTed (method="post") so the query rides in the request BODY,
+      never a URL -- it can't reach the access log, the upstream proxy, a CDN
+      cache key, browser history, or a shared/bookmarked link. The view is
+      @csrf_exempt: search is read-only (no state to forge), and exempting it
+      keeps per-session CSRF tokens OUT of CDN-cached pages. All the result
+      controls (pagination, filters, explore tags) re-submit THIS form via the
+      js-keepq / js-search handlers below so the query never leaks into a href.
+      See CLAUDE.md "Data is sacred -- query privacy is non-negotiable."
+      {% endcomment %}
+      <form id="ddsearch" action="{% if request.state %}{% url 'opinions:opinion_list' %}{% else %}{% url 'opinions:home' %}{% endif %}" method="post" role="search">
         <input type="text" name="q" placeholder="Search opinions…" value="{{ search_q|default:'' }}" aria-label="Search opinions">
         <button type="submit" class="scan-button">Scan</button>
       </form>
@@ -123,7 +133,7 @@ crawlers see structured data for every opinion + judge.
             <h4 class="sidebar-aside-heading">Explore</h4>
             <ul class="tag-cloud">
               {% for tag, count, size in EXPLORE_TAGS %}
-                <li><a class="tag-chip tag-chip--{{ size }}" href="{% url 'opinions:home' %}?q={{ tag|urlencode }}" title="{{ count }} opinion{{ count|pluralize }}">{{ tag }}</a></li>
+                <li><a class="tag-chip tag-chip--{{ size }} js-search" data-q="{{ tag }}" href="{% url 'opinions:opinion_list' %}" title="{{ count }} opinion{{ count|pluralize }}">{{ tag }}</a></li>
               {% endfor %}
             </ul>
           </div>
@@ -132,7 +142,7 @@ crawlers see structured data for every opinion + judge.
           <h4 class="sidebar-aside-heading">Outcomes</h4>
           <ul class="disposition-legend">
             {% for slug, label in DISPOSITION_BUCKETS %}
-              <li><a class="case-status disposition-{{ slug }}{% if disp_filter == slug %} is-active-filter{% endif %}" href="{% url 'opinions:home' %}?disposition={{ slug }}{% if search_q %}&q={{ search_q|urlencode }}{% endif %}">{{ label }}</a></li>
+              <li><a class="case-status disposition-{{ slug }}{% if disp_filter == slug %} is-active-filter{% endif %} js-keepq" href="{% url 'opinions:opinion_list' %}?disposition={{ slug }}">{{ label }}</a></li>
             {% endfor %}
           </ul>
         </div>
@@ -166,6 +176,48 @@ crawlers see structured data for every opinion + judge.
       toggle.setAttribute('aria-expanded', 'false');
     });
   }
+})();
+</script>
+
+<script>
+{% comment %}
+Query-privacy plumbing ("Data is sacred"): the search form POSTs, so the
+query is never in a URL. But pagination/filter/explore controls are <a>
+links -- if they carried the query in their href it would leak right back
+into a URL. Instead they carry NO query, and this handler re-submits the
+POST search form on click so the query travels in the body:
+
+  .js-keepq  -- pagination, year window, disposition filter. Keep WHATEVER
+                is in the search box and re-POST it, taking page/disposition/
+                years from the link's own (query-free of q) href.
+  .js-search -- explore-tag chips. SET the query to the chip's data-q value
+                (a public tag label, not user input) and POST.
+
+No-JS fallback: the links still resolve (to the plain list / a filtered
+list) -- they just don't carry the typed query. Privacy holds either way,
+because no href ever contains the query.
+{% endcomment %}
+(function () {
+  var form = document.getElementById('ddsearch');
+  if (!form || !form.q) return;
+  var base = form.getAttribute('action').split('?')[0];
+
+  document.querySelectorAll('.js-keepq').forEach(function (el) {
+    el.addEventListener('click', function (e) {
+      e.preventDefault();
+      form.action = base + (el.search || '');   // page/disposition/years; NO q
+      form.submit();                              // q stays as the box value
+    });
+  });
+
+  document.querySelectorAll('.js-search[data-q]').forEach(function (el) {
+    el.addEventListener('click', function (e) {
+      e.preventDefault();
+      form.action = base;
+      form.q.value = el.getAttribute('data-q') || '';
+      form.submit();
+    });
+  });
 })();
 </script>
 

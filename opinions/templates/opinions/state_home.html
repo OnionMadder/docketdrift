@@ -61,10 +61,10 @@
         <span class="active-filters-window" title="Default search scopes to the most recent decade. Use the expand link to search the full archive.">
           Last {{ years_back }} yr{{ years_back|pluralize }} &middot; since {{ years_cutoff_year }}
         </span>
-        <a class="active-filters-expand" href="?q={{ search_q|urlencode }}{% if disp_filter %}&disposition={{ disp_filter }}{% endif %}&years=all">Expand to full archive (1930&ndash;)</a>
+        <a class="active-filters-expand js-keepq" href="{% url 'opinions:opinion_list' %}?{% if disp_filter %}disposition={{ disp_filter }}&{% endif %}years=all">Expand to full archive (1930&ndash;)</a>
       {% else %}
         <span class="active-filters-window">Full archive &middot; 1930&ndash;present</span>
-        <a class="active-filters-expand" href="?q={{ search_q|urlencode }}{% if disp_filter %}&disposition={{ disp_filter }}{% endif %}">Limit to last 10 years</a>
+        <a class="active-filters-expand js-keepq" href="{% url 'opinions:opinion_list' %}{% if disp_filter %}?disposition={{ disp_filter }}{% endif %}">Limit to last 10 years</a>
       {% endif %}
       <a class="active-filters-clear" href="{% url 'opinions:home' %}">Clear &times;</a>
     </div>
@@ -102,7 +102,7 @@
       {% if op.snippet_html %}
         <tr class="doc-snippet-row">
           <td colspan="5" class="doc-snippet-cell">
-            <a class="doc-snippet-link" href="{% url 'opinions:detail' case_number=op.case_number %}?q={{ search_q|urlencode }}">{{ op.snippet_html }}</a>
+            <a class="doc-snippet-link" href="{% url 'opinions:detail' case_number=op.case_number %}#q={{ search_q|urlencode }}">{{ op.snippet_html }}</a>
           </td>
         </tr>
       {% endif %}
@@ -164,8 +164,8 @@
     <nav class="pagination" aria-label="Opinion pagination">
       <div class="pagination-prev">
         {% if page_obj.has_previous %}
-          <a href="?page=1{% if search_q %}&q={{ search_q|urlencode }}{% endif %}{% if disp_filter %}&disposition={{ disp_filter }}{% endif %}{% if not years_back %}&years=all{% endif %}" aria-label="First page">&laquo; First</a>
-          <a href="?page={{ page_obj.previous_page_number }}{% if search_q %}&q={{ search_q|urlencode }}{% endif %}{% if disp_filter %}&disposition={{ disp_filter }}{% endif %}{% if not years_back %}&years=all{% endif %}" rel="prev">&lsaquo; Prev</a>
+          <a class="js-keepq" href="?page=1{% if disp_filter %}&disposition={{ disp_filter }}{% endif %}{% if not years_back %}&years=all{% endif %}" aria-label="First page">&laquo; First</a>
+          <a class="js-keepq" href="?page={{ page_obj.previous_page_number }}{% if disp_filter %}&disposition={{ disp_filter }}{% endif %}{% if not years_back %}&years=all{% endif %}" rel="prev">&lsaquo; Prev</a>
         {% endif %}
       </div>
 
@@ -175,8 +175,8 @@
 
       <div class="pagination-next">
         {% if page_obj.has_next %}
-          <a href="?page={{ page_obj.next_page_number }}{% if search_q %}&q={{ search_q|urlencode }}{% endif %}{% if disp_filter %}&disposition={{ disp_filter }}{% endif %}{% if not years_back %}&years=all{% endif %}" rel="next">Next &rsaquo;</a>
-          <a href="?page={{ page_obj.paginator.num_pages }}{% if search_q %}&q={{ search_q|urlencode }}{% endif %}{% if disp_filter %}&disposition={{ disp_filter }}{% endif %}{% if not years_back %}&years=all{% endif %}" aria-label="Last page">Last &raquo;</a>
+          <a class="js-keepq" href="?page={{ page_obj.next_page_number }}{% if disp_filter %}&disposition={{ disp_filter }}{% endif %}{% if not years_back %}&years=all{% endif %}" rel="next">Next &rsaquo;</a>
+          <a class="js-keepq" href="?page={{ page_obj.paginator.num_pages }}{% if disp_filter %}&disposition={{ disp_filter }}{% endif %}{% if not years_back %}&years=all{% endif %}" aria-label="Last page">Last &raquo;</a>
         {% endif %}
       </div>
     </nav>

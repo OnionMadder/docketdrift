@@ -22,6 +22,7 @@ from django.db.models import Q
 from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.cache import cache_control, cache_page
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.vary import vary_on_headers
 
 from opinions.models import Judge, Opinion, State, StatuteCitation, Tag
@@ -151,6 +152,7 @@ def _state_landing_stats(state, court_ids):
     return bundle
 
 
+@csrf_exempt  # search is POSTed (keeps the query out of the URL); read-only, no state to forge
 @cache_control(public=True, max_age=CACHE_SEC_HOME)
 def home(request):
     """Apex state-picker OR per-state landing page.
@@ -359,6 +361,7 @@ def _attach_match_snippets(opinions, query):
         op.snippet_html = mark_safe(ellipsis + highlighted + " &hellip;")
 
 
+@csrf_exempt  # search is POSTed (keeps the query out of the URL); read-only, no state to forge
 @cache_control(public=True, max_age=CACHE_SEC_HOME)
 def opinion_list(request):
     """The full opinion browse/search view. State-scoped.
@@ -373,7 +376,13 @@ def opinion_list(request):
     if state is None:
         return redirect("/")
 
-    search_q = (request.GET.get("q") or "").strip()
+    # Search term arrives via POST (in the request body) so it never lands in
+    # a URL -> never in an access log, proxy log, CDN cache key, browser
+    # history, or a shareable link. ("Data is sacred" -- see CLAUDE.md.) GET
+    # is honored only as a fallback for legacy ?q= links already in the wild;
+    # nothing on the site emits one anymore. disposition/years/page are not
+    # query-sensitive, so they ride in GET (set via the JS-keepq form action).
+    search_q = (request.POST.get("q") or request.GET.get("q") or "").strip()
     disp_filter = (request.GET.get("disposition") or "").strip().lower()
 
     years_param = (request.GET.get("years") or "").strip().lower()

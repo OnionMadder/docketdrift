@@ -150,15 +150,19 @@
 
 <div class="glossy-frame">
   <h2>Opinion text</h2>
-  {% if search_q %}
-    <p class="opinion-find-banner">
-      Highlighting matches for &ldquo;<strong>{{ search_q }}</strong>&rdquo;
-      &middot; <a href="{% url 'opinions:detail' case_number=opinion.case_number %}">clear</a>
-    </p>
-  {% endif %}
+  {% comment %}
+  Highlight-on-arrival banner. The matched query is NOT in the URL or the
+  server request -- it rides in a #q=... fragment (from a search-result
+  snippet link) which the browser never sends to the server. Highlighting
+  is therefore done CLIENT-side; this banner is populated by the script at
+  the bottom of the page. Keeping the query off the wire is the point
+  ("Data is sacred" -- see CLAUDE.md). format_opinion_text gets no highlight
+  arg anymore, so the cached HTML is identical regardless of the query.
+  {% endcomment %}
+  <p class="opinion-find-banner" id="opinion-find-banner" hidden></p>
   {% if opinion.raw_text %}
     <div class="opinion-body">
-      {{ opinion.raw_text|format_opinion_text:search_q }}
+      {{ opinion.raw_text|format_opinion_text }}
     </div>
   {% else %}
     <p class="glitch-line">No opinion text available.</p>
@@ -215,22 +219,106 @@
   </div>
 {% endif %}
 
-{% if search_q %}
-{% comment %}
-Scroll the first <mark> match into view when the page lands with
-?q=... -- only when the URL has no explicit fragment, so #para-N
-takes precedence. Browser-native smooth-scroll, no library.
-{% endcomment %}
 <script>
+{% comment %}
+Highlight-on-arrival, CLIENT side (all states). The search query is never in
+the server request -- it arrives in a #q=... fragment from a search-result
+link (or a legacy ?q= on an old shared link). Read it here, wrap matches in
+<mark>, show a dismissible banner, and scroll to the first hit. Walks TEXT
+nodes only and skips <a>/<cite>/<mark>/script, so it never corrupts the
+statute links, citation wraps, or paragraph anchors that format_opinion_text
+injected. Defers to an explicit #para-N deep-link (handled by the NH script).
+{% endcomment %}
 (function () {
-  if (window.location.hash) return;
-  var first = document.querySelector(".opinion-body mark");
-  if (first) {
-    first.scrollIntoView({ behavior: "smooth", block: "center" });
+  function readQuery() {
+    var h = window.location.hash || "";
+    var m = h.match(/(?:^#|&)q=([^&]*)/);
+    var raw = m ? m[1] : null;
+    if (raw === null) {
+      // Legacy ?q= fallback (old shared links); nothing emits these now.
+      var m2 = (window.location.search || "").match(/[?&]q=([^&]*)/);
+      raw = m2 ? m2[1] : null;
+    }
+    if (raw === null) return "";
+    try { return decodeURIComponent(raw.replace(/\+/g, " ")).trim(); }
+    catch (e) { return ""; }
+  }
+
+  var term = readQuery();
+  if (!term) return;
+  var body = document.querySelector(".opinion-body");
+  if (!body) return;
+
+  var rx = new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+  var SKIP = { A: 1, CITE: 1, MARK: 1, SCRIPT: 1, STYLE: 1 };
+  var walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, {
+    acceptNode: function (n) {
+      if (!n.nodeValue || !n.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+      for (var p = n.parentNode; p && p !== body; p = p.parentNode) {
+        if (SKIP[p.nodeName]) return NodeFilter.FILTER_REJECT;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    }
+  });
+
+  var targets = [], n;
+  while ((n = walker.nextNode())) targets.push(n);
+
+  var first = null;
+  targets.forEach(function (textNode) {
+    var text = textNode.nodeValue;
+    rx.lastIndex = 0;
+    if (!rx.test(text)) return;
+    rx.lastIndex = 0;
+    var frag = document.createDocumentFragment();
+    var last = 0, m;
+    while ((m = rx.exec(text)) !== null) {
+      if (m[0].length === 0) { rx.lastIndex++; continue; }
+      if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+      var mark = document.createElement("mark");
+      mark.textContent = m[0];
+      frag.appendChild(mark);
+      if (!first) first = mark;
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+    textNode.parentNode.replaceChild(frag, textNode);
+  });
+
+  var banner = document.getElementById("opinion-find-banner");
+  if (banner) {
+    banner.appendChild(document.createTextNode("Highlighting matches for “"));
+    var strong = document.createElement("strong");
+    strong.textContent = term;
+    banner.appendChild(strong);
+    banner.appendChild(document.createTextNode("” · "));
+    var clear = document.createElement("a");
+    clear.href = "#";
+    clear.textContent = "clear";
+    clear.addEventListener("click", function (e) {
+      e.preventDefault();
+      var marks = body.querySelectorAll("mark");
+      for (var i = 0; i < marks.length; i++) {
+        var mk = marks[i];
+        mk.parentNode.replaceChild(document.createTextNode(mk.textContent), mk);
+      }
+      body.normalize();
+      banner.hidden = true;
+      if (history.replaceState) {
+        history.replaceState(null, "", location.pathname + location.search);
+      }
+    });
+    banner.appendChild(clear);
+    banner.hidden = false;
+  }
+
+  if (first && !/^#para-/.test(window.location.hash)) {
+    var reduce = window.matchMedia &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    first.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
   }
 })();
 </script>
-{% endif %}
 
 {% if opinion.court.state.code == 'NH' %}
 {% comment %}
