@@ -94,11 +94,13 @@ if not DEBUG:
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
 
-# Google Analytics (GA4) measurement ID. Injected into every page <head> via
-# the site_extras context processor + base.html -- but ONLY in production:
-# empty under DEBUG so local dev pageviews don't pollute the property. The ID
-# is a public client-side token, safe to commit.
-GOOGLE_ANALYTICS_ID = "" if DEBUG else "G-S0N1P743C0"
+# Analytics: goatcounter ONLY (configured in base.html). Google Analytics
+# (GA4) was REMOVED 2026-06-25 -- we send no visitor data to Google, and
+# analytics is reduced to country/region + language + device/browser + a
+# query-stripped page path (the data points used to decide which states to
+# build next). See CLAUDE.md "Data is sacred -- query privacy is
+# non-negotiable." Do not re-introduce a third-party tag without revisiting
+# that posture.
 
 INSTALLED_APPS = [
     "django.contrib.admin",

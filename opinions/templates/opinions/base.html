@@ -7,16 +7,31 @@
 <meta name="description" content="{% block description %}Real-time tracking of state judicial trends.{% endblock %}">
 <meta name="theme-color" content="#0a0011">
 
-{# Google Analytics (GA4) -- prod only; GOOGLE_ANALYTICS_ID is empty in dev #}
-{% if GOOGLE_ANALYTICS_ID %}
-<script async src="https://www.googletagmanager.com/gtag/js?id={{ GOOGLE_ANALYTICS_ID }}"></script>
+{% comment %}
+Analytics posture (2026-06-25): goatcounter ONLY -- no Google. We send NO
+visitor data to Google (dropped GA4) and we NEVER record search terms. The
+only data points we collect are the ones used to decide which states to build
+next: country/region, language, device/browser, and the page path WITH ANY
+QUERY STRING STRIPPED. The path + referrer callbacks below hard-strip the
+query before goatcounter ever sees it, so even a stray ?q= that lands in a URL
+cannot be persisted. Search itself is POSTed (query in the request body, never
+in a URL) and the gunicorn access log is query-stripped too -- defense in
+depth. Lawyers fear discovery of their research trail; we cannot produce what
+we never stored. See CLAUDE.md "Data is sacred -- query privacy is
+non-negotiable" before touching anything analytics/logging-related.
+{% endcomment %}
 <script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-  gtag('config', '{{ GOOGLE_ANALYTICS_ID }}');
+  window.goatcounter = {
+    // Record the page path only; drop ANY query string (e.g. a stray ?q=).
+    path: function () { return location.pathname; },
+    // Strip the query string off the referrer too (defense in depth: a
+    // referrer header could otherwise carry a ?q= from a prior page).
+    referrer: function (r) {
+      try { var u = new URL(r); return u.origin + u.pathname; }
+      catch (e) { return ""; }
+    }
+  };
 </script>
-{% endif %}
 
 {% comment %}
 Canonical + Open Graph + Twitter cards. Pages override the og_title /

@@ -30,6 +30,17 @@
 #   20 LIKE queries on raw_text) headroom past gunicorn's 30s default.
 # - graceful-timeout 30: workers get half a minute to finish in-flight
 #   requests when receiving SIGTERM (matches NFSN supervisor cycles).
+#
+# - access-logformat (2026-06-25): the DEFAULT gunicorn format logs %(r)s,
+#   the FULL request line INCLUDING the query string, plus %(f)s (referer).
+#   That persisted users' search terms (?q=...) into the daemon access log
+#   -- exactly the discoverable artifact we refuse to keep ("Data is sacred"
+#   in CLAUDE.md; lawyers fear discovery of their research trail). The custom
+#   format below logs method + %(U)s (URL PATH ONLY, query stripped) + status
+#   + bytes + user-agent (device/browser, which we do want), and OMITS both
+#   the query string and the referer. The query never touches our log. The
+#   companion change moves search itself to POST so the query isn't in the
+#   URL in the first place (see views/templates). Keep these in lockstep.
 
 cd /home/private/docketdrift
 exec ./.venv/bin/gunicorn docketdrift_site.wsgi:application \
@@ -42,4 +53,5 @@ exec ./.venv/bin/gunicorn docketdrift_site.wsgi:application \
     --max-requests-jitter 500 \
     --preload \
     --access-logfile - \
-    --error-logfile -
+    --error-logfile - \
+    --access-logformat '%(h)s %(t)s "%(m)s %(U)s %(H)s" %(s)s %(b)s "%(a)s"'

@@ -183,5 +183,4 @@ def site_extras(request):
     return {
         "EXPLORE_TAGS": tags,
         "DISPOSITION_BUCKETS": DISPOSITION_BUCKETS,
-        "GOOGLE_ANALYTICS_ID": getattr(settings, "GOOGLE_ANALYTICS_ID", ""),
     }

@@ -125,6 +125,49 @@ matrix.
   pull + `nfsn -j signal-daemon gunicorn TERM`. Onion prefers I drive the
   full deploy loop (her SSH config has the `docketdrift` alias).
 
+## Data is sacred — query privacy is non-negotiable
+
+This is a product principle, baked in 2026-06-25, that constrains EVERY
+future build. DocketDrift's users are lawyers, and a lawyer's research
+trail — what they searched, what theory they were chasing — is work
+product. If we store it, it can be **discovered** (subpoenaed) in
+litigation. Onion's rule: *"data is sacred."* Our edge over paid
+databases is architectural, not promissory: **we cannot produce what we
+never stored.**
+
+Concrete, enforced rules:
+
+- **Search queries never appear in a URL.** Search is **POST** (the term
+  rides in the request body, never the query string), so it can't land in
+  the gunicorn access log, the NFSN upstream proxy log, a CDN cache key, a
+  browser history entry, or a shared/bookmarked link. Highlight-on-arrival
+  on the opinion page is driven by a **URL `#fragment`** (fragments are
+  never sent to the server). Do NOT add a feature that puts a user's query
+  text into a GET parameter.
+- **Analytics is goatcounter ONLY, query-stripped.** GA4/Google was
+  removed — no visitor data goes to Google. goatcounter is configured in
+  `base.html` with `path`/`referrer` callbacks that hard-strip any query
+  string. The ONLY data points we collect: country/region, language,
+  device/browser, and the query-stripped page path — used solely to decide
+  which state to build next. Don't add events, custom dimensions, or a
+  second tag without revisiting this.
+- **The gunicorn access log is query-stripped.** `run.sh` uses a custom
+  `--access-logformat` that logs `%(U)s` (path only) and omits the query
+  string AND the referer. Keep it that way; the default format logs the
+  full request line with the query.
+- **Never persist a query server-side either.** No logging the search
+  term, no storing it in a session, no analytics row keyed on it. Process
+  it in memory and let it go. Caches key on opinion id, never on query/user
+  (see the similar-opinions cache).
+- **Decouple identity from activity.** If a signed-in tier is ever built
+  (see ROADMAP Phase 22 / the two-tier idea), the account proves
+  *entitlement* only — put no `user_id` on anything that touches a query or
+  a view. The promise is about activity, not identity.
+
+When in doubt, the test is: *could this artifact be subpoenaed to reveal
+what a user was researching?* If yes, don't create it. "Store it securely"
+is not good enough — "never store it" is the bar.
+
 ## Recurring gotchas — DO NOT MAKE THESE AGAIN
 
 ### Django template comments are single-line only
