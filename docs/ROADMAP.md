@@ -304,6 +304,72 @@ in cleanly on the existing models.
 
 ---
 
+## Phase 22 — DocketDrift paragraph overlay (toggleable, non-destructive)
+
+**What.** A DocketDrift-internal paragraph-numbering *overlay* for
+opinions the court left unnumbered — rendered as a view layer only,
+never written back into `raw_text` or any stored field. A toggle on
+the opinion-detail page (default OFF — verbatim court text) lets a
+user flip to the overlay, which numbers paragraphs sequentially and
+exposes `#dd-para-N` deep-links + copy-link pilcrows the same way the
+court-numbered opinions already get `#para-N`.
+
+Hard design constraints (these are the whole point — see non-goals):
+- **Never alters the record.** The canonical default is the court's
+  verbatim text with the court's own paragraph numbers (where they
+  exist). The overlay is computed at render time, not persisted into
+  `raw_text`. If we ever cache the computed numbering, it lives in a
+  SEPARATE column/table clearly marked as DocketDrift-derived, and the
+  source text is reconstructable without it.
+- **Visibly DocketDrift-assigned, not court-assigned.** Overlay markers
+  must be unmistakably ours — distinct glyph/prefix (e.g. `DD¶N` or a
+  tinted marker) + a banner ("Paragraph numbers added by DocketDrift —
+  not part of the court's opinion") so no reader ever mistakes an
+  overlay number for one the court wrote. Pinpoint cites generated from
+  the overlay (Phase 14/18) must carry the same provenance flag.
+- **Toggleable, opt-in.** "High-level users swap back and forth." Court
+  text is the floor everyone sees; the overlay is something you turn on.
+- **Court-numbered opinions are untouched.** If the court already
+  numbered its paragraphs, there is no overlay — `#para-N` already
+  works and is authoritative.
+
+**Why.** Resolves the tension between "we want pinpoint-linkable,
+manageable paragraphs everywhere" and "we never fabricate structure
+into the record." The overlay gives uniform linkability without
+altering a single opinion — the numbering is honestly labeled as a
+DocketDrift reading aid, separable from the court's text at any time.
+Same posture as embeddings/tags: a layer that *organizes* real text,
+clearly marked as ours, with the verbatim source always one toggle
+away. (Idea: Onion, 2026-06-25. See `feedback_no_pinpoint_cite_extraction`
+in session memory — the line is fabricating numbers INTO the record;
+a labeled, toggleable, non-persisted overlay does not cross it.)
+
+**Depends.** The paragraph-anchor rendering already shipped
+(`format_opinion_text` emits `id="para-N"` for court markers; the NH
+flash + copy-link UX layer is live). This phase generalizes that to a
+computed overlay for the unnumbered case. Useful alongside Phase 14/18
+so pinpoint links can reach overlay paragraphs (carrying the
+provenance flag).
+
+**Rough scope.** ~2 focused sessions:
+1. Render-time overlay numbering in `format_opinion_text` (a mode that
+   numbers chunks DocketDrift-side when no court `[¶N]` markers are
+   present), distinct `#dd-para-N` ids + `DD¶N` markers + provenance
+   banner. NH-first per the proving-ground rule.
+2. Toggle UX (default off, remembered per user via a cookie/localStorage
+   — no account system needed) + ensure the verbatim view is always the
+   canonical, crawlable, canonical-URL default so SEO + citations point
+   at the court's text, not the overlay.
+
+**Files.**
+- `opinions/templatetags/opinion_text.py` — overlay numbering mode
+- `opinions/templates/opinions/opinion_detail.html` — toggle + banner
+- `opinions/static/opinions/css/docketdrift.css` — overlay marker style
+- (optional, only if we cache) `opinions/models.py` — a clearly-named
+  DocketDrift-derived numbering table, never mutating `raw_text`
+
+---
+
 ## Infrastructure / hardening (ongoing, not numbered)
 
 Items already tracked in `CLAUDE.md`'s "Open work, ranked":
@@ -364,5 +430,11 @@ For the user value vs. effort curve:
 8. **Phase 20** (opinion diff) — small, independent.
 9. **Phase 21** (API) — last, since the schema settles after the
    above.
+
+Later / unscheduled:
+- **Phase 22** (DocketDrift paragraph overlay) — a "could work" idea,
+  not near-term. Slots in whenever uniform pinpoint-linkability on
+  unnumbered opinions becomes worth the toggle UX; depends on nothing
+  but the already-shipped anchor layer.
 
 Infrastructure items interleave as the surface-area pressure builds.
