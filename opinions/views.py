@@ -63,7 +63,7 @@ FULLTEXT_MIN_QUERY_LEN = 4
 # query -- a release_date range there makes the optimizer drop the fulltext
 # index and defeats the early-stop, so the date window is applied AFTER, on
 # the bounded PK set.
-FULLTEXT_CANDIDATE_CAP = 500
+FULLTEXT_CANDIDATE_CAP = 200
 
 
 # Page size when the user has filtered or searched (power-user mode).
@@ -539,15 +539,30 @@ def opinion_list(request):
             # FULLTEXT, but BOUNDED. An unbounded MATCH + COUNT + ORDER BY
             # release_date runs 20-25s on a common term and poisons the
             # connection pool (see FULLTEXT_CANDIDATE_CAP). Instead pull a
-            # capped set of candidate ids from the fulltext index, then let the
-            # rest of the view count/sort/paginate over that bounded id set --
-            # the date window (already on qs) now applies as a fast PK filter.
+            # capped set of candidate ids from the fulltext index, then
+            # count/sort/paginate over that bounded id set.
             ft_ids, fulltext_capped = _fulltext_candidate_ids(search_q, court_ids)
             if ft_ids is None:
                 # Query killed/errored -> degrade to no results, never cascade.
                 search_degraded = True
                 qs = qs.none()
+            elif fulltext_capped:
+                # Over-broad term. The candidate set is a bounded sample (in
+                # fulltext-index order, NOT newest-first), so applying the
+                # date window on top would just hide most of an already-
+                # arbitrary sample (the misleading "15 of thousands" effect).
+                # Show the sample date-sorted and tell the user to narrow --
+                # and skip the semantic + snippet passes below (they'd stack
+                # seconds onto an already-broad query). Rebuild from id set so
+                # the earlier date_cutoff filter on qs doesn't apply here.
+                qs = (
+                    Opinion.objects.filter(id__in=ft_ids, court_id__in=court_ids)
+                    .select_related("court")
+                    .order_by("-release_date")
+                )
             else:
+                # Complete match set (<= cap): keep the date window already on
+                # qs for an exact, correct, newest-first result.
                 qs = qs.filter(id__in=ft_ids)
         else:
             qs = qs.filter(
@@ -625,7 +640,10 @@ def opinion_list(request):
     # the wire just to extract 240 bytes. Renders as the "match context"
     # row below each result so a paste-the-quote search shows WHERE in
     # which opinion the phrase appears.
-    if search_q and opinions:
+    if search_q and opinions and not fulltext_capped:
+        # Skip snippets for an over-broad (capped) term: the per-row INSTR over
+        # raw_text adds seconds, and the sample isn't precise enough to be
+        # worth annotating -- the "narrow your search" notice is the message.
         _attach_match_snippets(opinions, search_q)
 
     # Semantic search: when the user has typed a query, also run a
@@ -637,7 +655,11 @@ def opinion_list(request):
     # Same crawler guard as opinion_detail: a bot crawling search-result
     # URLs shouldn't trigger the Voyage embed + VEC scan.
     from opinions.middleware import request_is_crawler
-    if search_q and not disp_filter and not search_degraded and not request_is_crawler(request):
+    if (search_q and not disp_filter and not search_degraded
+            and not fulltext_capped and not request_is_crawler(request)):
+        # Skip semantic search for an over-broad (capped) term too -- the
+        # cosine scan would stack its own multi-second bound onto a query the
+        # user already needs to narrow. Normal searches still get it.
         from opinions.semantic import get_query_embedding, search_similar_opinions
         embedding = get_query_embedding(search_q)
         if embedding:
