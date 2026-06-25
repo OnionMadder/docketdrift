@@ -144,13 +144,16 @@ Concrete, enforced rules:
   on the opinion page is driven by a **URL `#fragment`** (fragments are
   never sent to the server). Do NOT add a feature that puts a user's query
   text into a GET parameter.
-- **Analytics is goatcounter ONLY, query-stripped.** GA4/Google was
-  removed — no visitor data goes to Google. goatcounter is configured in
-  `base.html` with `path`/`referrer` callbacks that hard-strip any query
-  string. The ONLY data points we collect: country/region, language,
-  device/browser, and the query-stripped page path — used solely to decide
-  which state to build next. Don't add events, custom dimensions, or a
-  second tag without revisiting this.
+- **Analytics is goatcounter ONLY, and collects exactly TWO things.** GA4/
+  Google was removed — no visitor data goes to Google. The Author wants to
+  know only: (1) **what state** the visitor is from (→ which state to build
+  next) and (2) **what device** they're on (→ how much to weight mobile).
+  *That's the entire list.* goatcounter derives state/region + device/OS
+  server-side; in `base.html` the `path` callback is pinned to a **constant
+  `"/"`** and `referrer` to `""`, so we record NO behavior — not which
+  opinion/judge/search page was viewed (which pages you read is itself a
+  research trail), not the referrer, not the query. Do NOT re-add page-path,
+  referrer, event, or custom-dimension tracking without the Author's say-so.
 - **The gunicorn access log is query-stripped.** `run.sh` uses a custom
   `--access-logformat` that logs `%(U)s` (path only) and omits the query
   string AND the referer. Keep it that way; the default format logs the

@@ -95,11 +95,11 @@ if not DEBUG:
     SECURE_HSTS_PRELOAD = True
 
 # Analytics: goatcounter ONLY (configured in base.html). Google Analytics
-# (GA4) was REMOVED 2026-06-25 -- we send no visitor data to Google, and
-# analytics is reduced to country/region + language + device/browser + a
-# query-stripped page path (the data points used to decide which states to
-# build next). See CLAUDE.md "Data is sacred -- query privacy is
-# non-negotiable." Do not re-introduce a third-party tag without revisiting
+# (GA4) was REMOVED 2026-06-25 -- no visitor data to Google. Collection is
+# reduced to exactly TWO things: visitor STATE (-> which state to build next)
+# and DEVICE (-> how much to weight mobile). NO page paths, referrer, or query
+# are recorded (path pinned to a constant "/"). See CLAUDE.md "Data is sacred."
+# Do not re-introduce a third-party tag or behavior tracking without revisiting
 # that posture.
 
 INSTALLED_APPS = [

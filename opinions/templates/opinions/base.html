@@ -8,28 +8,29 @@
 <meta name="theme-color" content="#0a0011">
 
 {% comment %}
-Analytics posture (2026-06-25): goatcounter ONLY -- no Google. We send NO
-visitor data to Google (dropped GA4) and we NEVER record search terms. The
-only data points we collect are the ones used to decide which states to build
-next: country/region, language, device/browser, and the page path WITH ANY
-QUERY STRING STRIPPED. The path + referrer callbacks below hard-strip the
-query before goatcounter ever sees it, so even a stray ?q= that lands in a URL
-cannot be persisted. Search itself is POSTed (query in the request body, never
-in a URL) and the gunicorn access log is query-stripped too -- defense in
-depth. Lawyers fear discovery of their research trail; we cannot produce what
-we never stored. See CLAUDE.md "Data is sacred -- query privacy is
-non-negotiable" before touching anything analytics/logging-related.
+Analytics posture (2026-06-25): goatcounter ONLY -- no Google. The Author wants
+to know exactly TWO things, and nothing else:
+  1. What STATE is the visitor from  -> which state to build next.
+  2. What DEVICE are they on          -> how heavily to factor in mobile.
+That's the whole list. goatcounter derives location (state/region) and
+device/browser/OS server-side from the request; we deliberately collect NO
+behavior:
+  - path is pinned to a CONSTANT ("/"), so goatcounter never learns which
+    opinion/judge/search page a visitor viewed (no page-path tracking, even
+    query-stripped -- which opinions you read is itself a research trail).
+  - referrer is dropped (always "").
+No Google, no search terms (search is POSTed -- query in the body, never a URL;
+access log is query-stripped too). Lawyers fear discovery of their research
+trail; we cannot produce what we never stored. Do NOT re-add path/referrer/
+event tracking without the Author's say-so. See CLAUDE.md "Data is sacred."
 {% endcomment %}
 <script>
   window.goatcounter = {
-    // Record the page path only; drop ANY query string (e.g. a stray ?q=).
-    path: function () { return location.pathname; },
-    // Strip the query string off the referrer too (defense in depth: a
-    // referrer header could otherwise carry a ?q= from a prior page).
-    referrer: function (r) {
-      try { var u = new URL(r); return u.origin + u.pathname; }
-      catch (e) { return ""; }
-    }
+    // Constant path: record only THAT a visit happened (with its server-side
+    // state + device), never WHICH page. No behavior, no research trail.
+    path: function () { return "/"; },
+    // No referrer at all.
+    referrer: function () { return ""; }
   };
 </script>
 
