@@ -43,6 +43,39 @@ VOYAGE_TIMEOUT_SECONDS = 30  # Query embedding is one short doc, fast.
 QUERY_LENGTH_CAP = 255       # Skip cache for queries longer than this (matches QueryEmbedding.query column).
 
 
+def _run_vector_query(sql: str, params) -> list:
+    """Execute a cosine-distance SELECT, returning rows -- or [] on failure.
+
+    The ``VEC_DISTANCE_COSINE`` scans here are O(N) over the embedding
+    column (no VECTOR INDEX until the NOT-NULL migration). On a dense
+    state corpus a single scan can exceed the 25s ``max_statement_time``
+    set in settings; MariaDB then KILLs the query, which not only raises
+    but leaves the *pooled* connection in an interrupted state. The next
+    request that reuses that connection hits errno 188 / 1317 ("Operation
+    was interrupted" / "Query execution was interrupted") on whatever it
+    runs next and 500s -- the connection-poison cascade documented in
+    CLAUDE.md that takes pages down site-wide, not just the slow one.
+
+    So: catch ANY DatabaseError, drop the poisoned connection (Django
+    transparently reopens a clean one on next use), and return [] so the
+    caller degrades gracefully -- no similar-opinions widget / keyword-only
+    search -- instead of bubbling a 500 and poisoning the pool.
+    """
+    from django.db import DatabaseError
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, params)
+            return cursor.fetchall()
+    except DatabaseError as exc:
+        logger.warning("vector query failed (%s); dropping connection", exc)
+        try:
+            connection.close()
+        except Exception:
+            pass
+        return []
+
+
 def get_query_embedding(query: str) -> list[float] | None:
     """Return the voyage-law-2 query embedding for ``query``, or None.
 
@@ -153,9 +186,8 @@ def search_similar_opinions(
     sql.append("LIMIT %s")
     params.append(limit)
 
-    with connection.cursor() as cursor:
-        cursor.execute("\n".join(sql), params)
-        return [row[0] for row in cursor.fetchall()]
+    rows = _run_vector_query("\n".join(sql), params)
+    return [row[0] for row in rows]
 
 
 def similar_to_opinion(opinion, limit: int = 5, with_scores: bool = False):
@@ -215,10 +247,7 @@ def similar_to_opinion(opinion, limit: int = 5, with_scores: bool = False):
     sql.append("LIMIT %s")
     params.append(limit)
 
-    with connection.cursor() as cursor:
-        cursor.execute("\n".join(sql), params)
-        rows = cursor.fetchall()
-
+    rows = _run_vector_query("\n".join(sql), params)
     if with_scores:
         return [(row[0], row[1]) for row in rows]
     return [row[0] for row in rows]

@@ -663,10 +663,23 @@ def opinion_detail(request, case_number):
     if request_is_crawler(request):
         similar_pairs = []
     else:
-        from opinions.semantic import similar_to_opinion
-        # with_scores=True -> [(opinion_id, cosine_distance), ...] so we can
-        # surface a subtle "% similar" cue on the NH card (proving-ground).
-        similar_pairs = similar_to_opinion(opinion, limit=5, with_scores=True)
+        # Cache the cosine result keyed on the OPINION (not the URL). This
+        # page is CDN-cached, but ?q= search-result links carry a unique
+        # query string that busts that cache -- so without this, every ?q
+        # variant re-ran the O(N) VEC_DISTANCE_COSINE scan at origin. On a
+        # dense state (MN/AZ) a scan can exceed max_statement_time, get
+        # KILLed, and poison the connection pool (errno 188/1317 -> 500
+        # cascade). Caching collapses all variants to one scan per opinion
+        # per day; semantic._run_vector_query degrades to [] if it still
+        # times out, so the page renders without the widget rather than 500.
+        cache_key = "sim_pairs:v1:%s" % opinion.pk
+        similar_pairs = cache.get(cache_key)
+        if similar_pairs is None:
+            from opinions.semantic import similar_to_opinion
+            # with_scores=True -> [(opinion_id, cosine_distance), ...] for the
+            # subtle "% similar" cue on the NH card (proving-ground).
+            similar_pairs = similar_to_opinion(opinion, limit=5, with_scores=True)
+            cache.set(cache_key, similar_pairs, 60 * 60 * 24)
     similar_opinions = []
     if similar_pairs:
         ordering = {pk: i for i, (pk, _dist) in enumerate(similar_pairs)}
