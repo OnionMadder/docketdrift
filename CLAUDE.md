@@ -362,6 +362,36 @@ turning the scan into a sub-100ms indexed lookup) — now unblocked since all
 three states are 100% embedded. See the `date_cutoff` gotcha above and the
 "Pooled MariaDB connection retains 'interrupted' state" gotcha below.
 
+### FULLTEXT search on a common term must be CAPPED, never unbounded
+
+InnoDB FULLTEXT scores EVERY matching document. A common term ("negligence"
+→ 15K of 60K MN opinions) makes an unbounded `MATCH ... AGAINST` combined with
+`COUNT(*)` + `ORDER BY release_date` run **20-25s** (measured), blow the 25s
+`max_statement_time`, get KILLed, and **poison the pooled connection** — the
+same site-wide-500 cascade as the cosine gotcha above. This shipped a live
+trap on `opinion_list` search (found + fixed 2026-06-24/25).
+
+Fix in `opinion_list` + `_fulltext_candidate_ids` (`views.py`): pull a capped
+set of candidate ids straight from the fulltext index with a **`LIMIT`** —
+that lets InnoDB stop early (~1.7s at cap 200 vs 24s unbounded). Then
+count/sort/paginate over the bounded id set. Hard-won specifics:
+- **Only `court_id` may sit beside `MATCH`** in the candidate query. A
+  `release_date` range there makes the optimizer drop the fulltext index and
+  re-times-out — apply the date window AFTER, on the bounded PK set.
+- **Self-bind + close on failure** (`SET STATEMENT max_statement_time=12` +
+  `except BaseException: connection.close()`), same defense as
+  `semantic._run_vector_query`, so a pathological term degrades, never poisons.
+- **When capped (over-broad), SKIP the semantic cosine + the per-row snippet
+  INSTR** — otherwise each stacks multi-second bounds onto the single worker's
+  4 threads and saturates them. A capped term costs just the one bounded
+  candidate fetch; it's labeled "200+ — narrow your search" and shown
+  date-sorted WITHOUT the date window (the sample is fulltext-index order, not
+  newest-first, so windowing it would mislead).
+- Normal (non-broad) searches are unchanged: exact count, newest-first,
+  semantic + snippets intact. NORMAL-search latency (~5-7s on MN) is the
+  pre-existing semantic O(N) cosine scan — roadmap #14 (VECTOR INDEX) is the
+  fix; it's bounded + non-poisoning today.
+
 ### `.values("pk")` alone doesn't strip select_related from COUNT
 
 Django's `QuerySet.count()` clones the underlying Query. On some
