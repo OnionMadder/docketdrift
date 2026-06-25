@@ -45,6 +45,23 @@ cites make its data self-referential in a way MN/AZ aren't) — then roll out to
 MN/AZ. NH-first is the plan, not a compromise. The citation engine is the first
 feature built this way.
 
+**Cite-anchored deep links (2026-06-24, NH-first).** `format_opinion_text`
+(`templatetags/opinion_text.py`) already emits `<p id="para-N">` + a `¶N`
+self-anchor for any chunk that opens with a court-assigned paragraph marker
+(`[¶N]` / `¶N` — NH/AZ Supreme convention; MN opinions rarely carry them).
+That markup renders for ALL states, so `#para-N` native-scroll works
+everywhere. The 2026-06-24 polish adds the NH-only UX layer in
+`opinion_detail.html` (gated `state.code == 'NH'`) + `docketdrift.css`: a
+`.para-flash` keyframe that pulses the target paragraph cyan and fades over
+~2s (class-driven, not a `:target` animation, so re-clicking the same para
+re-fires it; honors `prefers-reduced-motion`), flash-on-arrival +
+flash-on-hashchange with smooth scroll, and each `¶N` pilcrow turned into a
+click-to-copy share link (Clipboard API + `execCommand` fallback, "Copied"
+bubble). The persistent `:target` left-border marker is unchanged on all
+states. This is the URL-anchor substrate the citation engine will use once
+pinpoint cites are extracted (cite → `/opinion/<docket>/#para-N`). MN/AZ
+pilcrows stay plain navigate-on-click anchors (copy/flash JS is NH-gated).
+
 **Other recent work (2026-06-15→23):** all judge portraits are now SELF-HOSTED
 static assets, no hotlinks (`localize_judge_photos` + `scripts/fetch_judge_photos.py`);
 NH Supreme justice cards populated + NH opinions current to 2026-06-11 (both via
