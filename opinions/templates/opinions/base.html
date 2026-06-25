@@ -54,14 +54,14 @@ re-state twitter_image to the same value -- Twitter's tag is separate
 from Open Graph and doesn't fall through. summary_large_image renders
 the cover full-width on Twitter / X and on LinkedIn previews.
 {% endcomment %}
-<meta property="og:image" content="{% block og_image %}https://{{ request.get_host }}{% static 'opinions/og/cover.jpg' %}{% endblock %}">
-<meta property="og:image:width" content="1556">
-<meta property="og:image:height" content="876">
+<meta property="og:image" content="{% block og_image %}https://{{ request.get_host }}{% static 'opinions/logo/socials.jpg' %}{% endblock %}">
+<meta property="og:image:width" content="1376">
+<meta property="og:image:height" content="768">
 <meta property="og:image:alt" content="DocketDrift">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="{% block twitter_title %}{{ self.og_title|default:'DocketDrift' }}{% endblock %}">
 <meta name="twitter:description" content="{% block twitter_description %}{{ self.og_description|default:'Public records, treated as public.' }}{% endblock %}">
-<meta name="twitter:image" content="{% block twitter_image %}https://{{ request.get_host }}{% static 'opinions/og/cover.jpg' %}{% endblock %}">
+<meta name="twitter:image" content="{% block twitter_image %}https://{{ request.get_host }}{% static 'opinions/logo/socials.jpg' %}{% endblock %}">
 
 <link rel="icon" type="image/png" sizes="32x32" href="{% static 'opinions/favi/favicon-32x32.png' %}">
 <link rel="icon" type="image/png" sizes="16x16" href="{% static 'opinions/favi/favicon-16x16.png' %}">

@@ -7,6 +7,43 @@
    and add detail-page chrome.
    ============================================================ */
 
+/* ============================================================
+   Reticle corners — card branding
+   ------------------------------------------------------------
+   Ported from the MvR design system into DocketDrift's own cyan/pink
+   scheme (same --neon-cyan / --neon-pink tokens). Replaces the flat
+   violet-border "card" look: the frame keeps its border, and neon
+   bleeds OUT of two opposite corners -- cyan top-left, pink
+   bottom-right -- fading into the edge so the ticks read as part of
+   the frame, not stuck on top. Applied to .glossy-frame (the primary
+   card) for site-wide branding; add the reusable `.reticle` class to
+   give any other card the same treatment.
+   ============================================================ */
+.glossy-frame,
+.reticle {
+  position: relative;
+  /* Square the corners a hair (8px -> 4px) so the L-brackets read
+     crisp against the rounded edge, matching the MvR card look. */
+  border-radius: var(--radius-sm);
+}
+
+.glossy-frame::before,
+.reticle::before {
+  content: "";
+  position: absolute;
+  inset: -1px;                 /* sit ON the border, not inside it */
+  border-radius: inherit;
+  pointer-events: none;        /* never intercept clicks */
+  /* Two L-brackets: cyan top-left, pink bottom-right, each a 42px arm
+     fading to transparent. They live in the card's padding gutter, so
+     they read as corner ticks on the frame and never overlap content. */
+  background:
+    linear-gradient(to right,  var(--neon-cyan), transparent) no-repeat left top     / 42px 2px,
+    linear-gradient(to bottom, var(--neon-cyan), transparent) no-repeat left top     / 2px 42px,
+    linear-gradient(to left,   var(--neon-pink), transparent) no-repeat right bottom / 42px 2px,
+    linear-gradient(to top,    var(--neon-pink), transparent) no-repeat right bottom / 2px 42px;
+}
+
 /* ----------  Self-hosted fonts  ----------
    We self-host Chakra Petch instead of pulling from Google Fonts so
    visitors aren't making a cross-origin request to fonts.googleapis.com
