@@ -42,6 +42,13 @@ VOYAGE_MODEL = "voyage-law-2"
 VOYAGE_TIMEOUT_SECONDS = 30  # Query embedding is one short doc, fast.
 QUERY_LENGTH_CAP = 255       # Skip cache for queries longer than this (matches QueryEmbedding.query column).
 
+# Per-query wall-clock bound for the cosine scans, well under the 25s session
+# max_statement_time. A healthy scan (NH ~215ms, warm MN/AZ) finishes far
+# inside this; a pathological cold scan on a dense corpus is KILLed here and
+# the caller degrades to [] -- so the single gunicorn worker never blocks the
+# full 25s on one similar-opinions widget. Remove once the VECTOR INDEX lands.
+VECTOR_QUERY_TIMEOUT_S = 12
+
 
 def _run_vector_query(sql: str, params) -> list:
     """Execute a cosine-distance SELECT, returning rows -- or [] on failure.
@@ -68,10 +75,18 @@ def _run_vector_query(sql: str, params) -> list:
     not a subclass of DatabaseError. Catching Exception covers both the
     django-wrapped (execute-time) and raw-pymysql (fetch-time) forms while
     still letting KeyboardInterrupt/SystemExit (BaseException) propagate.
+
+    The scan is wrapped in ``SET STATEMENT max_statement_time=N FOR ...`` so it
+    self-bounds to VECTOR_QUERY_TIMEOUT_S (well under the 25s session cap),
+    keeping the single worker from stalling the full 25s on a cold dense scan.
     """
+    bounded_sql = "SET STATEMENT max_statement_time=%d FOR %s" % (
+        VECTOR_QUERY_TIMEOUT_S,
+        sql,
+    )
     try:
         with connection.cursor() as cursor:
-            cursor.execute(sql, params)
+            cursor.execute(bounded_sql, params)
             return cursor.fetchall()
     except Exception as exc:
         logger.warning("vector query failed (%s); dropping connection", exc)
