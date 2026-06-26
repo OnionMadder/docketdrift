@@ -6,6 +6,17 @@ gunicorn>=21.0
 whitenoise>=6.0
 pypdf>=4.0
 beautifulsoup4>=4.12
+# eyecite: reporter-citation tokenizer from the Free Law Project, the wrapper
+# substrate for the NON-NH (MN/AZ/future) citation graph. See
+# opinions/parsing/citations_eyecite.py. PREPARATION INFRA ONLY -- it is NOT
+# wired into any production import path yet (the extract_citations dispatcher
+# routes nothing here), so it is imported lazily inside the wrapper's extract().
+# FREEBSD RISK on NFSN: eyecite pulls C-extension deps (pyahocorasick, lxml,
+# fast-diff-match-patch built from source). Do NOT pip-install on NFSN until the
+# MN/AZ migration actually lands and those wheels are confirmed to build on
+# FreeBSD -- the standard code-deploy (git pull + gunicorn restart) does NOT run
+# pip, so adding this line is safe for now.
+eyecite>=2.6,<3.0
 # (no numpy -- the FreeBSD wheels on NFSN miss cblas_sdot from the
 # system BLAS, both 2.x and 1.x. suggest_tags uses MariaDB's native
 # VEC_DISTANCE_COSINE against the Opinion.embedding VECTOR column

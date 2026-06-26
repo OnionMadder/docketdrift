@@ -107,6 +107,16 @@
 
   <p>The promise is plainer than &ldquo;AI legal research&rdquo;: we treat the public record as what it is. We organize it. We link to it. We don&rsquo;t tell you what it means. That&rsquo;s still your job.</p>
 
+  <h2 id="built-with">Built with open source</h2>
+  <p>DocketDrift is a solo project standing on civic-tech and open-source infrastructure. The honest accounting of what does the work:</p>
+  <ul class="built-with">
+    <li><strong>Citation extraction (non-NH states)</strong> uses <a href="https://github.com/freelawproject/eyecite" rel="noopener">eyecite</a> from the <a href="https://free.law/" rel="noopener">Free Law Project</a> &mdash; the same reporter-citation tokenizer that powers their <a href="https://www.courtlistener.com/" rel="noopener">CourtListener</a> federal court archive. DocketDrift also uses CourtListener data for backfill ingestion of state appellate opinions. New Hampshire's citation graph runs on a hand-written neutral-cite extractor instead, kept deliberately bespoke as a reference implementation.</li>
+    <li><strong>Semantic search</strong> uses <a href="https://docs.voyageai.com/docs/embeddings" rel="noopener">voyage-law-2 embeddings</a> from Voyage AI, stored in MariaDB&rsquo;s native <code>VECTOR</code> column type.</li>
+    <li><strong>The web framework</strong> is <a href="https://www.djangoproject.com/" rel="noopener">Django</a>, the Python web framework.</li>
+    <li><strong>The database engine</strong> is <a href="https://mariadb.org/" rel="noopener">MariaDB 11.7</a>, with its native <code>VECTOR</code> support for vector similarity search.</li>
+    <li><strong>Client-side interactivity</strong> is <a href="https://htmx.org/" rel="noopener">HTMX</a>, used only where it earns its keep (currently the bulk tag-review admin).</li>
+  </ul>
+
   <p style="margin-top: 2rem;">
     &larr; <a href="{% url 'opinions:about' %}">Back to About</a>
   </p>
