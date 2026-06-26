@@ -1,5 +1,7 @@
 {% extends "opinions/base.html" %}
 {% load opinion_text %}
+{% load citations %}
+{% load static %}
 {% block title %}{{ opinion.case_number }} &middot; {{ opinion.title|truncatechars:60 }} &middot; DocketDrift{% endblock %}
 {% block description %}{{ opinion.case_number }}: {{ opinion.title|truncatechars:150 }}{% if opinion.disposition %} &mdash; {{ opinion.disposition }}{% endif %} &mdash; {{ opinion.court.name }}, {{ opinion.release_date|date:"F Y" }}.{% endblock %}
 
@@ -98,6 +100,33 @@
       {% if opinion.pdf_file %}<a href="{% url 'opinions:opinion_pdf' case_number=opinion.case_number %}">Download PDF</a>{% endif %}
       {% if opinion.source_url %}<a href="{{ opinion.source_url }}" target="_blank" rel="noopener">View on CourtListener</a>{% endif %}
     </div>
+  {% endif %}
+
+  {% if opinion.court.state.code == 'NH' %}
+  {% comment %}
+  NH-only (proving-ground rollout): "Cite this case" tool. Renders a
+  Bluebook-formatted cite (citations.py), copy-to-clipboard, add-to-cart,
+  and a Bluebook<->plain quick-reference toggle. The cart that the "Add to
+  cart" button feeds is 100% client-side (localStorage) -- see
+  citation_cart.js. The data-* attributes carry the pre-formatted strings so
+  the JS never has to reconstruct a cite; the values are auto-escaped by the
+  simple_tag so stray '&'/'<' in a caption stay safe.
+  {% endcomment %}
+  <div class="cite-tool"
+       data-opinion-id="{{ opinion.id }}"
+       data-bluebook="{% bluebook_cite opinion %}"
+       data-plain="{% plain_cite opinion %}"
+       data-case-name="{{ opinion.title }}">
+    <button type="button" class="cite-tool__btn" aria-expanded="false">Cite this case</button>
+    <div class="citation-display" hidden>
+      <p class="citation-display__text" data-format="bluebook">{% bluebook_cite opinion %}</p>
+      <div class="citation-display__actions">
+        <button type="button" class="citation-copy">Copy</button>
+        <button type="button" class="citation-add">Add to cart</button>
+        <button type="button" class="citation-format-toggle" aria-pressed="false" title="Toggle Bluebook / plain reference cite">(plain)</button>
+      </div>
+    </div>
+  </div>
   {% endif %}
 </div>
 
@@ -417,5 +446,12 @@ Vanilla JS, no dependencies. Honors prefers-reduced-motion.
   });
 })();
 </script>
+
+{% comment %}
+NH-only "Cite this case" + client-side citation cart. The cart lives in
+localStorage and NEVER posts to the server ("Data is sacred" -- CLAUDE.md).
+Loaded last so the .cite-tool markup and <body> exist when it hydrates.
+{% endcomment %}
+<script src="{% static 'opinions/js/citation_cart.js' %}" defer></script>
 {% endif %}
 {% endblock %}

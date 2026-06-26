@@ -2465,3 +2465,308 @@ button.cta-primary {
     align-self: flex-start;
   }
 }
+
+/* ============================================================
+   "Cite this case" tool + client-side citation cart (NH only)
+   ------------------------------------------------------------
+   The inline cite tool lives in the opinion-header card; the cart is a
+   floating FAB (bottom-right) built in citation_cart.js. Cart state is
+   localStorage-only -- nothing here or in the JS touches the server.
+   Neon-on-dark, matching .opinion-actions (cyan accent to distinguish the
+   research tool from the pink download/source actions above it).
+   ============================================================ */
+.cite-tool {
+  margin: 0.85rem 0 0;
+}
+
+.cite-tool__btn {
+  display: inline-block;
+  padding: 0.55rem 1rem;
+  border: 1px solid rgba(38, 255, 230, 0.45);
+  border-radius: var(--radius-sm);
+  background: rgba(38, 255, 230, 0.08);
+  color: var(--neon-cyan);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition),
+              box-shadow var(--transition);
+}
+
+.cite-tool__btn:hover,
+.cite-tool__btn[aria-expanded="true"] {
+  background: var(--neon-cyan);
+  color: #050505;
+  box-shadow: 0 0 12px rgba(38, 255, 230, 0.45);
+}
+
+.citation-display {
+  margin-top: 0.7rem;
+  padding: 0.85rem 1rem;
+  border: var(--border-soft);
+  border-left: 3px solid var(--neon-cyan);
+  border-radius: var(--radius-sm);
+  background: var(--bg-tile);
+  max-width: 46rem;
+}
+
+.citation-display__text {
+  margin: 0 0 0.7rem;
+  font-style: italic;       /* Bluebook caption courtesy; cart export is plain */
+  color: var(--text-primary);
+  line-height: 1.5;
+  /* Plain-text cite the user can select + copy by hand if JS clipboard fails */
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.citation-display__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.citation-copy,
+.citation-add {
+  padding: 0.35rem 0.8rem;
+  border: 1px solid rgba(38, 255, 230, 0.4);
+  border-radius: var(--radius-sm);
+  background: rgba(38, 255, 230, 0.06);
+  color: var(--neon-cyan);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+
+.citation-copy:hover,
+.citation-add:hover,
+.citation-copy.is-flashed,
+.citation-add.is-flashed {
+  background: var(--neon-cyan);
+  color: #050505;
+}
+
+.citation-format-toggle {
+  margin-left: auto;
+  padding: 0.3rem 0.5rem;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 0.72rem;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.citation-format-toggle:hover {
+  color: var(--neon-cyan);
+}
+
+/* ---- floating cart FAB + panel ---- */
+.citation-cart-fab {
+  position: fixed;
+  right: 1.1rem;
+  bottom: 1.1rem;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.55rem;
+}
+
+.citation-cart-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 0.95rem;
+  border: 1px solid rgba(38, 255, 230, 0.55);
+  border-radius: 999px;
+  background: var(--bg-panel);
+  color: var(--neon-cyan);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.5), 0 0 10px rgba(38, 255, 230, 0.25);
+  transition: box-shadow var(--transition), background var(--transition);
+}
+
+.citation-cart-pill:hover {
+  background: var(--bg-tile-hover);
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.6), 0 0 16px rgba(38, 255, 230, 0.4);
+}
+
+.citation-cart-pill__icon {
+  font-size: 1.05rem;
+  line-height: 1;
+  color: var(--neon-cyan);
+}
+
+.citation-cart-pill__count {
+  font-variant-numeric: tabular-nums;
+}
+
+.citation-cart-pill__label {
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+}
+
+.citation-cart-panel {
+  width: min(26rem, calc(100vw - 2rem));
+  max-height: min(60vh, 32rem);
+  display: flex;
+  flex-direction: column;
+  border: var(--border-sharp);
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.65);
+  overflow: hidden;
+}
+
+.citation-cart-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.7rem 0.9rem;
+  border-bottom: var(--border-soft);
+  color: var(--neon-cyan);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.78rem;
+}
+
+.citation-cart-close {
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.2rem;
+}
+
+.citation-cart-close:hover {
+  color: var(--neon-pink);
+}
+
+.citation-cart-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.4rem 0.5rem;
+  overflow-y: auto;
+  flex: 1;
+  counter-reset: cite;
+}
+
+.citation-cart-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.45rem 0.4rem;
+  border-bottom: 1px solid rgba(169, 94, 255, 0.12);
+}
+
+.citation-cart-item:last-child {
+  border-bottom: none;
+}
+
+.citation-cart-item__text {
+  flex: 1;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-primary);
+  font-style: italic;
+}
+
+.citation-cart-item__text::before {
+  counter-increment: cite;
+  content: counter(cite) ". ";
+  font-style: normal;
+  color: var(--text-dim);
+}
+
+.citation-cart-item__remove {
+  flex: none;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.15rem;
+}
+
+.citation-cart-item__remove:hover {
+  color: var(--neon-pink);
+}
+
+.citation-cart-panel__actions {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.6rem 0.7rem;
+  border-top: var(--border-soft);
+}
+
+.citation-cart-copyall,
+.citation-cart-clear {
+  flex: 1;
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+
+.citation-cart-copyall {
+  border: 1px solid rgba(38, 255, 230, 0.45);
+  background: rgba(38, 255, 230, 0.08);
+  color: var(--neon-cyan);
+}
+
+.citation-cart-copyall:hover,
+.citation-cart-copyall.is-flashed {
+  background: var(--neon-cyan);
+  color: #050505;
+}
+
+.citation-cart-clear {
+  border: 1px solid rgba(255, 43, 179, 0.4);
+  background: rgba(255, 43, 179, 0.06);
+  color: var(--neon-pink);
+}
+
+.citation-cart-clear:hover {
+  background: var(--neon-pink);
+  color: #050505;
+}
+
+/* On a phone, shrink the resting pill so it doesn't cover opinion text;
+   it still expands to the full panel on tap. */
+@media (max-width: 600px) {
+  .citation-cart-fab {
+    right: 0.6rem;
+    bottom: 0.6rem;
+  }
+  .citation-cart-pill__label {
+    display: none;
+  }
+  .citation-cart-pill {
+    padding: 0.5rem 0.7rem;
+  }
+}
