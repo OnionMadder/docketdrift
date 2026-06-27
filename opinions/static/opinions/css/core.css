@@ -26,6 +26,20 @@
      so the purple reads as cohesively neon as the pink/cyan/green. */
   --neon-violet: #b14bff;
 
+  /* RGB channel triplets for the neon tokens, so translucent backgrounds +
+     glows can be written rgba(var(--neon-X-rgb), <alpha>) and ALWAYS track
+     the token -- they can never drift from the solid color again (the bug
+     that left new-violet text on old-violet glow). Keep each in sync with
+     its hex token above. --neon-lime/--hazard-red defined lower; triplets
+     for them live here too so every hue has one home. */
+  --neon-pink-rgb: 255, 43, 179;
+  --neon-cyan-rgb: 38, 255, 230;
+  --neon-amber-rgb: 255, 191, 0;
+  --neon-green-rgb: 155, 239, 77;
+  --neon-violet-rgb: 177, 75, 255;
+  --neon-lime-rgb: 95, 201, 68;
+  --hazard-red-rgb: 255, 77, 77;
+
   --text-primary: #e6e3ec;
   --text-dim: #948ca1;
 

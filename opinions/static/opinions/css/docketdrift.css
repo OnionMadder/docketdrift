@@ -185,7 +185,7 @@
   font-size: 0.95rem;
   letter-spacing: 0.3px;
   margin: 0 0 1.25rem;
-  border-left: 2px solid rgba(169, 94, 255, 0.45);
+  border-left: 2px solid rgba(var(--neon-violet-rgb), 0.45);
   padding-left: 0.85rem;
   max-width: none;
 }
@@ -247,7 +247,7 @@
 
 .opinion-body::-webkit-scrollbar { width: 8px; }
 .opinion-body::-webkit-scrollbar-thumb {
-  background: rgba(169, 94, 255, 0.3);
+  background: rgba(var(--neon-violet-rgb), 0.3);
   border-radius: 4px;
 }
 
@@ -317,10 +317,10 @@
    ============================================================ */
 
 .case-status.disposition-affirmed {
-  color: var(--neon-cyan);
-  border-left-color: var(--neon-cyan);
-  background: rgba(38, 255, 230, 0.08);
-  box-shadow: inset 0 0 10px rgba(38, 255, 230, 0.15), 0 0 6px rgba(38, 255, 230, 0.2);
+  color: var(--neon-lime);
+  border-left-color: var(--neon-lime);
+  background: rgba(var(--neon-lime-rgb), 0.08);
+  box-shadow: inset 0 0 10px rgba(var(--neon-lime-rgb), 0.15), 0 0 6px rgba(var(--neon-lime-rgb), 0.2);
 }
 
 .case-status.disposition-reversed {
@@ -349,8 +349,8 @@
 .case-status.disposition-mixed {
   color: var(--neon-violet);
   border-left-color: var(--neon-violet);
-  background: rgba(169, 94, 255, 0.10);
-  box-shadow: inset 0 0 10px rgba(169, 94, 255, 0.15), 0 0 6px rgba(169, 94, 255, 0.2);
+  background: rgba(var(--neon-violet-rgb), 0.10);
+  box-shadow: inset 0 0 10px rgba(var(--neon-violet-rgb), 0.15), 0 0 6px rgba(var(--neon-violet-rgb), 0.2);
 }
 
 .case-status.disposition-dismissed,
@@ -700,7 +700,7 @@
   display: block;
   border-radius: 4px;
   margin: 0.5rem 0 0.85rem;
-  border: 1px solid rgba(169, 94, 255, 0.25);
+  border: 1px solid rgba(var(--neon-violet-rgb), 0.25);
 }
 
 .cast-grid .entity-tile .role-chip {
@@ -952,15 +952,15 @@ button.cta-primary {
 }
 
 .review-pill--ai_only {
-  color: #ffbf3d;
-  border-color: rgba(255, 191, 61, 0.45);
-  background: rgba(255, 191, 61, 0.08);
+  color: var(--neon-amber);
+  border-color: rgba(var(--neon-amber-rgb), 0.45);
+  background: rgba(var(--neon-amber-rgb), 0.08);
 }
 
 .review-pill--flagged {
   color: var(--hazard-red);
-  border-color: rgba(255, 64, 84, 0.45);
-  background: rgba(255, 64, 84, 0.08);
+  border-color: rgba(var(--hazard-red-rgb), 0.45);
+  background: rgba(var(--hazard-red-rgb), 0.08);
 }
 
 .review-pill--reviewed {
@@ -983,13 +983,13 @@ button.cta-primary {
 }
 
 .review-dot--ai_only {
-  background: #ffbf3d;
-  box-shadow: 0 0 5px rgba(255, 191, 61, 0.45);
+  background: var(--neon-amber);
+  box-shadow: 0 0 5px rgba(var(--neon-amber-rgb), 0.45);
 }
 
 .review-dot--flagged {
   background: var(--hazard-red);
-  box-shadow: 0 0 5px rgba(255, 64, 84, 0.55);
+  box-shadow: 0 0 5px rgba(var(--hazard-red-rgb), 0.55);
 }
 
 .review-dot--reviewed {
@@ -1351,8 +1351,8 @@ button.cta-primary {
 .coverage-note {
   margin: 0 0 1.25rem;
   padding: 0.9rem 1.1rem;
-  background: rgba(80, 200, 255, 0.06);
-  border: 1px solid rgba(80, 200, 255, 0.22);
+  background: rgba(var(--neon-cyan-rgb), 0.06);
+  border: 1px solid rgba(var(--neon-cyan-rgb), 0.22);
   border-left: 3px solid var(--neon-cyan);
   border-radius: var(--radius-sm);
   font-size: 0.92rem;
@@ -1380,8 +1380,8 @@ button.cta-primary {
 .ai-disclosure {
   margin: 1.5rem 0 2rem;
   padding: 1.25rem 1.5rem;
-  background: rgba(255, 60, 180, 0.06);
-  border: 1px solid rgba(255, 60, 180, 0.25);
+  background: rgba(var(--neon-pink-rgb), 0.06);
+  border: 1px solid rgba(var(--neon-pink-rgb), 0.25);
   border-left: 4px solid var(--neon-magenta);
   border-radius: var(--radius-sm);
 }
@@ -1509,7 +1509,7 @@ button.cta-primary {
 .judge-bio-toggle > summary::-webkit-details-marker { display: none; }
 .judge-bio-toggle > summary::marker { content: ""; }
 .judge-bio-toggle > summary:hover {
-  background: rgba(255, 60, 180, 0.08);
+  background: rgba(var(--neon-pink-rgb), 0.08);
 }
 .judge-bio-toggle__chevron {
   font-size: 0.9rem;
@@ -1607,13 +1607,13 @@ button.cta-primary {
   min-width: 4px;
 }
 
-.judge-bar-fill--affirmed { background: #00ffc8; }
+.judge-bar-fill--affirmed { background: var(--neon-lime); }
 .judge-bar-fill--reversed { background: var(--neon-pink); }
 .judge-bar-fill--vacated, .judge-bar-fill--denied { background: var(--hazard-red); }
-.judge-bar-fill--remanded, .judge-bar-fill--modified { background: #ffbf3d; }
+.judge-bar-fill--remanded, .judge-bar-fill--modified { background: var(--neon-amber); }
 .judge-bar-fill--mixed { background: var(--neon-violet); }
 .judge-bar-fill--dismissed, .judge-bar-fill--other { background: rgba(148, 140, 161, 0.6); }
-.judge-bar-fill--granted { background: var(--neon-cyan); }
+.judge-bar-fill--granted { background: var(--neon-lime); }
 
 .judge-bar-count {
   font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
@@ -1692,8 +1692,8 @@ button.cta-primary {
 .judge-chart-card .subtle-lead code {
   font-size: 0.82rem;
   padding: 0.05rem 0.35rem;
-  background: rgba(0, 217, 255, 0.08);
-  border: 1px solid rgba(0, 217, 255, 0.2);
+  background: rgba(var(--neon-cyan-rgb), 0.08);
+  border: 1px solid rgba(var(--neon-cyan-rgb), 0.2);
   border-radius: 3px;
   color: var(--neon-cyan);
 }
@@ -1946,15 +1946,15 @@ button.cta-primary {
 }
 
 .concordance-bar__seg--agree {
-  background: #4adf95;
+  background: var(--neon-lime);
 }
 
 .concordance-bar__seg--partial {
-  background: #f6c350;
+  background: var(--neon-amber);
 }
 
 .concordance-bar__seg--disagree {
-  background: #ff6b6b;
+  background: var(--hazard-red);
 }
 
 .concordance-legend {
@@ -2005,21 +2005,21 @@ button.cta-primary {
 }
 
 .vote-chip--majority {
-  background: rgba(74, 223, 149, 0.16);
-  color: #5fe6a4;
-  border: 1px solid rgba(74, 223, 149, 0.4);
+  background: rgba(var(--neon-lime-rgb), 0.16);
+  color: var(--neon-lime);
+  border: 1px solid rgba(var(--neon-lime-rgb), 0.4);
 }
 
 .vote-chip--concurrence {
-  background: rgba(246, 195, 80, 0.16);
-  color: #f6c350;
-  border: 1px solid rgba(246, 195, 80, 0.4);
+  background: rgba(var(--neon-amber-rgb), 0.16);
+  color: var(--neon-amber);
+  border: 1px solid rgba(var(--neon-amber-rgb), 0.4);
 }
 
 .vote-chip--dissent {
-  background: rgba(255, 107, 107, 0.16);
-  color: #ff7e7e;
-  border: 1px solid rgba(255, 107, 107, 0.4);
+  background: rgba(var(--hazard-red-rgb), 0.16);
+  color: var(--hazard-red);
+  border: 1px solid rgba(var(--hazard-red-rgb), 0.4);
 }
 
 .vote-chip--recused {
@@ -2050,7 +2050,7 @@ button.cta-primary {
   text-decoration: none;
   font-style: italic;
   padding: 0.25rem 0.5rem 0.4rem 2rem;
-  border-left: 2px solid rgba(255, 126, 211, 0.3);
+  border-left: 2px solid rgba(var(--neon-pink-rgb), 0.3);
   background: rgba(0, 0, 0, 0.12);
   border-radius: 0 2px 2px 0;
 }
@@ -2059,12 +2059,12 @@ button.cta-primary {
 .doc-snippet-link:focus-visible {
   color: var(--text-bright);
   border-left-color: var(--neon-pink);
-  background: rgba(255, 126, 211, 0.06);
+  background: rgba(var(--neon-pink-rgb), 0.06);
   outline: none;
 }
 
 .doc-snippet-link mark {
-  background: rgba(255, 126, 211, 0.32);
+  background: rgba(var(--neon-pink-rgb), 0.32);
   color: var(--text-bright);
   font-style: normal;
   font-weight: 600;
@@ -2090,14 +2090,14 @@ button.cta-primary {
 .op-para-anchor:hover,
 .op-para-anchor:focus-visible {
   color: var(--neon-cyan);
-  background: rgba(0, 217, 255, 0.08);
+  background: rgba(var(--neon-cyan-rgb), 0.08);
   outline: none;
 }
 
 /* When a paragraph is the URL-fragment target, keep a steady subtle marker
    so the user can still see where the deep-link landed after the flash. */
 .opinion-body .op-para:target {
-  background: rgba(0, 217, 255, 0.06);
+  background: rgba(var(--neon-cyan-rgb), 0.06);
   border-left: 2px solid var(--neon-cyan);
   padding-left: 0.75rem;
   margin-left: -0.75rem;
@@ -2110,7 +2110,7 @@ button.cta-primary {
    Class-driven rather than a :target animation so re-clicking the SAME
    paragraph re-fires the pulse (a :target animation wouldn't restart). */
 @keyframes paraFlash {
-  0%   { background: rgba(0, 217, 255, 0.26); }
+  0%   { background: rgba(var(--neon-cyan-rgb), 0.26); }
   100% { background: transparent; }
 }
 .opinion-body .op-para.para-flash {
@@ -2131,7 +2131,7 @@ button.cta-primary {
 }
 .op-para-anchor.is-copied {
   color: var(--neon-cyan);
-  background: rgba(0, 217, 255, 0.14);
+  background: rgba(var(--neon-cyan-rgb), 0.14);
 }
 .op-para-anchor.is-copied::after {
   content: "Copied";
@@ -2153,7 +2153,7 @@ button.cta-primary {
 
 /* Marks inside the opinion body (from ?q= highlighting). */
 .opinion-body mark {
-  background: rgba(255, 126, 211, 0.32);
+  background: rgba(var(--neon-pink-rgb), 0.32);
   color: inherit;
   padding: 0.03rem 0.18rem;
   border-radius: 2px;
@@ -2163,8 +2163,8 @@ button.cta-primary {
 .opinion-find-banner {
   margin: 0 0 1rem;
   padding: 0.55rem 0.9rem;
-  background: rgba(255, 126, 211, 0.08);
-  border: 1px solid rgba(255, 126, 211, 0.25);
+  background: rgba(var(--neon-pink-rgb), 0.08);
+  border: 1px solid rgba(var(--neon-pink-rgb), 0.25);
   border-radius: 3px;
   font-size: 0.86rem;
   color: var(--text-bright);
@@ -2176,16 +2176,16 @@ button.cta-primary {
 .search-notice {
   margin: 0 0 1rem;
   padding: 0.55rem 0.9rem;
-  background: rgba(0, 217, 255, 0.07);
-  border: 1px solid rgba(0, 217, 255, 0.22);
+  background: rgba(var(--neon-cyan-rgb), 0.07);
+  border: 1px solid rgba(var(--neon-cyan-rgb), 0.22);
   border-radius: 3px;
   font-size: 0.86rem;
   color: var(--text-bright);
 }
 
 .search-notice--warn {
-  background: rgba(255, 196, 87, 0.08);
-  border-color: rgba(255, 196, 87, 0.30);
+  background: rgba(var(--neon-amber-rgb), 0.08);
+  border-color: rgba(var(--neon-amber-rgb), 0.30);
 }
 
 .opinion-find-banner a {
@@ -2270,13 +2270,13 @@ button.cta-primary {
 }
 
 .opinion-tag--procedural {
-  color: #ffbf3d;
-  border-color: rgba(255, 191, 61, 0.45);
-  background: rgba(255, 191, 61, 0.07);
+  color: var(--neon-amber);
+  border-color: rgba(var(--neon-amber-rgb), 0.45);
+  background: rgba(var(--neon-amber-rgb), 0.07);
 }
 
 .opinion-tag--posture {
-  color: #b394ff;
+  color: var(--neon-violet);
   border-color: rgba(179, 148, 255, 0.45);
   background: rgba(179, 148, 255, 0.07);
 }
@@ -2684,7 +2684,7 @@ button.cta-primary {
   align-items: flex-start;
   gap: 0.5rem;
   padding: 0.45rem 0.4rem;
-  border-bottom: 1px solid rgba(169, 94, 255, 0.12);
+  border-bottom: 1px solid rgba(var(--neon-violet-rgb), 0.12);
 }
 
 .citation-cart-item:last-child {
