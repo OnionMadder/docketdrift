@@ -360,10 +360,51 @@ Three defenses now live in `semantic.py:_run_vector_query` + `opinion_detail`
    caps a cold scan at 12s (vs the 25s session cap) so the single worker
    can't stall the full 25s. NH (~215ms) never reaches the bound.
 
-The real fix is roadmap #14 (migrate `embedding` → NOT NULL + VECTOR INDEX,
-turning the scan into a sub-100ms indexed lookup) — now unblocked since all
-three states are 100% embedded. See the `date_cutoff` gotcha above and the
+The "real fix" was *supposed* to be roadmap #14 (migrate `embedding` → NOT NULL
++ VECTOR INDEX, turning the scan into a sub-100ms indexed lookup). **It was
+attempted 2026-06-26 and is INFEASIBLE on NFSN's shared DB** — see the new
+"MariaDB VECTOR INDEX is infeasible on NFSN shared hosting" gotcha below. So
+**all three defenses above are PERMANENT, not temporary** — do NOT remove them
+expecting an index to land. See the `date_cutoff` gotcha above and the
 "Pooled MariaDB connection retains 'interrupted' state" gotcha below.
+
+### MariaDB VECTOR INDEX is infeasible on NFSN shared hosting (roadmap #14 blocked)
+
+Attempted 2026-06-26, proven impossible on this DB. Building an HNSW vector
+index over our ~119K × 1024-dim embeddings needs ~488 MB of cache. NFSN's
+shared `madmaster.db` gives **`mhnsw_max_cache_size` = 16 MB** (GLOBAL-only) and
+**`innodb_buffer_pool_size` = 8 MB**, and our user `docketdrift_app` has only
+`ALL PRIVILEGES ON docketdrift.*` — **no SUPER, so `SET GLOBAL` is denied**
+(errno 1227). We cannot enlarge either. Both build paths hit the same wall:
+
+1. **In-place `ALTER TABLE opinions_opinion ADD VECTOR INDEX`** uses
+   `ALGORITHM=COPY`, which rebuilds the **entire 2.75 GB table** (the
+   `raw_text`/`html_content` TEXT blobs make it huge) through the 8 MB buffer
+   pool. It ran **9+ hours**, reached only stage 1→2 of 4, and was
+   **UNKILLABLE mid-DDL** — `KILL`/`KILL QUERY` are ignored during the
+   `copy to tmp table` / `Enabling keys` stages, and you can't restart a shared
+   daemon. NEVER run this as `manage.py migrate`: the client disconnects, the
+   ALTER holds a write-blocking MDL on opinions_opinion for hours (reads still
+   work), and you can't stop it. It eventually self-aborted at a stage boundary.
+2. **Denormalized slim table** `opinion_embedding(opinion_id, court_id,
+   embedding)` + vector index, populated by incremental `INSERT … SELECT`:
+   starts ~513 rows/s on an empty graph but **degrades to ~11 rows/s by 20K
+   rows** as the HNSW graph overflows the 16 MB cache → hours, still slowing.
+
+**Consequence:** the `semantic.py` band-aids (the broad-`except`+`close`, the
+`SET STATEMENT max_statement_time=12` self-bound, the 3-yr `date_cutoff`, the
+24h per-opinion cache) are the **permanent** mitigation. NH is fine without an
+index (~215 ms, 20K rows); the unfixable pain is MN (60K) + AZ (38K).
+
+**Out-of-band schema note:** the `MODIFY … NOT NULL` step committed before the
+index attempt, so `opinions_opinion.embedding` is `VECTOR(1024) NOT NULL` on
+prod even though migrations sit at 0025 and nothing records it. Harmless (all
+rows non-null). Do NOT revert it — that's another 2.75 GB ALTER copy.
+
+**To unblock later:** a DB with real RAM + SUPER (dedicated instance, not shared
+`madmaster.db`), an external vector store, or dimensionality reduction (a
+256-dim embedding for ~4× cheaper scans — verify voyage-law-2 quality first,
+it's not documented as Matryoshka).
 
 ### FULLTEXT search on a common term must be CAPPED, never unbounded
 
@@ -789,10 +830,16 @@ closed in the 2026-06-09 → 2026-06-12 session.
 
 ### Priority 4 — hardening / polish
 
-14. **VECTOR INDEX migration** so `similar_to_opinion` doesn't need the
-    3-year date_cutoff workaround. Requires migrating
-    `opinions_opinion.embedding` to NOT NULL — which means item #1 + #2
-    have to finish first (no NULL embeddings left in the corpus).
+14. ~~**VECTOR INDEX migration**~~ **BLOCKED (infra, not code) — attempted
+    2026-06-26, infeasible on NFSN's shared DB.** Building the HNSW index needs
+    ~488 MB cache; we have a 16 MB GLOBAL `mhnsw_max_cache_size` + 8 MB buffer
+    pool and no SUPER to raise them. The in-place `ADD VECTOR INDEX` is a 9-hour
+    unkillable copy of the 2.75 GB table; the denormalized slim-table build
+    degrades to ~11 rows/s as the graph overflows the cache. The `embedding`
+    column DID get set NOT NULL (out of band; harmless). The `semantic.py`
+    band-aids are now PERMANENT. See the "MariaDB VECTOR INDEX is infeasible on
+    NFSN shared hosting" gotcha for the full writeup + the later-unblock paths
+    (dedicated DB w/ SUPER, external vector store, or dim-reduction).
 15. **Search-snippet INSTR query is slow on big raw_text.** The
     `_attach_match_snippets` helper in `views.py` runs
     `INSTR(LOWER(raw_text), LOWER(?))` on each result row -- across 50
