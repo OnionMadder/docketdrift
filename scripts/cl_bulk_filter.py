@@ -30,7 +30,7 @@ files are read-only and never modified.
 
 Run from project root:
 
-    # Default (MN, backwards compatible with the original behavior)
+    # Default (MN, backward compatible with the original behavior)
     .venv/Scripts/python scripts/cl_bulk_filter.py
 
     # NH -- one CL court (nh = NH Supreme Court)

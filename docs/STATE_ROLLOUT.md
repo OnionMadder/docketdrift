@@ -224,7 +224,7 @@ ssh docketdrift 'cd /home/private/docketdrift && git pull && \
 
 **Gotcha — cert timing.** The "3-5 min" you'll see in NFSN docs is
 optimistic. In practice MN took ~5 min, NH took ~8 min, AZ took ~12 min.
-If it's been over 30 minutes and the padlock is still grey, the alias
+If it's been over 30 minutes and the padlock is still gray, the alias
 didn't register — re-add it.
 
 **Gate:**
