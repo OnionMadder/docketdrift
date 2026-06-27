@@ -65,6 +65,46 @@ FULLTEXT_MIN_QUERY_LEN = 4
 # the bounded PK set.
 FULLTEXT_CANDIDATE_CAP = 200
 
+# InnoDB FULLTEXT min token size (verified on prod: innodb_ft_min_token_size=3).
+# Distinct from FULLTEXT_MIN_QUERY_LEN above, which gates the whole query; this
+# gates individual tokens inside a multi-word query.
+FULLTEXT_MIN_TOKEN_LEN = 3
+
+# InnoDB's built-in FULLTEXT stopword list (no custom stopword table is set, so
+# this compiled-in set is what's filtered). These MUST NOT get a required `+`:
+# InnoDB strips a stopword/too-short token from the query, and a `+` left with
+# nothing to bind to drops the whole BOOLEAN-MODE match to ~0 rows (verified:
+# `+hro +of` -> 0, `+hro +zz` -> 0, vs `+hro` -> 82). So we drop them before
+# building the AND expression rather than requiring them.
+_INNODB_FT_STOPWORDS = frozenset({
+    "a", "about", "an", "are", "as", "at", "be", "by", "com", "de", "en",
+    "for", "from", "how", "i", "in", "is", "it", "la", "of", "on", "or",
+    "that", "the", "this", "to", "was", "what", "when", "where", "who",
+    "will", "with", "und", "www",
+})
+
+# Strip BOOLEAN-MODE operator characters so user punctuation can't be parsed as
+# an operator (or trigger a syntax error) inside a token.
+_FT_OPERATOR_CHARS = re.compile(r'[+\-><()~*@"]')
+
+
+def _boolean_and_expr(search_q):
+    """Build a safe BOOLEAN-MODE expression that REQUIRES every usable term.
+
+    Multi-word queries become an AND of `+term` tokens (e.g. "default hro" ->
+    "+default +hro"), NOT a phrase match -- the previous code wrapped the whole
+    query in quotes, so "default hro" only matched the verbatim adjacent phrase
+    and every multi-word search returned 0. We strip boolean operator chars,
+    then drop stopwords and sub-min-length tokens (a required `+` on those zeroes
+    the match -- see _INNODB_FT_STOPWORDS). Returns "" if nothing usable remains.
+    """
+    terms = []
+    for raw in search_q.split():
+        for piece in _FT_OPERATOR_CHARS.sub(" ", raw).split():
+            if len(piece) >= FULLTEXT_MIN_TOKEN_LEN and piece.lower() not in _INNODB_FT_STOPWORDS:
+                terms.append("+" + piece)
+    return " ".join(terms)
+
 
 # Page size when the user has filtered or searched (power-user mode).
 # 60K MN opinions / 50 per page = ~1,200 pages -- comfortable to navigate
@@ -392,6 +432,12 @@ def _fulltext_candidate_ids(search_q, court_ids):
     closes the connection so a KILLed query can't poison the pool for the next
     request (same defense as semantic._run_vector_query).
     """
+    # Require every usable term (AND), not a verbatim phrase. If nothing usable
+    # survives stopword/length filtering, there's no fulltext match to make --
+    # report "no candidates" (the caller degrades to no results / LIKE).
+    ft_expr = _boolean_and_expr(search_q)
+    if not ft_expr:
+        return [], False
     placeholders = ",".join(["%s"] * len(court_ids))
     sql = (
         "SET STATEMENT max_statement_time=12 FOR "
@@ -400,7 +446,7 @@ def _fulltext_candidate_ids(search_q, court_ids):
         "AND MATCH(raw_text, title) AGAINST (%s IN BOOLEAN MODE) "
         "LIMIT %s"
     )
-    params = list(court_ids) + ['"%s"' % search_q, FULLTEXT_CANDIDATE_CAP + 1]
+    params = list(court_ids) + [ft_expr, FULLTEXT_CANDIDATE_CAP + 1]
     try:
         with connection.cursor() as c:
             c.execute(sql, params)
