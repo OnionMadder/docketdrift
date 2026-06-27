@@ -29,9 +29,9 @@ from __future__ import annotations
 import time
 
 from django.core.management.base import BaseCommand
-from django.db import transaction
+from django.db import connection, transaction
 
-from opinions.models import Opinion, StatuteCitation
+from opinions.models import Court, Opinion, StatuteCitation
 from opinions.parsing.statutes import extract_statutes
 
 
@@ -85,8 +85,26 @@ class Command(BaseCommand):
     def handle(self, *args, state, limit, force, dry_run, **options):
         state_code = state.upper()
 
+        # Batch command that legitimately runs long: it reads raw_text across
+        # the whole state corpus. settings' init_command caps every connection
+        # at max_statement_time=25 for web safety, but that kills the in-scope
+        # COUNT on a large state -- AZ's 38K rows, each with a 50-100KB raw_text
+        # read for the `exclude(raw_text="")` predicate, crossed 25s through
+        # NFSN's tiny buffer pool (errno 1969). Lift the cap for THIS connection
+        # only; web traffic keeps the 25s ceiling. (Same pattern as
+        # embed_opinions / the long-migration gotcha in CLAUDE.md.)
+        if connection.vendor == "mysql":
+            with connection.cursor() as cursor:
+                cursor.execute("SET SESSION max_statement_time = 0")
+
+        # Pre-resolve court ids so the scan filters on the indexed court_id FK
+        # instead of JOINing court->state on every row (CLAUDE.md gotcha).
+        court_ids = list(
+            Court.objects.filter(state__code=state_code).values_list("id", flat=True)
+        )
+
         qs = (
-            Opinion.objects.filter(court__state__code=state_code)
+            Opinion.objects.filter(court_id__in=court_ids)
             .exclude(raw_text="")
             .order_by("pk")  # stable order for resumability
         )
