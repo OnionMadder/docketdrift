@@ -12,9 +12,15 @@ Three states live, all on subdomains of `docketdrift.com`:
 
 | State | Subdomain | Opinions | Embedded | Judges | Panel votes | Statute cites | Date range |
 |---|---|---|---|---|---|---|---|
-| MN (flagship) | `mn.docketdrift.com` | 60,375 | 100% | 124 | 9,914 | 124,858 | 1851 to current |
+| MN (flagship) | `mn.docketdrift.com` | 60,377 | 100% | 124 | 9,914 | 124,858 | 1851 to current |
 | NH (beta) | `nh.docketdrift.com` | 20,717 | **100%** | 69 | 17,161 | 79,384 | Through 2026-06-11 |
-| AZ (beta) | `az.docketdrift.com` | 38,063 | **100%** | 139 | 142 | 117,045 | Through 2026-06-05 |
+| AZ (beta) | `az.docketdrift.com` | 38,065 | **100%** | 139 | 142 | 117,045 | Through 2026-06-05 |
+
+(Opinion counts as of 2026-06-27: 119,159 total, all embedded. The 2026-06-27
+VECTOR-INDEX retry deleted 12 zero-`raw_text` metadata stubs — MN ids 2618,
+42273, 40190, 12262; AZ COA-Div-1 ids 61027, 84965, 90696, 90826, 91002, 91103,
+91159, 91179 — and embedded the remaining fresh ingests, leaving 0 NULL
+embeddings. See the "MariaDB VECTOR INDEX is infeasible" gotcha.)
 
 The apex `docketdrift.com` shows three live state tiles. About page is
 trimmed; the full anti-hallucination disclosure + ML-architecture
@@ -405,10 +411,36 @@ mechanics.** Data prep does not change the outcome; only new infra (below) will.
 24h per-opinion cache) are the **permanent** mitigation. NH is fine without an
 index (~215 ms, 20K rows); the unfixable pain is MN (60K) + AZ (38K).
 
-**Out-of-band schema note:** the `MODIFY … NOT NULL` step committed before the
-index attempt, so `opinions_opinion.embedding` is `VECTOR(1024) NOT NULL` on
-prod even though migrations sit at 0025 and nothing records it. Harmless (all
-rows non-null). Do NOT revert it — that's another 2.75 GB ALTER copy.
+**Out-of-band schema note (updated 2026-06-27).** On BOTH attempts the
+`MODIFY … NOT NULL` step committed before the index DDL, so
+`opinions_opinion.embedding` is `VECTOR(1024) NOT NULL` on prod even though
+migrations sit at **0025** and nothing records it (there is no migration
+0026/0027 on prod — 0026 is the locally-parked holdings work; the abandoned
+VECTOR-INDEX migration was deleted, never committed). Do NOT revert NOT NULL →
+NULL — that's another ~2.75 GB ALTER copy (same unkillable trap).
+
+**BUT NOT NULL is NOT free**, contrary to the earlier "harmless" note: `embedding`
+is a raw, un-modeled VECTOR column, so every Django ORM insert
+(`ingest_court` `update_or_create`, `ingest_pdfs` `Opinion(...).save()`) OMITS
+it → under `STRICT_TRANS_TABLES` a NOT-NULL column with no default raises
+**errno 1364 "Field 'embedding' doesn't have a default value"** and **new-opinion
+ingestion fails**. (Existing-row UPDATEs, incl. the overnight embed, are fine —
+they set `embedding` explicitly.) Fix shipped 2026-06-27: a **zero-vector
+`DEFAULT`** added via
+`ALTER TABLE opinions_opinion ALTER COLUMN embedding SET DEFAULT (Vec_FromText('[0,0,…]')), ALGORITHM=INSTANT`
+— a pure-metadata change (no table rewrite; returns in ms) that lets omitted-column
+inserts succeed. New opinions land with a placeholder `[0,…]` vector +
+`embedding_pending = TRUE`; the overnight embed replaces it with the real one.
+To keep those placeholders out of cosine results, **`semantic.py` now gates both
+vector queries on `embedding_pending = 0`** (replacing the now-always-true
+`embedding IS NOT NULL`) — a zero vector has a degenerate cosine distance, so it
+must never reach the scan. This default is also out-of-band (not in any
+migration); if you ever rebuild prod from migrations, re-apply the NOT NULL +
+zero-vector default by hand.
+
+**Net effect of the 2026-06-27 retry:** no index shipped (still infeasible), but
+the data is cleaner (0 NULL embeddings, 12 textless stubs deleted) and ingestion
+is protected by the zero-vector default + the `embedding_pending` search gate.
 
 **To unblock later:** a DB with real RAM + SUPER (dedicated instance, not shared
 `madmaster.db`), an external vector store, or dimensionality reduction (a
@@ -897,15 +929,21 @@ closed in the 2026-06-09 → 2026-06-12 session.
 ### Priority 4 — hardening / polish
 
 14. ~~**VECTOR INDEX migration**~~ **BLOCKED (infra, not code) — attempted
-    2026-06-26, infeasible on NFSN's shared DB.** Building the HNSW index needs
-    ~488 MB cache; we have a 16 MB GLOBAL `mhnsw_max_cache_size` + 8 MB buffer
-    pool and no SUPER to raise them. The in-place `ADD VECTOR INDEX` is a 9-hour
-    unkillable copy of the 2.75 GB table; the denormalized slim-table build
-    degrades to ~11 rows/s as the graph overflows the cache. The `embedding`
-    column DID get set NOT NULL (out of band; harmless). The `semantic.py`
-    band-aids are now PERMANENT. See the "MariaDB VECTOR INDEX is infeasible on
-    NFSN shared hosting" gotcha for the full writeup + the later-unblock paths
-    (dedicated DB w/ SUPER, external vector store, or dim-reduction).
+    2026-06-26 AND re-attempted 2026-06-27, infeasible on NFSN's shared DB.**
+    Building the HNSW index needs ~488 MB cache; we have a 16 MB GLOBAL
+    `mhnsw_max_cache_size` + 8 MB buffer pool and no SUPER to raise them. The
+    in-place `ADD VECTOR INDEX` is an unkillable multi-hour copy of the 2.75 GB
+    table; the denormalized slim-table build degrades to ~11 rows/s as the graph
+    overflows the cache. The 2026-06-27 retry first cleared all NULL embeddings
+    (the thing the prior run blamed) and STILL hit the identical COPY-rebuild
+    wall — proving the blocker is the rebuild mechanics, not the data. The
+    `embedding` column is NOT NULL out of band; that broke ORM ingestion (errno
+    1364) until a zero-vector INSTANT `DEFAULT` + an `embedding_pending` search
+    gate were added (both 2026-06-27, out of band). The `semantic.py` band-aids
+    are PERMANENT. See the "MariaDB VECTOR INDEX is infeasible on NFSN shared
+    hosting" gotcha for the full writeup + the later-unblock paths (dedicated DB
+    w/ SUPER, external vector store, or dim-reduction). **Do not attempt a third
+    time without one of those infra changes.**
 15. **Search-snippet INSTR query is slow on big raw_text.** The
     `_attach_match_snippets` helper in `views.py` runs
     `INSTR(LOWER(raw_text), LOWER(?))` on each result row -- across 50

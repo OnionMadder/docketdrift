@@ -197,7 +197,14 @@ def search_similar_opinions(
         "FROM opinions_opinion o",
         "JOIN opinions_court c ON c.id = o.court_id",
         "WHERE c.state_id = %s",
-        "  AND o.embedding IS NOT NULL",
+        # Exclude not-yet-embedded rows. As of 2026-06-27 the embedding column
+        # is NOT NULL with a zero-vector DEFAULT (added when the abandoned
+        # VECTOR INDEX attempt left NOT NULL committed out of band -- see
+        # CLAUDE.md), so a freshly-ingested opinion carries a placeholder
+        # [0,...] embedding until the overnight embed replaces it. Gate on the
+        # indexed embedding_pending flag so placeholders never reach the cosine
+        # scan (a zero vector has a degenerate cosine distance).
+        "  AND o.embedding_pending = 0",
     ]
     params = [query_vec_text, state.code]
     if date_cutoff is not None:
@@ -257,8 +264,10 @@ def similar_to_opinion(opinion, limit: int = 5, with_scores: bool = False):
         "JOIN opinions_opinion src ON src.id = %s",
         "WHERE c.state_id = (SELECT state_id FROM opinions_court WHERE id = %s)",
         "  AND o.id != %s",
-        "  AND o.embedding IS NOT NULL",
-        "  AND src.embedding IS NOT NULL",
+        # Skip placeholder zero-vector embeddings (see search_similar_opinions):
+        # both the candidate AND the source opinion must be really embedded.
+        "  AND o.embedding_pending = 0",
+        "  AND src.embedding_pending = 0",
     ]
     params: list = [opinion.id, opinion.court_id, opinion.id]
     if date_cutoff is not None:
