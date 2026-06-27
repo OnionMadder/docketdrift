@@ -52,9 +52,21 @@ COURT_LEVEL_RE = re.compile(
 # Filing date line: ``Filed June 1, 2026`` or ``Filed Jan. 14, 2026``.
 FILED_DATE_RE = re.compile(r"Filed\s+([A-Za-z\.]+\s+\d{1,2},?\s+\d{4})")
 
-# Footer marker that flips is_precedential to False.
+# Order opinions ("ORDER OPINION") don't carry a "Filed [date]" line -- they
+# date themselves at the foot: ``Dated: January 6, 2026 BY THE COURT``. Used as
+# a fallback when FILED_DATE_RE misses so this whole class (HRO appeals, other
+# procedural dispositions -- absent from CourtListener) can be ingested.
+DATED_DATE_RE = re.compile(r"Dated:\s*([A-Za-z\.]+\s+\d{1,2},?\s+\d{4})")
+
+# Header that closes the caption block in an order opinion (stands in for the
+# "Filed [date]" boundary regular opinions use).
+ORDER_OPINION_HDR_RE = re.compile(r"\bORDER\s+OPINION\b")
+
+# Footer marker that flips is_precedential to False. Regular opinions say
+# "This opinion ... is nonprecedential"; order opinions say "this order opinion
+# is nonprecedential" (per Minn. R. Civ. App. P. 136.01, subd. 1(c)).
 NONPRECEDENTIAL_RE = re.compile(
-    r"This\s+opinion\s+(?:will\s+be\s+unpublished\s+and\s+)?is\s+nonprecedential",
+    r"This\s+(?:order\s+)?opinion\s+(?:will\s+be\s+unpublished\s+and\s+)?is\s+nonprecedential",
     re.IGNORECASE,
 )
 
@@ -154,13 +166,15 @@ class MinnesotaParser(StateParser):
             result.confidence["case_number"] = 0.95
 
         # --- Release date --------------------------------------------------
+        # Regular opinions: "Filed [date]". Order opinions: "Dated: [date]".
         m_filed = FILED_DATE_RE.search(raw_text)
-        if m_filed:
-            raw_date = m_filed.group(1).replace(",", "").replace(".", "")
+        m_date = m_filed or DATED_DATE_RE.search(raw_text)
+        if m_date:
+            raw_date = m_date.group(1).replace(",", "").replace(".", "")
             for fmt in ("%B %d %Y", "%b %d %Y"):
                 try:
                     result.release_date = datetime.strptime(raw_date, fmt).date()
-                    result.confidence["release_date"] = 0.95
+                    result.confidence["release_date"] = 0.95 if m_filed else 0.9
                     break
                 except ValueError:
                     continue
@@ -176,19 +190,29 @@ class MinnesotaParser(StateParser):
             result.confidence["is_precedential"] = header_conf
 
         # --- Case name -----------------------------------------------------
-        # The case caption sits between the case number and "Filed [date]".
-        if result.case_number and m_filed:
+        # The caption sits between the case number and the "Filed [date]" line
+        # (regular opinions) or the "ORDER OPINION" header (order opinions).
+        m_hdr = None if m_filed else ORDER_OPINION_HDR_RE.search(raw_text)
+        boundary = m_filed.start() if m_filed else (m_hdr.start() if m_hdr else None)
+        if result.case_number and boundary is not None:
             after_num_idx = raw_text.find(result.case_number)
             if after_num_idx >= 0:
-                between = raw_text[after_num_idx + len(result.case_number):m_filed.start()]
-                # Take the first non-empty paragraph; case names can wrap
-                # across lines but stop at a blank line.
+                between = raw_text[after_num_idx + len(result.case_number):boundary]
                 paragraphs = [p.strip() for p in re.split(r"\n\s*\n", between) if p.strip()]
-                if paragraphs:
-                    candidate = " ".join(paragraphs[0].split())
-                    if 4 <= len(candidate) <= 400:
-                        result.case_name = candidate
-                        result.confidence["case_name"] = 0.7
+                if m_filed:
+                    # Regular: the caption is the first paragraph block (it
+                    # wraps across lines but stops at a blank line).
+                    candidate = " ".join(paragraphs[0].split()) if paragraphs else ""
+                    conf = 0.7
+                else:
+                    # Order opinion: the caption is split across blank lines
+                    # (one party per block -- "Name,", "Appellant,", "vs.",
+                    # ...), so join every block into the full caption.
+                    candidate = " ".join(" ".join(p.split()) for p in paragraphs)
+                    conf = 0.6
+                if 4 <= len(candidate) <= 400:
+                    result.case_name = candidate
+                    result.confidence["case_name"] = conf
 
         # --- Disposition ---------------------------------------------------
         # Highest confidence when the disposition sits immediately after
