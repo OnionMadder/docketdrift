@@ -20,9 +20,14 @@ Usage::
     python manage.py extract_statutes --limit 500  # smoke-test sweep
     python manage.py extract_statutes --force      # re-extract everything
 
-Performance: regex-only, no API calls. Expected ~5-10 min for the full MN
-corpus on dev hardware; production may be faster since MariaDB streams
-``raw_text`` lazily.
+Resilient on NFSN: the scan walks the corpus in pk-ordered windows, each a
+SEPARATE short query (``WHERE pk > last ORDER BY pk LIMIT N``), NOT one long
+server-side stream. A single streaming ``.iterator()`` over a large state (AZ,
+38K rows with 50-100KB ``raw_text`` each) gets its connection dropped mid-read
+by NFSN's MariaDB (errno 2013). Windowed batches + retry-reconnect survive that
+and make the sweep naturally resumable (a re-run skips opinions that already
+have citations). The command's connection also lifts ``max_statement_time`` (the
+25s web cap would kill the corpus-wide COUNT). Regex-only, no API calls.
 """
 from __future__ import annotations
 
@@ -35,16 +40,23 @@ from opinions.models import Court, Opinion, StatuteCitation
 from opinions.parsing.statutes import extract_statutes
 
 
-# How many opinions to fetch per ``iterator()`` chunk. Larger = fewer
-# DB round-trips but more RAM held for raw_text strings (some opinions
-# run 50-100KB). 200 keeps peak RAM under ~20MB while staying network-
-# efficient.
-ITER_CHUNK = 200
+# Opinions per pk-window. Each window is its own short query, so this also
+# bounds how much a single dropped-connection retry has to redo. 200 keeps
+# peak RAM under ~20MB (raw_text runs 50-100KB) while staying network-efficient.
+BATCH_SIZE = 200
 
-# How many StatuteCitation rows to bulk-insert per write. MariaDB's
-# default max_allowed_packet is 16MB; at ~200 bytes per row that's
-# ~80K rows per packet -- 1000 leaves comfortable headroom.
+# How many StatuteCitation rows to bulk-insert per write. MariaDB's default
+# max_allowed_packet is 16MB; at ~200 bytes per row that's ~80K rows per
+# packet -- 1000 leaves comfortable headroom.
 BULK_INSERT_CHUNK = 1_000
+
+# DB retry: NFSN's MariaDB sits behind an SSL connection that drops during long
+# operations. On a drop we close the poisoned connection (Django reopens a
+# clean one), re-lift the statement timeout, and retry. Catch BaseException --
+# an SSL read EINTR'd by a signal surfaces as KeyboardInterrupt, which must be
+# retryable here, not fatal (same reasoning as embed_opinions).
+DB_MAX_RETRIES = 5
+DB_RETRY_SLEEP_SECONDS = 5
 
 
 class Command(BaseCommand):
@@ -82,42 +94,57 @@ class Command(BaseCommand):
             help="Compute matches + counts but don't write or delete any rows.",
         )
 
-    def handle(self, *args, state, limit, force, dry_run, **options):
-        state_code = state.upper()
+    # ---- DB resilience helpers -------------------------------------------
 
-        # Batch command that legitimately runs long: it reads raw_text across
-        # the whole state corpus. settings' init_command caps every connection
-        # at max_statement_time=25 for web safety, but that kills the in-scope
-        # COUNT on a large state -- AZ's 38K rows, each with a 50-100KB raw_text
-        # read for the `exclude(raw_text="")` predicate, crossed 25s through
-        # NFSN's tiny buffer pool (errno 1969). Lift the cap for THIS connection
-        # only; web traffic keeps the 25s ceiling. (Same pattern as
-        # embed_opinions / the long-migration gotcha in CLAUDE.md.)
+    def _lift_timeout(self):
+        """Drop this connection's per-statement timeout (settings caps it at 25s
+        for web safety; the corpus-wide COUNT legitimately runs longer)."""
         if connection.vendor == "mysql":
             with connection.cursor() as cursor:
                 cursor.execute("SET SESSION max_statement_time = 0")
+
+    def _db_retry(self, fn):
+        """Run ``fn`` with reconnect-and-retry on a dropped/interrupted
+        connection. Returns fn()'s value; re-raises after DB_MAX_RETRIES."""
+        for attempt in range(1, DB_MAX_RETRIES + 1):
+            try:
+                return fn()
+            except BaseException as exc:
+                if attempt >= DB_MAX_RETRIES:
+                    raise
+                self.stderr.write(self.style.WARNING(
+                    f"  DB error (attempt {attempt}/{DB_MAX_RETRIES}) "
+                    f"{type(exc).__name__}: {exc}; reconnecting in "
+                    f"{DB_RETRY_SLEEP_SECONDS}s..."
+                ))
+                try:
+                    connection.close()
+                except BaseException:
+                    pass
+                time.sleep(DB_RETRY_SLEEP_SECONDS)
+                self._lift_timeout()
+
+    # ---- main ------------------------------------------------------------
+
+    def handle(self, *args, state, limit, force, dry_run, **options):
+        state_code = state.upper()
+        self._lift_timeout()
 
         # Pre-resolve court ids so the scan filters on the indexed court_id FK
         # instead of JOINing court->state on every row (CLAUDE.md gotcha).
         court_ids = list(
             Court.objects.filter(state__code=state_code).values_list("id", flat=True)
         )
+        if not court_ids:
+            self.stdout.write(self.style.WARNING(f"No courts for state {state_code!r}."))
+            return
 
-        qs = (
-            Opinion.objects.filter(court_id__in=court_ids)
-            .exclude(raw_text="")
-            .order_by("pk")  # stable order for resumability
-        )
-        if not force:
-            # `statute_citations__isnull=True` with distinct() works but
-            # requires a LEFT JOIN on the citation table -- slow at 60K
-            # rows. Subquery exclusion is faster: pre-compute the set of
-            # opinion IDs that already have at least one citation and
-            # exclude them at the SQL level.
-            already_done = StatuteCitation.objects.values("opinion_id").distinct()
-            qs = qs.exclude(pk__in=already_done)
-
-        total = qs.count()
+        def _count():
+            base = Opinion.objects.filter(court_id__in=court_ids).exclude(raw_text="")
+            if not force:
+                base = base.exclude(pk__in=StatuteCitation.objects.values("opinion_id"))
+            return base.count()
+        total = self._db_retry(_count)
         if limit:
             total = min(total, limit)
 
@@ -133,49 +160,88 @@ class Command(BaseCommand):
         rows_created = 0
         rows_deleted = 0
         pending: list[StatuteCitation] = []
+        last_pk = 0
+        next_report = 2_000
         t0 = time.time()
 
         def _flush_pending():
-            """Bulk-insert any queued rows, respecting --dry-run."""
             nonlocal rows_created
             if not pending:
                 return
             if not dry_run:
-                StatuteCitation.objects.bulk_create(pending, batch_size=BULK_INSERT_CHUNK)
+                rows = list(pending)
+
+                def _do():
+                    with transaction.atomic():
+                        StatuteCitation.objects.bulk_create(
+                            rows, batch_size=BULK_INSERT_CHUNK
+                        )
+                self._db_retry(_do)
             rows_created += len(pending)
             pending.clear()
 
-        for opinion in qs.iterator(chunk_size=ITER_CHUNK):
+        while True:
             if limit and scanned >= limit:
                 break
-            scanned += 1
 
-            extractions = extract_statutes(state_code, opinion.raw_text)
+            # Next pk-window as a fresh short query (lean: pk + raw_text only,
+            # no model instances), with reconnect-on-drop.
+            def _fetch(_last=last_pk):
+                return list(
+                    Opinion.objects.filter(court_id__in=court_ids, pk__gt=_last)
+                    .exclude(raw_text="")
+                    .order_by("pk")
+                    .values_list("pk", "raw_text")[:BATCH_SIZE]
+                )
+            batch = self._db_retry(_fetch)
+            if not batch:
+                break
+            last_pk = batch[-1][0]
 
-            if force and not dry_run:
-                # Clear existing rows so the new extractor pass replaces
-                # them. Wrapped per-opinion in a transaction so a row's
-                # delete + reinsert is atomic.
-                with transaction.atomic():
-                    deleted_count, _ = opinion.statute_citations.all().delete()
-                    rows_deleted += deleted_count
+            # Idempotency: skip opinions in this window that already have cites
+            # (resume after an interrupted run), unless --force. One small
+            # indexed query per window.
+            if force:
+                done_ids: set[int] = set()
+            else:
+                ids = [pk for pk, _ in batch]
+                done_ids = self._db_retry(lambda _ids=ids: set(
+                    StatuteCitation.objects.filter(opinion_id__in=_ids)
+                    .values_list("opinion_id", flat=True)
+                ))
 
-            if extractions:
-                opinions_with_hits += 1
-                for e in extractions:
-                    pending.append(StatuteCitation(
-                        opinion=opinion,
-                        reference_slug=e.reference_slug,
-                        reference_display=e.reference_display,
-                        chapter=e.chapter,
-                        section=e.section,
-                        subdivision=e.subdivision,
-                        text_offset=e.text_offset,
-                    ))
-                if len(pending) >= BULK_INSERT_CHUNK:
-                    _flush_pending()
+            for pk, raw_text in batch:
+                if limit and scanned >= limit:
+                    break
+                scanned += 1
+                if pk in done_ids:
+                    continue
 
-            if scanned % 2_000 == 0:
+                if force and not dry_run:
+                    deleted, _ = self._db_retry(
+                        lambda _pk=pk: StatuteCitation.objects.filter(
+                            opinion_id=_pk).delete()
+                    )
+                    rows_deleted += deleted
+
+                extractions = extract_statutes(state_code, raw_text)
+                if extractions:
+                    opinions_with_hits += 1
+                    for e in extractions:
+                        pending.append(StatuteCitation(
+                            opinion_id=pk,
+                            reference_slug=e.reference_slug,
+                            reference_display=e.reference_display,
+                            chapter=e.chapter,
+                            section=e.section,
+                            subdivision=e.subdivision,
+                            text_offset=e.text_offset,
+                        ))
+                    if len(pending) >= BULK_INSERT_CHUNK:
+                        _flush_pending()
+
+            if scanned >= next_report:
+                next_report += 2_000
                 elapsed = time.time() - t0
                 rate = scanned / max(elapsed, 0.001)
                 eta = (total - scanned) / max(rate, 0.001)
