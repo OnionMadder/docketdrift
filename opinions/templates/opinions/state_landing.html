@@ -83,7 +83,11 @@
 
 {% block content %}
 <div class="glossy-frame landing-hero">
-  <span class="status-pill status-pill--beta">Beta &middot; {{ state.name }}</span>
+  {% if state.code == "NH" %}
+    <span class="status-pill status-pill--flagship">Flagship &middot; {{ state.name }}</span>
+  {% else %}
+    <span class="status-pill status-pill--beta">Beta &middot; {{ state.name }}</span>
+  {% endif %}
   <h1>{{ state.name }}</h1>
   <p class="lede">Public-records analysis of {{ state.name }} appellate courts.</p>
   {% if date_range.first %}

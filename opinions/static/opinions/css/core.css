@@ -17,7 +17,14 @@
   --neon-pink: #ff2bb3;
   --neon-cyan: #26ffe6;
   --neon-amber: #ffbf00;
-  --neon-violet: #a95eff;
+  /* Techy chartreuse-green: the decorative "yellow turned green" accent
+     (e.g. landing date-range card). Distinct from --neon-cyan (blue-green)
+     and --neon-lime (muted leaf-green). --neon-amber stays yellow for
+     CAUTION semantics (review "AI only" pills, remanded dispositions). */
+  --neon-green: #9bef4d;
+  /* More-neon electric violet (was #a95eff) -- brighter + more saturated
+     so the purple reads as cohesively neon as the pink/cyan/green. */
+  --neon-violet: #b14bff;
 
   --text-primary: #e6e3ec;
   --text-dim: #948ca1;

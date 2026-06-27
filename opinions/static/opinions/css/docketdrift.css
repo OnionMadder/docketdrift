@@ -1155,6 +1155,15 @@ button.cta-primary {
   box-shadow: 0 0 10px rgba(38, 255, 230, 0.18);
 }
 
+/* Flagship state (NH -- the proving ground). Magenta/pink so it reads as
+   prestige + distinct from the cyan beta pill. */
+.status-pill--flagship {
+  color: var(--neon-pink);
+  border-color: rgba(255, 43, 179, 0.6);
+  background: rgba(255, 43, 179, 0.12);
+  box-shadow: 0 0 12px rgba(255, 43, 179, 0.28);
+}
+
 /* Privacy page signature line ("— DocketDrift") -- right-aligned,
    muted, monospace, reads as a signoff rather than a paragraph. */
 .signature {
@@ -1232,8 +1241,8 @@ button.cta-primary {
 }
 
 .landing-stats li:nth-child(2) { border-left-color: var(--neon-cyan); }
-.landing-stats li:nth-child(3) { border-left-color: #ffbf3d; }
-.landing-stats li:nth-child(4) { border-left-color: #b394ff; }
+.landing-stats li:nth-child(3) { border-left-color: var(--neon-green); }
+.landing-stats li:nth-child(4) { border-left-color: var(--neon-violet); }
 
 .landing-stats strong {
   font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
@@ -1602,7 +1611,7 @@ button.cta-primary {
 .judge-bar-fill--reversed { background: var(--neon-pink); }
 .judge-bar-fill--vacated, .judge-bar-fill--denied { background: var(--hazard-red); }
 .judge-bar-fill--remanded, .judge-bar-fill--modified { background: #ffbf3d; }
-.judge-bar-fill--mixed { background: #b394ff; }
+.judge-bar-fill--mixed { background: var(--neon-violet); }
 .judge-bar-fill--dismissed, .judge-bar-fill--other { background: rgba(148, 140, 161, 0.6); }
 .judge-bar-fill--granted { background: var(--neon-cyan); }
 
