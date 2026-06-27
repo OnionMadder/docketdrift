@@ -8,6 +8,84 @@
    ============================================================ */
 
 /* ============================================================
+   Semantic color key — the deliberate, top-down palette
+   ============================================================
+   One palette, one through-line, applied to every label family
+   (dispositions, editorial review status, citation treatment) so a
+   color means the SAME thing everywhere on the site:
+
+     green   = stands / blessed / followed
+     cyan    = in motion / neutral / ML-processed
+     pink    = overturned / reversed
+     magenta = nullified harder
+     violet  = terminal / explained-away
+
+   These five anchors are intentionally DISTINCT from the --neon-*
+   chrome tokens in core.css: the chrome carries the brand, this key
+   carries meaning. Each hue ships a channel triplet (-rgb) for
+   translucent tints/glows and an -ink variant: where the saturated
+   anchor is too dark to read as small text on near-black (#050505),
+   -ink is a lightened, WCAG-AA-readable text color while the anchor
+   stays the accent/border/dot fill. Swap a hue here and every badge,
+   pill, dot, and bar tracks it.
+   ============================================================ */
+:root {
+  /* Palette anchors */
+  --dd-green:   #8AFF00;
+  --dd-cyan:    #10FEE2;
+  --dd-pink:    #FE14BB;
+  --dd-magenta: #C401DB;
+  --dd-violet:  #6715FF;
+  --dd-neutral: #8a7e62;   /* muted neutral — "merely cited" / unbucketed */
+
+  /* Channel triplets — keep in sync with the hex anchors above. */
+  --dd-green-rgb:   138, 255, 0;
+  --dd-cyan-rgb:    16, 254, 226;
+  --dd-pink-rgb:    254, 20, 187;
+  --dd-magenta-rgb: 196, 1, 219;
+  --dd-violet-rgb:  103, 21, 255;
+  --dd-neutral-rgb: 138, 126, 98;
+
+  /* Readable text inks. green/cyan/pink read fine as-is on #050505;
+     magenta/violet/neutral are lightened so small badge text clears
+     WCAG AA. */
+  --dd-green-ink:   var(--dd-green);
+  --dd-cyan-ink:    var(--dd-cyan);
+  --dd-pink-ink:    var(--dd-pink);
+  --dd-magenta-ink: #ed6cf5;
+  --dd-violet-ink:  #a88bff;
+  --dd-neutral-ink: #b7ac8a;
+
+  /* Semantic — dispositions. The five Onion-approved buckets, plus the
+     extension buckets that exist in real data, mapped via the same
+     through-line: granted = "in motion" (review proceeds, cyan),
+     denied = "terminal" (review ends, violet), modified = "stands as
+     modified" (green), other = unbucketed (neutral). */
+  --dd-disp-affirmed:  var(--dd-green);
+  --dd-disp-reversed:  var(--dd-pink);
+  --dd-disp-remanded:  var(--dd-cyan);
+  --dd-disp-vacated:   var(--dd-magenta);
+  --dd-disp-dismissed: var(--dd-violet);
+  --dd-disp-granted:   var(--dd-cyan);
+  --dd-disp-denied:    var(--dd-violet);
+  --dd-disp-modified:  var(--dd-green);
+  --dd-disp-other:     var(--dd-neutral);
+
+  /* Semantic — editorial review status */
+  --dd-rev-processed: var(--dd-cyan);    /* ai_only — machine-processed */
+  --dd-rev-reviewed:  var(--dd-green);   /* human-reviewed */
+  --dd-rev-flagged:   var(--dd-magenta); /* flagged for review */
+
+  /* Semantic — citation treatment (NH-only today, future-proofed) */
+  --dd-tr-followed:      var(--dd-green);
+  --dd-tr-distinguished: var(--dd-cyan);
+  --dd-tr-overruled:     var(--dd-pink);
+  --dd-tr-criticized:    var(--dd-magenta);
+  --dd-tr-explained:     var(--dd-violet);
+  --dd-tr-cited:         var(--dd-neutral);
+}
+
+/* ============================================================
    Reticle corners — card branding
    ------------------------------------------------------------
    Ported from the MvR design system into DocketDrift's own cyan/pink
@@ -316,56 +394,64 @@
    a sidebar legend so the key is always visible.
    ============================================================ */
 
-.case-status.disposition-affirmed {
-  color: var(--neon-lime);
-  border-left-color: var(--neon-lime);
-  background: rgba(var(--neon-lime-rgb), 0.08);
-  box-shadow: inset 0 0 10px rgba(var(--neon-lime-rgb), 0.15), 0 0 6px rgba(var(--neon-lime-rgb), 0.2);
+/* Disposition pills — colored per the semantic key. Anchor hue carries
+   the left-border accent + tint + glow; -ink carries readable text. */
+.case-status.disposition-affirmed,
+.case-status.disposition-modified {
+  color: var(--dd-green-ink);
+  border-left-color: var(--dd-disp-affirmed);
+  background: rgba(var(--dd-green-rgb), 0.10);
+  box-shadow: inset 0 0 10px rgba(var(--dd-green-rgb), 0.15), 0 0 6px rgba(var(--dd-green-rgb), 0.2);
 }
 
 .case-status.disposition-reversed {
-  color: var(--neon-pink);
-  border-left-color: var(--neon-pink);
-  background: rgba(255, 43, 179, 0.08);
-  box-shadow: inset 0 0 10px rgba(255, 43, 179, 0.15), 0 0 6px rgba(255, 43, 179, 0.2);
+  color: var(--dd-pink-ink);
+  border-left-color: var(--dd-disp-reversed);
+  background: rgba(var(--dd-pink-rgb), 0.10);
+  box-shadow: inset 0 0 10px rgba(var(--dd-pink-rgb), 0.15), 0 0 6px rgba(var(--dd-pink-rgb), 0.2);
 }
 
-.case-status.disposition-vacated,
-.case-status.disposition-denied {
-  color: var(--hazard-red);
-  border-left-color: var(--hazard-red);
-  background: rgba(255, 77, 77, 0.08);
-  box-shadow: inset 0 0 10px rgba(255, 77, 77, 0.15), 0 0 6px rgba(255, 77, 77, 0.2);
+.case-status.disposition-vacated {
+  color: var(--dd-magenta-ink);
+  border-left-color: var(--dd-disp-vacated);
+  background: rgba(var(--dd-magenta-rgb), 0.12);
+  box-shadow: inset 0 0 10px rgba(var(--dd-magenta-rgb), 0.15), 0 0 6px rgba(var(--dd-magenta-rgb), 0.2);
 }
 
 .case-status.disposition-remanded,
-.case-status.disposition-modified {
-  color: var(--neon-amber);
-  border-left-color: var(--neon-amber);
-  background: rgba(255, 191, 0, 0.10);
-  box-shadow: inset 0 0 10px rgba(255, 191, 0, 0.15), 0 0 6px rgba(255, 191, 0, 0.2);
+.case-status.disposition-granted {
+  color: var(--dd-cyan-ink);
+  border-left-color: var(--dd-disp-remanded);
+  background: rgba(var(--dd-cyan-rgb), 0.10);
+  box-shadow: inset 0 0 10px rgba(var(--dd-cyan-rgb), 0.15), 0 0 6px rgba(var(--dd-cyan-rgb), 0.2);
 }
 
+/* Compound outcome ("Affirmed in part, reversed in part, ...") → split
+   badge: the diagonal green/pink tint reads "stands in part / overturned
+   in part" at a glance. Text sits in --text-primary so it clears both
+   faint tints. */
 .case-status.disposition-mixed {
-  color: var(--neon-violet);
-  border-left-color: var(--neon-violet);
-  background: rgba(var(--neon-violet-rgb), 0.10);
-  box-shadow: inset 0 0 10px rgba(var(--neon-violet-rgb), 0.15), 0 0 6px rgba(var(--neon-violet-rgb), 0.2);
+  color: var(--text-primary);
+  border-left-color: var(--dd-green);
+  background: linear-gradient(135deg,
+    rgba(var(--dd-green-rgb), 0.18) 0 50%,
+    rgba(var(--dd-pink-rgb), 0.18) 50% 100%);
+  box-shadow: inset 0 0 10px rgba(var(--dd-pink-rgb), 0.10);
 }
 
 .case-status.disposition-dismissed,
-.case-status.disposition-other {
-  color: var(--text-dim);
-  border-left-color: rgba(148, 140, 161, 0.6);
-  background: rgba(148, 140, 161, 0.08);
-  box-shadow: none;
+.case-status.disposition-denied {
+  color: var(--dd-violet-ink);
+  border-left-color: var(--dd-disp-dismissed);
+  background: rgba(var(--dd-violet-rgb), 0.14);
+  box-shadow: inset 0 0 10px rgba(var(--dd-violet-rgb), 0.16), 0 0 6px rgba(var(--dd-violet-rgb), 0.2);
 }
 
-.case-status.disposition-granted {
-  color: var(--neon-lime);
-  border-left-color: var(--neon-lime);
-  background: rgba(95, 201, 68, 0.08);
-  box-shadow: inset 0 0 10px rgba(95, 201, 68, 0.15), 0 0 6px rgba(95, 201, 68, 0.2);
+.case-status.disposition-other {
+  color: var(--dd-neutral-ink);
+  border-left-color: rgba(var(--dd-neutral-rgb), 0.7);
+  background: rgba(var(--dd-neutral-rgb), 0.08);
+  box-shadow: none;
 }
 
 /* ============================================================
@@ -470,11 +556,15 @@
   border: 1px solid currentColor;
   background: rgba(255, 255, 255, 0.03);
 }
-.treatment-overruled { color: var(--neon-pink); }
-.treatment-distinguished { color: var(--neon-amber); }
-.treatment-criticized { color: var(--neon-violet); }
-.treatment-followed { color: var(--neon-lime); }
-.treatment-explained { color: var(--neon-cyan); }
+/* Citation treatment (KeyCite/Shepard's layer) on the semantic key. The
+   badge base draws its border from currentColor, so color carries both
+   text + border; -ink keeps the darker hues readable. */
+.treatment-followed { color: var(--dd-tr-followed); }
+.treatment-distinguished { color: var(--dd-tr-distinguished); }
+.treatment-overruled { color: var(--dd-tr-overruled); }
+.treatment-criticized { color: var(--dd-magenta-ink); }
+.treatment-explained { color: var(--dd-violet-ink); }
+.treatment-cited { color: var(--dd-neutral-ink); }
 
 .tag-cloud {
   list-style: none;
@@ -951,23 +1041,26 @@ button.cta-primary {
   white-space: nowrap;
 }
 
+/* Editorial review status on the semantic key: processed = cyan
+   (ML-processed / in motion), reviewed = green (human-blessed),
+   flagged = magenta (needs attention). */
 .review-pill--ai_only {
-  color: var(--neon-amber);
-  border-color: rgba(var(--neon-amber-rgb), 0.45);
-  background: rgba(var(--neon-amber-rgb), 0.08);
+  color: var(--dd-cyan-ink);
+  border-color: rgba(var(--dd-cyan-rgb), 0.45);
+  background: rgba(var(--dd-cyan-rgb), 0.08);
 }
 
 .review-pill--flagged {
-  color: var(--hazard-red);
-  border-color: rgba(var(--hazard-red-rgb), 0.45);
-  background: rgba(var(--hazard-red-rgb), 0.08);
+  color: var(--dd-magenta-ink);
+  border-color: rgba(var(--dd-magenta-rgb), 0.5);
+  background: rgba(var(--dd-magenta-rgb), 0.1);
 }
 
 .review-pill--reviewed {
-  color: var(--neon-cyan);
-  border-color: rgba(38, 255, 230, 0.55);
-  background: rgba(38, 255, 230, 0.1);
-  box-shadow: 0 0 8px rgba(38, 255, 230, 0.2);
+  color: var(--dd-green-ink);
+  border-color: rgba(var(--dd-green-rgb), 0.55);
+  background: rgba(var(--dd-green-rgb), 0.1);
+  box-shadow: 0 0 8px rgba(var(--dd-green-rgb), 0.2);
 }
 
 /* List-view dot (in the title cell, before the case link) */
@@ -983,18 +1076,18 @@ button.cta-primary {
 }
 
 .review-dot--ai_only {
-  background: var(--neon-amber);
-  box-shadow: 0 0 5px rgba(var(--neon-amber-rgb), 0.45);
+  background: var(--dd-cyan);
+  box-shadow: 0 0 5px rgba(var(--dd-cyan-rgb), 0.55);
 }
 
 .review-dot--flagged {
-  background: var(--hazard-red);
-  box-shadow: 0 0 5px rgba(var(--hazard-red-rgb), 0.55);
+  background: var(--dd-magenta);
+  box-shadow: 0 0 5px rgba(var(--dd-magenta-rgb), 0.6);
 }
 
 .review-dot--reviewed {
-  background: var(--neon-cyan);
-  box-shadow: 0 0 6px rgba(38, 255, 230, 0.65);
+  background: var(--dd-green);
+  box-shadow: 0 0 6px rgba(var(--dd-green-rgb), 0.65);
 }
 
 /* ============================================================
@@ -1607,13 +1700,16 @@ button.cta-primary {
   min-width: 4px;
 }
 
-.judge-bar-fill--affirmed { background: var(--neon-lime); }
-.judge-bar-fill--reversed { background: var(--neon-pink); }
-.judge-bar-fill--vacated, .judge-bar-fill--denied { background: var(--hazard-red); }
-.judge-bar-fill--remanded, .judge-bar-fill--modified { background: var(--neon-amber); }
-.judge-bar-fill--mixed { background: var(--neon-violet); }
-.judge-bar-fill--dismissed, .judge-bar-fill--other { background: rgba(148, 140, 161, 0.6); }
-.judge-bar-fill--granted { background: var(--neon-lime); }
+/* Disposition-breakdown bars track the same semantic key as the pills. */
+.judge-bar-fill--affirmed, .judge-bar-fill--modified { background: var(--dd-green); }
+.judge-bar-fill--reversed { background: var(--dd-pink); }
+.judge-bar-fill--vacated { background: var(--dd-magenta); }
+.judge-bar-fill--remanded, .judge-bar-fill--granted { background: var(--dd-cyan); }
+.judge-bar-fill--dismissed, .judge-bar-fill--denied { background: var(--dd-violet); }
+.judge-bar-fill--mixed {
+  background: linear-gradient(135deg, var(--dd-green) 0 50%, var(--dd-pink) 50% 100%);
+}
+.judge-bar-fill--other { background: rgba(var(--dd-neutral-rgb), 0.6); }
 
 .judge-bar-count {
   font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;

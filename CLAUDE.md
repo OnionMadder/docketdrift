@@ -391,6 +391,15 @@ shared `madmaster.db` gives **`mhnsw_max_cache_size` = 16 MB** (GLOBAL-only) and
    starts ~513 rows/s on an empty graph but **degrades to ~11 rows/s by 20K
    rows** as the HNSW graph overflows the 16 MB cache → hours, still slowing.
 
+**Re-confirmed 2026-06-27 (do not attempt a third time without new infra).** A
+retry first cleared the prerequisite the 2026-06-26 run blamed (19 NULL
+embeddings: deleted 12 zero-`raw_text` metadata stubs, embedded 7 fresh
+ingests → 0 NULL), then re-ran the in-place `ADD VECTOR INDEX`. It hit the
+**identical** wall: ~47 min in `copy to tmp table`, never finished, and when the
+migrate client died the server-side DDL self-aborted at a stage boundary (as
+before). **The blocker was never the NULL rows — it is the COPY-rebuild
+mechanics.** Data prep does not change the outcome; only new infra (below) will.
+
 **Consequence:** the `semantic.py` band-aids (the broad-`except`+`close`, the
 `SET STATEMENT max_statement_time=12` self-bound, the 3-yr `date_cutoff`, the
 24h per-opinion cache) are the **permanent** mitigation. NH is fine without an
@@ -754,6 +763,58 @@ summarize, or describe anything.
 If a new task wants generative content (summaries, drafted text), STOP
 and discuss with Onion first. The "no generation" posture is product
 strategy, not engineering preference.
+
+## Semantic color key (the deliberate palette, 2026-06-27)
+
+The site-wide outcome palette is a deliberate, top-down semantic key
+(Onion-approved), defined ONCE as CSS custom properties in
+`docketdrift.css:root` (the `--dd-*` block at the top of the file) and
+applied to EVERY label family so a color means the same thing
+everywhere. Five anchors + one neutral:
+
+| Hue | `--dd-` var | Meaning | Dispositions | Review status | Treatment |
+|---|---|---|---|---|---|
+| green `#8AFF00` | `--dd-green` | stands / blessed / followed | affirmed, modified | reviewed | followed |
+| cyan `#10FEE2` | `--dd-cyan` | in motion / neutral / ML-processed | remanded, granted | processed (ai_only) | distinguished |
+| pink `#FE14BB` | `--dd-pink` | overturned / reversed | reversed | — | overruled |
+| magenta `#C401DB` | `--dd-magenta` | nullified harder | vacated | flagged | criticized |
+| violet `#6715FF` | `--dd-violet` | terminal / explained-away | dismissed, denied | — | explained |
+| neutral `#8a7e62` | `--dd-neutral` | unbucketed / merely cited | other | — | cited (default) |
+
+Compound dispositions (`disposition_bucket == "mixed"`, e.g. "Affirmed
+in part, reversed in part") render as a **diagonal green/pink split**.
+The `granted`/`denied`/`modified`/`other` mappings are extensions of the
+five Onion-approved buckets, chosen via the same through-line (granted =
+review proceeds → cyan; denied = review ends → violet; modified = stands
+as modified → green).
+
+Mechanics worth knowing before you touch it:
+
+- **Re-point, don't rename.** The live classes are unchanged
+  (`.case-status.disposition-<bucket>`, `.review-pill--<status>` /
+  `.review-dot--<status>`, `.treatment-<treatment>`, `.judge-bar-fill--<bucket>`).
+  Part 1 was CSS-only — no template/Python edits — by re-pointing those
+  existing rules at the `--dd-*` vars. Markup and `disposition_bucket`
+  filter semantics are untouched.
+- **Each hue ships `-rgb` (channel triplet for tints/glows) and `-ink`.**
+  green/cyan/pink read fine as small text on `#050505`; magenta/violet/
+  neutral are too dark, so `-ink` is a lightened WCAG-AA text color while
+  the saturated anchor stays the border/dot/bar fill. Use `-ink` for text
+  on dark, the anchor for accents/fills.
+- These five anchors are intentionally DISTINCT from the `--neon-*`
+  chrome tokens in `core.css` — chrome carries the brand, this key
+  carries meaning. The vote-chip / concordance palette (who-voted-what)
+  is a separate taxonomy and deliberately left on `--neon-*`.
+
+## Spelling convention: American English
+
+US litigant, US federal audience → American spellings throughout
+templates, Python, and docs (color not colour, judgment not judgement,
+gray not grey, analyze not analyse, toward not towards, backward not
+backwards). The corpus text itself (opinion `raw_text`) and vendored
+third-party content are left verbatim. Note "forwards" as a *verb*
+("the proxy forwards requests") is correct American usage — only the
+adverb "forwards" → "forward".
 
 ## Open work, ranked
 
