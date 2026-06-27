@@ -14,7 +14,7 @@ Three states live, all on subdomains of `docketdrift.com`:
 |---|---|---|---|---|---|---|---|
 | MN (flagship) | `mn.docketdrift.com` | 60,375 | 100% | 124 | 9,914 | 124,858 | 1851 to current |
 | NH (beta) | `nh.docketdrift.com` | 20,717 | **100%** | 69 | 17,161 | 79,384 | Through 2026-06-11 |
-| AZ (beta) | `az.docketdrift.com` | 38,071 | **100%** | 139 | 142 | 0 (extractor ready, not yet swept) | Through 2026-06-05 |
+| AZ (beta) | `az.docketdrift.com` | 38,063 | **100%** | 139 | 142 | 117,045 | Through 2026-06-05 |
 
 The apex `docketdrift.com` shows three live state tiles. About page is
 trimmed; the full anti-hallucination disclosure + ML-architecture
@@ -767,9 +767,14 @@ closed in the 2026-06-09 → 2026-06-12 session.
 2. ~~**Finish AZ embed.**~~ ✅ Done 2026-06-23 — AZ at **100%** (38,071
    embedded). The `embed-tick` scheduled task is registered and runs in the
    overnight window (00:00–06:00 Phoenix); AZ finished across those windows.
-3. **Run `extract_statutes --state AZ`** to populate AZ's A.R.S.
-   citation graph. Extractor module exists (`statutes_az.py`); it just
-   hasn't been swept over the AZ corpus yet. ~10-15 min on NFSN.
+3. ~~**Run `extract_statutes --state AZ`**~~ ✅ Done 2026-06-26 — AZ A.R.S.
+   citation graph went 0 → **117,045 cites** across 20,677 opinions (54.3%),
+   38K-opinion sweep in 4.2 min. Required two robustness fixes to the command
+   first (it had only ever run on MN): lift `max_statement_time` for the
+   corpus-wide COUNT, and replace the single streaming `qs.iterator()` (NFSN
+   dropped its connection mid-read, errno 2013) with pk-windowed batching +
+   retry-reconnect (idempotent/resumable). `extract_statutes` is now robust for
+   any large state.
 4. ~~Fix AZ Supreme Court byline format (#44).~~ ✅ Done — `JUSTICES X,
    Y, and Z` plural-prefix handling shipped in commit `986e14f`. AZ
    panel votes 40 → 142.
