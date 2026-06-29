@@ -4,6 +4,64 @@ Survival kit for any Claude session working on this repo. Read once,
 re-read whenever a recurring gotcha bites. The goal of this document is
 to make the next session productive within the first 5 minutes.
 
+## Latest session (2026-06-28) — START HERE
+
+Shipped this session (committed + deployed unless noted):
+
+- **Search multi-word bug FIXED** (`4bed859`, `views.py`). `_fulltext_candidate_ids`
+  had wrapped the whole query in quotes → BOOLEAN-MODE *phrase* match → every
+  multi-word search returned 0 sitewide (single-word was unaffected, which hid
+  it). Now `_boolean_and_expr()` requires each term (`+term`) after stripping
+  operator chars + dropping stopwords/sub-3-char tokens (a required
+  `+stopword`/`+tooshort` zeroes the whole match — verified `+hro +of` → 0).
+  Verified live: MN `default hro` 0 → matches.
+- **MN parser handles "ORDER OPINION" format** (`ab27442`, `parsing/mn.py`).
+  Order opinions date themselves `Dated: <date>` (not `Filed`), split the caption
+  across blank lines, and carry a "this order opinion is nonprecedential" footer.
+  Additive + regression-safe (only fires when the `Filed` path misses).
+- **Rickmyer A25-0969 ingested** via `ingest_pdfs --state MN --court appeals`
+  (MN COA court slug = `appeals`; MN Supreme = `supreme`). It surfaced a real
+  gap: **CourtListener does NOT carry recent MN COA nonprecedential/order
+  opinions** — not a search/ingest bug, a source-coverage gap. Full writeup +
+  fix plan: `docs/MN_COA_BACKFILL.md`.
+- **Freshness monitor** (`92516f6`): `check_freshness` command +
+  `scripts/freshness_check.sh`. Non-zero exit (→ NFSN emails) when any live
+  state's newest opinion is older than its threshold (MN/AZ 45d, NH 60d). The
+  longevity safety net for the per-state scraper model.
+- **NH scraper now SCHEDULED** (`107e965`): `scripts/nh_scraper/run_nh_weekly.ps1`
+  chains scrape → scp → `ingest_pdfs --state NH --court supreme`. Registered as
+  the Windows Task Scheduler task "DocketDrift NH weekly scraper" (Sun 17:00,
+  **run only when logged on** — headed Chrome needs an interactive desktop).
+  **Playwright is now installed in the repo `.venv` — LOCAL ONLY, deliberately
+  kept OUT of `requirements.txt`; it must NEVER reach NFSN's FreeBSD.**
+
+**Next-session pickup, in order:**
+1. **Register the `freshness-check` NFSN scheduled task** (member panel, not
+   scriptable): Tag `freshness-check`, Command
+   `/home/private/docketdrift/scripts/freshness_check.sh`, weekly (Mon 12:00 UTC
+   suggested). Turns the monitor on. This is the only thing blocking item 1.
+2. **Build the MN COA scraper** — recon + feasibility DONE, scraper NOT written.
+   Confirmed: headed real Chrome bypasses mn.gov's Radware bot wall (curl/NFSN
+   get a captcha); PDFs download from NFSN at deterministic
+   `//mn.gov/law-library-stat/archive/{COAspectorders|ctapun|ctappub}/a<NNNNNN>.pdf`
+   (`a260529`=A26-0529; dirs = order/unpublished/published); case#+type from the
+   URL, everything else from the PDF via the (now order-aware) parser. Build =
+   residential Playwright like NH, driving `opinions-archive.jsp` (`query`
+   field, `date:>YYYY-MM-DD`) → collect COA PDF URLs in range →
+   `ingest_pdfs --state MN --court appeals`. GOTCHA: the search form/results are
+   JS-injected + load-timing-VARIABLE → use robust `wait_for_selector`, not
+   fixed sleeps (this is what makes it an iterative build). Full map:
+   `docs/MN_COA_BACKFILL.md` "Recon findings". Then wrap (`run_mn_weekly.ps1`,
+   mirror NH) + schedule + a one-time backfill sweep.
+
+**Strategic threads explored this session (no code — captured in Claude memory):**
+the **depth-over-breadth moat** (per-state residential scrapers beat FLP on
+chosen states because the unscalable work is the moat); **monetization
+direction** (subscription/MRR, ~250 subs @ $40 = comfortable solo salary,
+completeness + privacy wedges); and a **privacy-preserving alerts** design
+(structured-facet alerts only — judge/statute/court, anonymized, RSS-first,
+identity decoupled; semantic/keyword alerts refused-by-design, not stored).
+
 ## Where things stand right now
 
 (Numbers as of session-end 2026-06-23.)
@@ -767,6 +825,7 @@ ssh docketdrift 'ps -axww | grep -E "embed_tick|manage.py embed_opinions" | grep
 | `localize_judge_photos [--dry-run]` | Repoint every judge's `photo_url` to a SELF-HOSTED `/static/opinions/judges/` portrait (no hotlinks to court sites that could go down) + apply scraped NH bios, from the committed `opinions/data/judge_localization.json` manifest. Run after `collectstatic` + restart. Portraits are downloaded locally by `scripts/fetch_judge_photos.py`. | global | yes |
 | `reconcile_az_judges [--dry-run]` | One-shot merge of duplicate AZ Judge rows from the first scrape_judges run | AZ-specific | yes (no-op after merge) |
 | `backfill_dispositions` | Parse dispositions from raw_text into `disposition` field | global | yes |
+| `check_freshness [--today YYYY-MM-DD]` | Per-state ingest freshness monitor. Non-zero exit (NFSN-emailed) when any live state's newest opinion exceeds its staleness threshold (MN/AZ 45d, NH 60d). Wrapper `scripts/freshness_check.sh` runs weekly via NFSN scheduled task (register in member panel). Uses indexed `ORDER BY release_date LIMIT 1`, not aggregate Max. | global | yes |
 | `manage.py check` | Django system checks (incl. opinions.E001 multi-line `{# #}` guard) | global | n/a |
 
 ## Architecture: where ML appears (and where it doesn't)
@@ -893,14 +952,24 @@ closed in the 2026-06-09 → 2026-06-12 session.
      `scripts/nh_scraper/scrape_nh_justices.py` (Playwright + real Chrome,
      `channel="chrome"`). The 5 seated justices now have official bios +
      appointment dates + self-hosted portraits.
-   - NH Supreme **opinions** (`courts.nh.gov`) — ✅ scraper DONE 2026-06-15
-     via `scripts/nh_scraper/scrape_nh_opinions.py` (`--since <ISO date>` →
-     downloads slip-opinion PDFs past Akamai → `ingest_pdfs --state NH
-     --court supreme`, which dedups on `(court, case_number)`). Corpus is
-     current through 2026-06-11; re-run periodically (then embed NH) to stay
-     current rather than waiting on CourtListener.
+   - NH Supreme **opinions** (`courts.nh.gov`) — ✅ scraper DONE 2026-06-15,
+     **now SCHEDULED 2026-06-28** via `scripts/nh_scraper/run_nh_weekly.ps1`
+     (scrape → scp → `ingest_pdfs --state NH --court supreme`), Windows Task
+     Scheduler "DocketDrift NH weekly scraper" (Sun 17:00, run-only-when-logged-on).
+     NH corpus is genuinely current (latest 2026-06-11 — verified the court has
+     published nothing newer, not a stalled pipeline).
    - AZ COA Div 1 (`coa1.azcourts.gov`) + Div 2 (`appeals2.az.gov`) judge
      bios — still TODO (DNN hosts).
+
+19. **MN COA coverage gap — direct-from-mn.gov scraper** (NEW 2026-06-28).
+    CourtListener doesn't carry recent MN COA nonprecedential/order opinions
+    (the Rickmyer A25-0969 miss). Fix = a residential-Playwright scraper like
+    NH's against mn.gov's bot-walled archive → `ingest_pdfs --state MN --court
+    appeals`. Recon + feasibility DONE; scraper not yet written. See the
+    START-HERE block up top + `docs/MN_COA_BACKFILL.md`.
+20. **Register the `freshness-check` NFSN scheduled task** (NEW 2026-06-28).
+    Code shipped (`92516f6`); just needs the one-time member-panel registration
+    to go live. See the START-HERE block.
 10. ~~**Backfill `reporter_cite` field on Opinion.**~~ ✅ Done 2026-06-16
     (citation engine Phase 16) — `reporter_cite` populated for NH (140 neutral
     cites), paste-a-cite search live, plus the full `OpinionCitation` graph +
