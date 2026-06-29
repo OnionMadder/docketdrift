@@ -489,7 +489,7 @@
   font-weight: 600;
   letter-spacing: 0.5px;
   padding: 0.3rem 0.8rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid rgba(255, 43, 179, 0.22);
   background: rgba(255, 255, 255, 0.02);
   color: var(--text-dim);
@@ -552,7 +552,7 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   padding: 0.12rem 0.5rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid currentColor;
   background: rgba(255, 255, 255, 0.03);
 }
@@ -565,6 +565,76 @@
 .treatment-criticized { color: var(--dd-magenta-ink); }
 .treatment-explained { color: var(--dd-violet-ink); }
 .treatment-cited { color: var(--dd-neutral-ink); }
+
+/* "How this document has been cited" two-column layout (Phase 16b).
+   Left = clustered citing passages; right = the distinct citing opinions. */
+.citation-graph .cite-columns {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 2rem;
+  align-items: start;
+}
+@media (max-width: 760px) {
+  .citation-graph .cite-columns {
+    grid-template-columns: 1fr;
+    gap: 1.4rem;
+  }
+}
+.citation-graph .cite-how h2,
+.citation-graph .cite-by h2 {
+  margin-top: 0;
+}
+.citation-graph .cite-quote-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+}
+.citation-graph .cite-quote-list > li {
+  padding: 0.7rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.citation-graph .cite-quote-list > li:last-child {
+  border-bottom: none;
+}
+.citation-graph .cite-quote {
+  margin: 0;
+  padding: 0.1rem 0 0.1rem 0.85rem;
+  border-left: 2px solid rgba(16, 254, 226, 0.4);
+  color: var(--text-bright, #e8e8e8);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+.citation-graph .cite-quote::before { content: "\201C"; }
+.citation-graph .cite-quote::after { content: "\201D"; }
+.citation-graph .cite-quote-src {
+  margin: 0.4rem 0 0 0.85rem;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+.citation-graph .cite-quote-src a {
+  color: var(--neon-cyan);
+  text-decoration: none;
+}
+.citation-graph .cite-quote-src a:hover { text-decoration: underline; }
+.citation-graph .cite-all-link {
+  margin: 0.7rem 0 0;
+  font-size: 0.82rem;
+}
+.citation-graph .cite-all-link a {
+  color: var(--neon-cyan);
+  text-decoration: none;
+}
+.citation-graph .cite-all-link a:hover { text-decoration: underline; }
+/* Full citing-documents page: each row can carry its quote underneath. */
+.citation-graph .cite-list--full > li {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0.7rem 0;
+}
+.citation-graph .cite-list--full .cite-quote {
+  margin-top: 0.45rem;
+  font-size: 0.86rem;
+}
 
 .tag-cloud {
   list-style: none;
@@ -585,7 +655,7 @@
   font-weight: 600;
   letter-spacing: 0.5px;
   padding: 0.28rem 0.65rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid rgba(255, 43, 179, 0.35);
   background: rgba(255, 43, 179, 0.06);
   color: var(--neon-pink);
@@ -1088,6 +1158,137 @@ button.cta-primary {
 .review-dot--reviewed {
   background: var(--dd-green);
   box-shadow: 0 0 6px rgba(var(--dd-green-rgb), 0.65);
+}
+
+/* ============================================================
+   Summarized holding panel (NH-only)
+   ------------------------------------------------------------
+   The site's single LLM-generated surface: a 2-3 sentence summary
+   of the court's holding, drawn from the opinion's own text. Reuses
+   the .review-dot--<status> color convention so the amber/cyan/red
+   dot reads identically to the opinion's editorial review status.
+   The left border sits in the amber "machine summary" register by
+   default; the dot + note line carry the live review state.
+   ============================================================ */
+.holding-panel {
+  border-left: 2px solid rgba(255, 191, 61, 0.4);
+}
+
+.holding-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.7rem;
+}
+
+.holding-panel__title {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.holding-dot {
+  cursor: help;
+  margin-right: 0;
+}
+
+.holding-hide {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: var(--text-dim);
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.18rem 0.5rem;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: color var(--transition), border-color var(--transition);
+}
+
+.holding-hide:hover {
+  color: var(--neon-cyan);
+  border-color: var(--neon-cyan);
+}
+
+.holding-panel__text {
+  margin: 0 0 0.9rem;
+  font-size: 1.08rem;
+  line-height: 1.6;
+  color: var(--text-primary);
+}
+
+.holding-panel__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1.25rem;
+  font-size: 0.85rem;
+}
+
+.holding-paras {
+  color: var(--text-dim);
+}
+
+.holding-para-link,
+.holding-jump {
+  color: var(--neon-cyan);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--transition);
+}
+
+.holding-para-link {
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  margin-left: 0.3rem;
+}
+
+.holding-para-link:hover,
+.holding-jump:hover {
+  border-bottom-color: var(--neon-cyan);
+}
+
+.holding-panel__note {
+  margin: 0.9rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.holding-panel__note a {
+  color: var(--neon-cyan);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  font-style: normal;
+}
+
+.holding-panel__note a:hover {
+  border-bottom-color: var(--neon-cyan);
+}
+
+/* Collapsed stub shown after the reader hides summaries site-wide. */
+.holding-stub {
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  padding: 0.7rem 1rem;
+}
+
+.holding-stub a {
+  color: var(--neon-cyan);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+.holding-stub a:hover {
+  border-bottom-color: var(--neon-cyan);
 }
 
 /* ============================================================
@@ -1685,7 +1886,7 @@ button.cta-primary {
   position: relative;
   height: 14px;
   background: rgba(148, 140, 161, 0.12);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   overflow: hidden;
 }
 
@@ -1696,7 +1897,7 @@ button.cta-primary {
   bottom: 0;
   background: var(--neon-cyan);
   opacity: 0.65;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   min-width: 4px;
 }
 
@@ -2091,7 +2292,7 @@ button.cta-primary {
 .vote-chip {
   display: inline-block;
   padding: 0.15rem 0.55rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
   font-size: 0.72rem;
   font-weight: 600;
@@ -2348,7 +2549,7 @@ button.cta-primary {
   font-weight: 700;
   background: rgba(255, 255, 255, 0.08);
   padding: 0.08rem 0.4rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--text-dim);
   font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
 }
@@ -2694,7 +2895,7 @@ button.cta-primary {
   gap: 0.45rem;
   padding: 0.55rem 0.95rem;
   border: 1px solid rgba(38, 255, 230, 0.55);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--bg-panel);
   color: var(--neon-cyan);
   font: inherit;

@@ -56,6 +56,10 @@
   --gap: 1.5rem;
   --radius: 8px;
   --radius-sm: 4px;
+  /* Pills/chips/badges + vote bars. Squared off from the old fully-rounded
+     999px to the site's small radius so chips share one corner language (the
+     onioncore squared look). One knob: lower to 2px/0 to sharpen further. */
+  --radius-pill: var(--radius-sm);
 
   --focus-ring: 0 0 0 2px var(--bg-deep), 0 0 0 4px var(--neon-cyan);
   --transition: 0.2s ease;
@@ -518,7 +522,7 @@ body[data-nav-open="true"] .nav-toggle .bar:nth-child(3) {
   letter-spacing: 1.5px;
   text-transform: uppercase;
   padding: 0.32rem 0.7rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid currentColor;
   margin-bottom: 0.6rem;
   line-height: 1;
