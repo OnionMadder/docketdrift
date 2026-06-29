@@ -95,6 +95,7 @@
     {% endif %}
   {% endwith %}
 
+  <div class="opinion-action-row">
   {% if opinion.pdf_file or opinion.source_url %}
     <div class="opinion-actions">
       {% if opinion.pdf_file %}<a href="{% url 'opinions:opinion_pdf' case_number=opinion.case_number %}">Download PDF</a>{% endif %}
@@ -128,17 +129,137 @@
     </div>
   </div>
   {% endif %}
+  </div>{# /.opinion-action-row #}
+</div>
+
+{% if opinion.holding_summary and opinion.court.state.code == 'NH' %}
+  {% comment %}
+  Summarized holding (NH-only proving-ground rollout). The site's single
+  LLM-generated surface -- a 2-3 sentence summary drawn strictly from the
+  opinion's own text by extract_holdings. Carries its OWN review status
+  (holding_review_status), shown with the same amber/cyan/red dot convention
+  as the opinion's editorial review_status, so a reader knows at a glance
+  whether a human has curated this summary. Headed "Summarized holding" (not
+  "AI") on purpose -- honest about what it is, no scarlet-letter framing.
+  Disclosed in full on /how-we-differ/. Dismissible site-wide via the "hide"
+  toggle (persisted in localStorage). Only renders when a summary exists.
+  {% endcomment %}
+  {% with hstatus=opinion.holding_review_status %}
+  <section class="glossy-frame holding-panel" id="holding-panel"
+           aria-label="Summarized holding">
+    <div class="holding-panel__head">
+      <h2 class="holding-panel__title">
+        Summarized holding
+        <span class="review-dot review-dot--{{ hstatus }} holding-dot"
+              role="img" tabindex="0"
+              title="{% if hstatus == 'reviewed' %}Human-reviewed{% if opinion.holding_reviewed_by %} by {{ opinion.holding_reviewed_by }}{% endif %}{% elif hstatus == 'flagged' %}Flagged for editorial review{% else %}Summarized by Claude Haiku, not yet human-reviewed{% endif %}"
+              aria-label="{% if hstatus == 'reviewed' %}Human-reviewed holding{% elif hstatus == 'flagged' %}Holding flagged for review{% else %}Holding summarized by Claude Haiku, not yet human-reviewed{% endif %}"></span>
+      </h2>
+      <button type="button" class="holding-hide" aria-label="Hide summarized holdings site-wide">hide</button>
+    </div>
+
+    <p class="holding-panel__text">{{ opinion.holding_summary }}</p>
+
+    <div class="holding-panel__foot">
+      {% if opinion.holding_source_paras %}
+        <span class="holding-paras">From paragraph{{ opinion.holding_source_paras|length|pluralize }}
+          {% for n in opinion.holding_source_paras %}<a class="holding-para-link" href="#para-{{ n }}">&para;{{ n }}</a>{% if not forloop.last %} {% endif %}{% endfor %}
+        </span>
+      {% endif %}
+      <a class="holding-jump" href="#opinion-text">View full opinion text &darr;</a>
+    </div>
+
+    <p class="holding-panel__note">
+      {% if hstatus == 'reviewed' %}
+        Read and confirmed by a human editor{% if opinion.holding_reviewed_by %}, {{ opinion.holding_reviewed_by }}{% endif %}.
+      {% elif hstatus == 'flagged' %}
+        This summary is flagged for a closer human read.
+      {% else %}
+        Summarized by Claude Haiku from the opinion&rsquo;s own text &mdash;
+        not yet human-reviewed.
+      {% endif %}
+      <a href="{% url 'opinions:how_we_differ' %}">How we summarize</a>.
+    </p>
+  </section>
+
+  <script>
+  {% comment %}
+  Dismiss/restore the summarized-holding panel site-wide. "hide" sets a
+  localStorage flag and collapses the panel to a one-line stub the reader can
+  click to bring summaries back; the flag is read on every NH opinion page so
+  the choice persists across the site and across sessions. Vanilla JS, no deps.
+  {% endcomment %}
+  (function () {
+    var KEY = "dd-hide-holdings";
+    var panel = document.getElementById("holding-panel");
+    if (!panel) return;
+
+    var hidden = false;
+    try { hidden = localStorage.getItem(KEY) === "1"; } catch (e) {}
+
+    var stub = document.createElement("div");
+    stub.className = "holding-stub glossy-frame";
+    stub.innerHTML = 'Summarized holding hidden. ' +
+      '<a href="#" class="holding-show">Show summaries</a>';
+    panel.parentNode.insertBefore(stub, panel);
+
+    function apply() {
+      panel.hidden = hidden;
+      stub.hidden = !hidden;
+    }
+    apply();
+
+    var hideBtn = panel.querySelector(".holding-hide");
+    if (hideBtn) {
+      hideBtn.addEventListener("click", function () {
+        hidden = true;
+        try { localStorage.setItem(KEY, "1"); } catch (e) {}
+        apply();
+      });
+    }
+    var showLink = stub.querySelector(".holding-show");
+    if (showLink) {
+      showLink.addEventListener("click", function (e) {
+        e.preventDefault();
+        hidden = false;
+        try { localStorage.removeItem(KEY); } catch (e2) {}
+        apply();
+      });
+    }
+  })();
+  </script>
+  {% endwith %}
+{% endif %}
+
+{% include "opinions/_treatment_panel.html" %}
+
+<div class="glossy-frame" id="opinion-text">
+  <h2>Opinion text</h2>
+  {% comment %}
+  Highlight-on-arrival banner. The matched query is NOT in the URL or the
+  server request -- it rides in a #q=... fragment (from a search-result
+  snippet link) which the browser never sends to the server. Highlighting
+  is therefore done CLIENT-side; this banner is populated by the script at
+  the bottom of the page. Keeping the query off the wire is the point
+  ("Data is sacred" -- see CLAUDE.md). format_opinion_text gets no highlight
+  arg anymore, so the cached HTML is identical regardless of the query.
+  {% endcomment %}
+  <p class="opinion-find-banner" id="opinion-find-banner" hidden></p>
+  {% if opinion.raw_text %}
+    <div class="opinion-body">
+      {{ opinion.raw_text|format_opinion_text }}
+    </div>
+  {% else %}
+    <p class="glitch-line">No opinion text available.</p>
+  {% endif %}
 </div>
 
 {% if similar_opinions and opinion.court.state.code == 'NH' %}
   {% comment %}
-  NH-only polished "Similar opinions" surface (proving-ground rollout).
-  Sits directly under the opinion metadata so an attorney triaging a result
-  can pivot to related authority without scrolling past the full opinion
-  text. MN/AZ keep the legacy bottom-of-page table (block further down).
-  The cosine query is already computed in opinion_detail (skipped for
-  crawlers) -- this only relocates + restyles the same data, so no new
-  latency. Each opinion carries .similarity_pct from the view.
+  NH "Similar opinions" — placed BELOW the opinion text + treatment panel (was
+  directly under the metadata) so the opinion body and the citing/authorities
+  treatment lead, with related authority following. Same cosine data, already
+  computed in the view (skipped for crawlers). Each op carries .similarity_pct.
   {% endcomment %}
   <section class="glossy-frame similar-panel" aria-label="Similar opinions">
     <div class="similar-panel__head">
@@ -174,29 +295,6 @@
     </ol>
   </section>
 {% endif %}
-
-{% include "opinions/_treatment_panel.html" %}
-
-<div class="glossy-frame">
-  <h2>Opinion text</h2>
-  {% comment %}
-  Highlight-on-arrival banner. The matched query is NOT in the URL or the
-  server request -- it rides in a #q=... fragment (from a search-result
-  snippet link) which the browser never sends to the server. Highlighting
-  is therefore done CLIENT-side; this banner is populated by the script at
-  the bottom of the page. Keeping the query off the wire is the point
-  ("Data is sacred" -- see CLAUDE.md). format_opinion_text gets no highlight
-  arg anymore, so the cached HTML is identical regardless of the query.
-  {% endcomment %}
-  <p class="opinion-find-banner" id="opinion-find-banner" hidden></p>
-  {% if opinion.raw_text %}
-    <div class="opinion-body">
-      {{ opinion.raw_text|format_opinion_text }}
-    </div>
-  {% else %}
-    <p class="glitch-line">No opinion text available.</p>
-  {% endif %}
-</div>
 
 {% if similar_opinions and opinion.court.state.code != 'NH' %}
   {% comment %}

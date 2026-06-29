@@ -247,9 +247,9 @@
 .opinion-header {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.85rem;
+  gap: 0.6rem;
   align-items: center;
-  margin: 0 0 1.25rem;
+  margin: 0 0 0.85rem;
 }
 
 .opinion-header .file-number {
@@ -262,7 +262,7 @@
   color: var(--text-dim);
   font-size: 0.95rem;
   letter-spacing: 0.3px;
-  margin: 0 0 1.25rem;
+  margin: 0 0 0.85rem;
   border-left: 2px solid rgba(var(--neon-violet-rgb), 0.45);
   padding-left: 0.85rem;
   max-width: none;
@@ -273,11 +273,21 @@
   font-weight: 700;
 }
 
-.opinion-actions {
-  margin: 0.5rem 0 0;
+/* Actions + the NH "Cite this case" tool share one wrapping row so the
+   buttons sit side by side instead of stacking — tightens the header card. */
+.opinion-action-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin-top: 0.85rem;
+}
+
+.opinion-actions {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
 }
 
 .opinion-actions a {
@@ -393,6 +403,23 @@
    (most disruptive) without reading. Buckets are also rendered as
    a sidebar legend so the key is always visible.
    ============================================================ */
+
+/* Base disposition badge. Previously only the .doc-table context + the
+   per-bucket color rules were styled, so a bare .case-status in the opinion
+   header had no box — the mixed green/pink gradient read as a stray text
+   highlight. This gives every disposition a squared, bordered badge (matching
+   the role-chip / treatment-badge family); the per-bucket rules below layer
+   color + tint + left-accent + glow on top. */
+.case-status {
+  display: inline-block;
+  padding: 0.26rem 0.6rem;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-pill);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+}
 
 /* Disposition pills — colored per the semantic key. Anchor hue carries
    the left-border accent + tint + glow; -ink carries readable text. */
@@ -2782,7 +2809,7 @@ button.cta-primary {
    research tool from the pink download/source actions above it).
    ============================================================ */
 .cite-tool {
-  margin: 0.85rem 0 0;
+  margin: 0;
 }
 
 .cite-tool__btn {
