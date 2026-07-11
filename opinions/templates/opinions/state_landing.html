@@ -123,10 +123,12 @@
         <span>date range</span>
       </li>
     {% endif %}
-    <li>
-      <strong>{{ total_tags_used }}</strong>
-      <span>legal topic{{ total_tags_used|pluralize }} to browse</span>
-    </li>
+    {% if total_tags_used %}
+      <li>
+        <strong>{{ total_tags_used }}</strong>
+        <span>legal topic{{ total_tags_used|pluralize }} to browse</span>
+      </li>
+    {% endif %}
   </ul>
 </div>
 
@@ -181,10 +183,12 @@
       <strong>Judges</strong>
       <span>{{ currently_seated }} currently-seated justice{{ currently_seated|pluralize:",s" }} + judges, with per-judge dossiers covering opinion history, court split, dissent rate, and co-panelists.</span>
     </a>
-    <a href="{% url 'opinions:tag_index' %}" class="landing-browse-card">
-      <strong>Tags</strong>
-      <span>Browse opinions by editorial subject-matter tag. {{ total_tags_available }} controlled-vocabulary tags across doctrine, subject, procedural, and posture categories.</span>
-    </a>
+    {% if total_tags_used %}
+      <a href="{% url 'opinions:tag_index' %}" class="landing-browse-card">
+        <strong>Tags</strong>
+        <span>Browse the {{ total_tags_used }} editorial subject-matter tag{{ total_tags_used|pluralize }} applied to {{ state.name }} opinions so far &mdash; controlled-vocabulary topics across doctrine, subject, procedural, and posture.</span>
+      </a>
+    {% endif %}
   </div>
 </div>
 

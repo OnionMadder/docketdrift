@@ -33,6 +33,7 @@ specific opinion, delete its TagSuggestion rows first and re-run.
 Usage::
 
     python manage.py suggest_tags                # full corpus pass
+    python manage.py suggest_tags --state NH     # one state's courts only
     python manage.py suggest_tags --limit 500    # smoke test
     python manage.py suggest_tags --dry-run      # score but don't write
     python manage.py suggest_tags --rescore-all  # ignore the idempotent skip
@@ -48,7 +49,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import connection
 from django.utils import timezone
 
-from opinions.models import Opinion, Tag, TagSuggestion
+from opinions.models import Court, Opinion, Tag, TagSuggestion
 
 
 class Command(BaseCommand):
@@ -60,6 +61,17 @@ class Command(BaseCommand):
             type=int,
             default=None,
             help="Process at most N opinions (smoke-test convenience).",
+        )
+        parser.add_argument(
+            "--state",
+            type=str,
+            default=None,
+            help=(
+                "Restrict scoring to one state's courts (USPS code, e.g. NH). "
+                "Matches the per-state idiom of embed_opinions / extract_statutes; "
+                "keeps a run surgical to the states you actually want to tag "
+                "instead of dragging every un-scored opinion corpus-wide."
+            ),
         )
         parser.add_argument(
             "--rescore-all",
@@ -99,7 +111,7 @@ class Command(BaseCommand):
             help="Override TAG_SUGGESTION_TOP_N for this run.",
         )
 
-    def handle(self, *args, limit, rescore_all, dry_run, review_threshold,
+    def handle(self, *args, limit, state, rescore_all, dry_run, review_threshold,
                auto_apply_threshold, top_n, **options):
         if connection.vendor != "mysql":
             raise CommandError(
@@ -129,6 +141,26 @@ class Command(BaseCommand):
         review_distance = 1.0 - review_threshold
         auto_apply_distance = 1.0 - auto_apply_threshold
 
+        # Optional per-state scope. Resolve the state's court IDs to a literal
+        # `AND court_id IN (...)` fragment (ids are trusted DB ints, so inlining
+        # them is injection-safe and keeps the fragment reusable across the
+        # count + candidate-id queries below). A handful of courts per state, so
+        # the IN-list stays tiny.
+        court_filter_sql = ""
+        if state:
+            code = state.strip().upper()
+            court_ids = list(
+                Court.objects.filter(state__code=code).values_list("id", flat=True)
+            )
+            if not court_ids:
+                raise CommandError(
+                    f"No courts found for state {code!r}. Is the state code correct "
+                    "and has it been seeded/ingested?"
+                )
+            court_filter_sql = " AND court_id IN (" + ",".join(
+                str(c) for c in court_ids
+            ) + ")"
+
         # (1) Build the opinion candidate set.
         with connection.cursor() as cursor:
             base_where = "embedding IS NOT NULL"
@@ -138,6 +170,7 @@ class Command(BaseCommand):
                     "  SELECT opinion_id FROM opinions_tagsuggestion"
                     ")"
                 )
+            base_where += court_filter_sql
             cursor.execute(
                 f"SELECT COUNT(*) FROM opinions_opinion WHERE {base_where}"
             )
@@ -157,7 +190,7 @@ class Command(BaseCommand):
         # corpus runs without --limit, we skip the IN-list and let the WHERE
         # clause stand on its own.
         in_scope_ids: list[int] | None = None
-        if limit or not rescore_all:
+        if limit or not rescore_all or state:
             with connection.cursor() as cursor:
                 lim_clause = "LIMIT %s" if limit else ""
                 params = [limit] if limit else []
