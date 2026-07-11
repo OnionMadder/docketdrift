@@ -121,6 +121,17 @@ class Command(BaseCommand):
                 "Run this command on production."
             )
 
+        # This is a batch scan, not a web request. Each per-tag
+        # VEC_DISTANCE_COSINE pass over a 20-40K-row corpus legitimately runs
+        # tens of seconds and can spike past the 25s web cap (settings'
+        # init_command) under daytime DB contention -> errno 1969 mid-scan.
+        # Lift the cap for THIS command's connection only; web traffic keeps
+        # the 25s ceiling via gunicorn's own pooled connections. Same pattern
+        # the long migrations use; the per-scan SET STATEMENT below is a
+        # belt-and-suspenders guard in case a reconnect re-applies the cap.
+        with connection.cursor() as cursor:
+            cursor.execute("SET SESSION max_statement_time = 0")
+
         # CLI flags override settings; settings provide defaults.
         if review_threshold is None:
             review_threshold = getattr(settings, "TAG_SUGGESTION_REVIEW_THRESHOLD", 0.25)
@@ -246,7 +257,9 @@ class Command(BaseCommand):
 
             t0 = time.time()
             with connection.cursor() as cursor:
-                cursor.execute("\n".join(sql), params)
+                # SET STATEMENT self-binds this one scan to the uncapped limit
+                # even if a reconnect reset the session cap back to 25s.
+                cursor.execute("SET STATEMENT max_statement_time=0 FOR\n" + "\n".join(sql), params)
                 for opinion_id, dist in cursor.fetchall():
                     score = 1.0 - float(dist)
                     candidates[opinion_id].append((tag.pk, score))
