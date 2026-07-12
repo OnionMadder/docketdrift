@@ -528,6 +528,7 @@
   {% endif %}
 {% endif %}
 
+{% if slice_active %}
 {% if page_obj.object_list %}
   <p class="tr-keys">
     Keyboard: <kbd>A</kbd> accept &middot; <kbd>R</kbd> reject &middot; <kbd>S</kbd> skip &middot; <kbd>&uarr;</kbd><kbd>&darr;</kbd> move &mdash; acts on the highlighted row.
@@ -567,6 +568,7 @@
       <p>No suggestions match these filters. Try a different tag, category, state, or threshold.</p>
     {% endif %}
   </div>
+{% endif %}
 {% endif %}
 
 <script>

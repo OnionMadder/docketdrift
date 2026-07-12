@@ -109,22 +109,10 @@ def tag_review(request):
     """
     status = request.GET.get("status", TagSuggestion.Status.PENDING)
     filters, opinion_ids = _suggestion_filters(request.GET)
+    active_tag = bool(filters["tag"])
 
-    qs = _apply_suggestion_filters(
-        TagSuggestion.objects
-        .filter(status=status)
-        .select_related("opinion", "opinion__court", "tag")
-        .defer("opinion__raw_text", "opinion__html_content")
-        .order_by("-confidence"),
-        filters, opinion_ids,
-    )
-
-    paginator = Paginator(qs, REVIEW_PAGE_SIZE)
-    page_obj = paginator.get_page(request.GET.get("page", 1))
-
-    # Stats header. We deliberately compute these on every render rather
-    # than caching because (a) the numbers SHOULD update as the maintainer
-    # reviews and (b) at 20K-row scale the queries take <50ms each.
+    # Stats header (always shown). Both are index-backed (status idx, tag+status
+    # idx) so they stay cheap even at ~50K pending rows.
     status_counts = dict(
         TagSuggestion.objects.values_list("status").annotate(n=Count("id")).values_list("status", "n")
     )
@@ -144,12 +132,28 @@ def tag_review(request):
         .order_by("category", "label")
     )
 
-    # Per-slice progress: only meaningful once the editor has narrowed to a
-    # tag and/or a state. Turns "50K to go" into "you've cleared 120 of 450 in
-    # THIS pile" -- a unit you can actually finish in a sitting.
-    slice_active = bool(filters["tag"] or filters["state"])
+    # The row list + per-slice progress only exist once a TAG pile is chosen.
+    # The no-tag landing (and a state-only view) is the pile picker, so its hot
+    # path is just the two index-backed COUNTs above -- no unfiltered ORDER BY
+    # over ~50K pending, no opinion_id__in scan. That matters twice over: it's
+    # the point of the redesign (pick a small pile, don't face a 50K wall), and
+    # it keeps this admin page off the query shapes that, under DB contention,
+    # cross the 25s cap and poison the pooled connection (site-wide 500s -- see
+    # CLAUDE.md). A tag filter rides the (tag, status) index, so tag slices --
+    # with or without a state -- stay fast.
+    page_obj = None
+    slice_active = active_tag
     slice_total = slice_reviewed = slice_pending = slice_pct = 0
-    if slice_active:
+    if active_tag:
+        qs = _apply_suggestion_filters(
+            TagSuggestion.objects
+            .filter(status=status)
+            .select_related("opinion", "opinion__court", "tag")
+            .defer("opinion__raw_text", "opinion__html_content")
+            .order_by("-confidence"),
+            filters, opinion_ids,
+        )
+        page_obj = Paginator(qs, REVIEW_PAGE_SIZE).get_page(request.GET.get("page", 1))
         slice_total = _apply_suggestion_filters(
             TagSuggestion.objects.all(), filters, opinion_ids
         ).count()
