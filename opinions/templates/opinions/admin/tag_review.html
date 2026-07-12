@@ -41,7 +41,7 @@
     border-radius: 4px;
     background: white;
     font-size: 0.92rem;
-    min-width: 12rem;
+    min-width: 11rem;
   }
   .tr-toolbar button {
     padding: 0.45rem 0.95rem;
@@ -59,6 +59,7 @@
     display: flex;
     gap: 1.25rem;
     font-size: 0.88rem;
+    flex-wrap: wrap;
   }
   .tr-stat {
     background: white;
@@ -79,6 +80,156 @@
     letter-spacing: 0.06em;
     color: var(--body-quiet-color-fg, #666);
   }
+  /* Progress bars -- reframe "N to go" as "you've cleared X%". */
+  .tr-progress {
+    margin: 1.1rem 0 0.4rem;
+  }
+  .tr-progress-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 0.85rem;
+    color: var(--body-quiet-color-fg, #555);
+    margin-bottom: 0.3rem;
+  }
+  .tr-progress-label strong { color: #1a1a1a; }
+  .tr-progress-track {
+    height: 0.7rem;
+    background: #e6e6e6;
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .tr-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #27ae60, #2ecc71);
+    border-radius: 999px;
+    transition: width 0.3s ease;
+  }
+  .tr-slice .tr-progress-fill {
+    background: linear-gradient(90deg, #2980b9, #3498db);
+  }
+  /* Slice banner -- what pile you're in + a way back to the pile picker. */
+  .tr-slice {
+    margin: 1.25rem 0;
+    padding: 1rem 1.25rem;
+    background: #eef5fb;
+    border: 1px solid #cfe2f2;
+    border-left: 4px solid #3498db;
+    border-radius: 6px;
+  }
+  .tr-slice-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .tr-slice-title { font-size: 1.05rem; font-weight: 600; margin: 0; }
+  .tr-slice-title .tr-chip-tag { font-size: 0.95rem; vertical-align: middle; }
+  .tr-back {
+    font-size: 0.8rem;
+    color: #2471a3;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .tr-back:hover { text-decoration: underline; }
+  /* Bulk-action bar -- clear the whole slice in one click. */
+  .tr-bulk {
+    margin-top: 0.9rem;
+    padding-top: 0.85rem;
+    border-top: 1px dashed #bcd4e8;
+    display: flex;
+    gap: 0.7rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .tr-bulk-note {
+    font-size: 0.8rem;
+    color: #5a5a5a;
+    flex: 1 1 12rem;
+  }
+  .tr-bulk button {
+    padding: 0.5rem 1rem;
+    border: 0;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: white;
+  }
+  .tr-bulk-accept { background: #1e8449; }
+  .tr-bulk-accept:hover { background: #196f3d; }
+  .tr-bulk-accept:disabled { background: #a9c9b6; cursor: not-allowed; }
+  .tr-bulk-reject { background: #922b21; }
+  .tr-bulk-reject:hover { background: #7b241c; }
+  /* Pile picker -- turns one 50K list into a wall of finishable piles. */
+  .tr-piles-head {
+    margin: 1.5rem 0 0.6rem;
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--body-quiet-color-fg, #666);
+  }
+  .tr-piles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .tr-pile {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.4rem 0.75rem;
+    background: white;
+    border: 1px solid #ccd6dd;
+    border-radius: 999px;
+    text-decoration: none;
+    color: #2c3e50;
+    font-size: 0.85rem;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .tr-pile:hover { border-color: #3498db; background: #f2f8fd; }
+  .tr-pile-count {
+    font-family: monospace;
+    font-weight: 700;
+    font-size: 0.78rem;
+    background: #eaf2f8;
+    color: #2471a3;
+    border-radius: 999px;
+    padding: 0.05rem 0.5rem;
+  }
+  .tr-flash {
+    margin: 0 0 1.25rem;
+    padding: 0.7rem 1.1rem;
+    background: #eafaf1;
+    border: 1px solid #abebc6;
+    border-left: 4px solid #27ae60;
+    border-radius: 6px;
+    color: #1d6b3f;
+    font-size: 0.92rem;
+  }
+  .tr-flash.tr-flash-reject {
+    background: #fdf0ee; border-color: #f0b7ae; border-left-color: #c0392b; color: #8b2a1e;
+  }
+  .tr-keys {
+    margin: 0.5rem 0 1.1rem;
+    font-size: 0.8rem;
+    color: var(--body-quiet-color-fg, #777);
+  }
+  .tr-keys kbd {
+    display: inline-block;
+    padding: 0.05rem 0.4rem;
+    border: 1px solid #bbb;
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    background: #fafafa;
+    font-family: monospace;
+    font-size: 0.78rem;
+    margin: 0 0.1rem;
+  }
   .tr-row {
     display: grid;
     grid-template-columns: 5rem 1fr 12rem 14rem;
@@ -89,6 +240,10 @@
     margin-bottom: 0.55rem;
     background: white;
     align-items: center;
+  }
+  .tr-row.tr-current {
+    border-color: #3498db;
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.35);
   }
   .tr-row.tr-done {
     background: #f0f5f0;
@@ -190,14 +345,6 @@
     color: white;
   }
   .tr-btn-reject:hover { background: #a93226; }
-  .tr-btn-skip {
-    background: transparent;
-    border: 1px solid #ccc;
-    color: #888;
-    padding: 0.45rem 0.75rem;
-    text-decoration: none;
-    display: inline-block;
-  }
   .tr-pagination {
     margin: 1.5rem 0;
     display: flex;
@@ -211,13 +358,14 @@
     text-decoration: none;
   }
   .tr-empty {
-    margin: 3rem 1rem;
+    margin: 2rem 1rem;
     padding: 2.5rem;
     text-align: center;
     background: var(--body-quiet-color, #f8f8f8);
     border-radius: 8px;
     color: var(--body-quiet-color-fg, #666);
   }
+  .tr-empty h3 { margin-top: 0; }
 </style>
 {% endblock %}
 
@@ -229,6 +377,14 @@
 
 {% block content %}
 <h1>Tag suggestions review</h1>
+
+{% if bulk_done %}
+  <div class="tr-flash {% if bulk_act == 'reject' %}tr-flash-reject{% endif %}">
+    {% if bulk_act == 'reject' %}&#10007; Rejected{% else %}&#10003; Accepted{% endif %}
+    <strong>{{ bulk_done }}</strong> suggestion{{ bulk_done|pluralize }} in one action.
+    Nice &mdash; keep going, or pick another pile.
+  </div>
+{% endif %}
 
 <div class="tr-stats">
   <div class="tr-stat">
@@ -249,6 +405,17 @@
   </div>
 </div>
 
+{% comment %} Overall progress -- the big-picture "you're X% through everything". {% endcomment %}
+<div class="tr-progress">
+  <div class="tr-progress-label">
+    <span>Overall review progress</span>
+    <span><strong>{{ overall_resolved }}</strong> of {{ overall_total }} resolved &middot; {{ overall_pct }}%</span>
+  </div>
+  <div class="tr-progress-track">
+    <div class="tr-progress-fill" style="width: {{ overall_pct }}%;"></div>
+  </div>
+</div>
+
 <div class="tr-toolbar">
   <form method="get">
     <label>
@@ -258,6 +425,15 @@
         <option value="auto_applied" {% if active_status == "auto_applied" %}selected{% endif %}>Auto-applied</option>
         <option value="accepted" {% if active_status == "accepted" %}selected{% endif %}>Accepted</option>
         <option value="rejected" {% if active_status == "rejected" %}selected{% endif %}>Rejected</option>
+      </select>
+    </label>
+    <label>
+      State
+      <select name="state">
+        <option value="">All states</option>
+        {% for s in states %}
+          <option value="{{ s.code }}" {% if active_state == s.code %}selected{% endif %}>{{ s.name }}</option>
+        {% endfor %}
       </select>
     </label>
     <label>
@@ -288,30 +464,179 @@
   </form>
 </div>
 
+{% if slice_active %}
+  {% comment %} You're in one pile: show its progress + a one-click bulk clear. {% endcomment %}
+  <div class="tr-slice">
+    <div class="tr-slice-head">
+      <p class="tr-slice-title">
+        Working
+        {% if active_tag %}<span class="tr-suggested-tag tr-chip-tag">{{ active_tag }}</span>{% endif %}
+        {% if active_state %}<span class="tr-existing-tag">{{ active_state }}</span>{% endif %}
+      </p>
+      <a class="tr-back" href="{% url 'admin_tag_review' %}{% if active_state %}?state={{ active_state }}{% endif %}">&larr; back to all piles</a>
+    </div>
+    <div class="tr-progress">
+      <div class="tr-progress-label">
+        <span><strong>{{ slice_pending }}</strong> left in this pile</span>
+        <span>{{ slice_reviewed }} of {{ slice_total }} reviewed &middot; {{ slice_pct }}%</span>
+      </div>
+      <div class="tr-progress-track">
+        <div class="tr-progress-fill" style="width: {{ slice_pct }}%;"></div>
+      </div>
+    </div>
+
+    {% if slice_pending and active_status == "pending" %}
+      <form class="tr-bulk" method="post" action="{% url 'admin_tag_review_bulk' %}">
+        {% csrf_token %}
+        <input type="hidden" name="tag" value="{{ active_tag }}">
+        <input type="hidden" name="category" value="{{ active_category }}">
+        <input type="hidden" name="state" value="{{ active_state }}">
+        <input type="hidden" name="min_confidence" value="{{ active_min_confidence }}">
+        <span class="tr-bulk-note">
+          Confident in this pile? Clear it in one action &mdash; ranked most-confident first, so the top is nearly all correct.
+        </span>
+        {% if active_tag or active_min_confidence %}
+          <button type="submit" name="action" value="accept" class="tr-bulk-accept"
+                  onclick="return confirm('Accept all {{ slice_pending }} pending suggestion{{ slice_pending|pluralize }} in this pile? This attaches the tag to every matching opinion.');">
+            Accept all {{ slice_pending }}
+          </button>
+        {% else %}
+          <button type="button" class="tr-bulk-accept" disabled
+                  title="Pick a tag (or set a min-confidence) before bulk-accepting, so you never apply the whole low-confidence pile at once.">
+            Accept all (needs a tag)
+          </button>
+        {% endif %}
+        <button type="submit" name="action" value="reject" class="tr-bulk-reject"
+                onclick="return confirm('Reject all {{ slice_pending }} pending suggestion{{ slice_pending|pluralize }} in this pile?');">
+          Reject all {{ slice_pending }}
+        </button>
+      </form>
+    {% endif %}
+  </div>
+{% else %}
+  {% comment %} No pile chosen yet: offer the pile picker instead of a wall. {% endcomment %}
+  {% if tag_choices %}
+    <p class="tr-piles-head">Pick a pile to work{% if active_state %} in {{ active_state }}{% endif %} &mdash; smallest first is a fast win</p>
+    <div class="tr-piles">
+      {% for t in tag_choices %}
+        <a class="tr-pile" href="?status=pending&amp;tag={{ t.slug }}{% if active_state %}&amp;state={{ active_state }}{% endif %}">
+          {{ t.label }}
+          <span class="tr-pile-count">{{ t.n }}</span>
+        </a>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endif %}
+
 {% if page_obj.object_list %}
+  <p class="tr-keys">
+    Keyboard: <kbd>A</kbd> accept &middot; <kbd>R</kbd> reject &middot; <kbd>S</kbd> skip &middot; <kbd>&uarr;</kbd><kbd>&darr;</kbd> move &mdash; acts on the highlighted row.
+  </p>
+
   <p style="font-size: 0.88rem; color: #666; margin-bottom: 1rem;">
     Showing {{ page_obj.start_index }}&ndash;{{ page_obj.end_index }} of
-    {{ page_obj.paginator.count }} {{ active_status }} suggestions, ranked by confidence.
+    {{ page_obj.paginator.count }} {{ active_status }} suggestion{{ page_obj.paginator.count|pluralize }} in view, ranked by confidence.
     Auto-apply threshold: {{ auto_apply_threshold }}.
   </p>
 
-  {% for sug in page_obj.object_list %}
-    {% include "opinions/admin/_tag_review_row.html" with sug=sug review_threshold=review_threshold auto_apply_threshold=auto_apply_threshold %}
-  {% endfor %}
+  <div id="tr-rows">
+    {% for sug in page_obj.object_list %}
+      {% include "opinions/admin/_tag_review_row.html" with sug=sug review_threshold=review_threshold auto_apply_threshold=auto_apply_threshold %}
+    {% endfor %}
+  </div>
 
   <div class="tr-pagination">
     {% if page_obj.has_previous %}
-      <a href="?{% if active_tag %}tag={{ active_tag }}&{% endif %}{% if active_category %}category={{ active_category }}&{% endif %}{% if active_min_confidence %}min_confidence={{ active_min_confidence }}&{% endif %}status={{ active_status }}&page={{ page_obj.previous_page_number }}">&laquo; Previous</a>
+      <a href="?{% if active_tag %}tag={{ active_tag }}&{% endif %}{% if active_category %}category={{ active_category }}&{% endif %}{% if active_state %}state={{ active_state }}&{% endif %}{% if active_min_confidence %}min_confidence={{ active_min_confidence }}&{% endif %}status={{ active_status }}&page={{ page_obj.previous_page_number }}">&laquo; Previous</a>
     {% endif %}
     <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
     {% if page_obj.has_next %}
-      <a href="?{% if active_tag %}tag={{ active_tag }}&{% endif %}{% if active_category %}category={{ active_category }}&{% endif %}{% if active_min_confidence %}min_confidence={{ active_min_confidence }}&{% endif %}status={{ active_status }}&page={{ page_obj.next_page_number }}">Next &raquo;</a>
+      <a href="?{% if active_tag %}tag={{ active_tag }}&{% endif %}{% if active_category %}category={{ active_category }}&{% endif %}{% if active_state %}state={{ active_state }}&{% endif %}{% if active_min_confidence %}min_confidence={{ active_min_confidence }}&{% endif %}status={{ active_status }}&page={{ page_obj.next_page_number }}">Next &raquo;</a>
     {% endif %}
   </div>
 {% else %}
   <div class="tr-empty">
-    <h3>Nothing to review</h3>
-    <p>No suggestions match these filters. Try a different tag, category, or threshold.</p>
+    {% if slice_active %}
+      <h3>&#127881; Pile cleared</h3>
+      <p>No {{ active_status }} suggestions left in this pile. Pick another below.</p>
+      <p style="margin-top: 1rem;">
+        <a class="tr-back" href="{% url 'admin_tag_review' %}{% if active_state %}?state={{ active_state }}{% endif %}">&larr; back to all piles</a>
+      </p>
+    {% else %}
+      <h3>Nothing to review</h3>
+      <p>No suggestions match these filters. Try a different tag, category, state, or threshold.</p>
+    {% endif %}
   </div>
 {% endif %}
+
+<script>
+{% comment %}
+Keyboard flow so the maintainer can clear a pile without ever touching the
+mouse. The "current" row is the first pending (non-done) row; A/R fire its
+accept/reject buttons (which HTMX swaps to a done fragment), S skips to the
+next, arrows move the cursor. After every HTMX swap we re-pick the current
+row and scroll it into view. Ignores keystrokes while typing in a field.
+{% endcomment %}
+(function () {
+  var container = document.getElementById("tr-rows");
+  if (!container) return;
+
+  function rows() {
+    return Array.prototype.slice.call(
+      container.querySelectorAll(".tr-row:not(.tr-done)")
+    );
+  }
+  function current() {
+    return container.querySelector(".tr-row.tr-current:not(.tr-done)");
+  }
+  function setCurrent(row) {
+    var prev = current();
+    if (prev) prev.classList.remove("tr-current");
+    if (row) {
+      row.classList.add("tr-current");
+      row.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }
+  function firstPending() {
+    var r = rows();
+    return r.length ? r[0] : null;
+  }
+  function ensureCurrent() {
+    if (!current()) setCurrent(firstPending());
+  }
+
+  ensureCurrent();
+  // After a row is accepted/rejected it becomes .tr-done; move the cursor on.
+  document.body.addEventListener("htmx:afterSwap", function () {
+    setCurrent(firstPending());
+  });
+
+  document.addEventListener("keydown", function (e) {
+    var tag = (e.target && e.target.tagName) || "";
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(tag) || e.metaKey || e.ctrlKey || e.altKey) return;
+
+    var cur = current();
+    var all = rows();
+    var key = e.key.toLowerCase();
+
+    if (key === "a" && cur) {
+      e.preventDefault();
+      var acc = cur.querySelector(".tr-btn-accept");
+      if (acc) acc.click();
+    } else if (key === "r" && cur) {
+      e.preventDefault();
+      var rej = cur.querySelector(".tr-btn-reject");
+      if (rej) rej.click();
+    } else if ((key === "s" || e.key === "ArrowDown") && all.length) {
+      e.preventDefault();
+      var i = all.indexOf(cur);
+      setCurrent(all[Math.min(i + 1, all.length - 1)] || all[0]);
+    } else if (e.key === "ArrowUp" && all.length) {
+      e.preventDefault();
+      var j = all.indexOf(cur);
+      setCurrent(all[Math.max(j - 1, 0)]);
+    }
+  });
+})();
+</script>
 {% endblock %}

@@ -2,7 +2,7 @@
 from django.contrib import admin
 from django.urls import include, path
 
-from opinions.admin_views import tag_review, tag_review_action
+from opinions.admin_views import tag_review, tag_review_action, tag_review_bulk
 
 urlpatterns = [
     # Custom admin pages live in front of Django's auto-generated admin
@@ -14,6 +14,11 @@ urlpatterns = [
         "admin/opinions/tag-review/",
         tag_review,
         name="admin_tag_review",
+    ),
+    path(
+        "admin/opinions/tag-review/bulk/",
+        tag_review_bulk,
+        name="admin_tag_review_bulk",
     ),
     path(
         "admin/opinions/tag-review/<int:suggestion_id>/<str:action>/",
