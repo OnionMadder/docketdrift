@@ -49,10 +49,13 @@ REVIEW_PAGE_SIZE = 25
 def _suggestion_filters(request_data):
     """Parse the shared filter params (used by both the list + bulk views).
 
-    Returns ``(filters_dict, court_ids_or_None)``. Pre-resolves any state
-    filter to its court ids up front so we filter on ``opinion__court_id__in``
-    (an FK-index lookup) instead of a triple state->court->opinion join per
-    row -- the pre-resolve-court-ids pattern from CLAUDE.md.
+    Returns ``(filters_dict, opinion_ids_or_None)``. A state filter resolves to
+    the state's OPINION ids, not court ids: filtering TagSuggestion by
+    ``opinion__court_id__in`` joins the 2.75GB opinions table and the optimizer
+    picks a corpus-scanning plan on bigger states (AZ timed out at 25s; NH was
+    fine). ``opinion_id__in`` against a pre-resolved id set is a direct indexed
+    lookup on tagsuggestion -- ~300ms even for AZ's 38K ids. See CLAUDE.md
+    "aggregate over a court_id__in filter scans the corpus".
     """
     filters = {
         "tag": (request_data.get("tag") or "").strip(),
@@ -60,22 +63,26 @@ def _suggestion_filters(request_data):
         "state": (request_data.get("state") or "").strip().upper(),
         "min_confidence": (request_data.get("min_confidence") or "").strip(),
     }
-    court_ids = None
+    opinion_ids = None
     if filters["state"]:
-        court_ids = list(
-            Court.objects.filter(state__code=filters["state"]).values_list("id", flat=True)
+        court_ids = Court.objects.filter(
+            state__code=filters["state"]
+        ).values_list("id", flat=True)
+        opinion_ids = list(
+            Opinion.objects.filter(court_id__in=list(court_ids))
+            .values_list("id", flat=True)
         )
-    return filters, court_ids
+    return filters, opinion_ids
 
 
-def _apply_suggestion_filters(qs, filters, court_ids):
+def _apply_suggestion_filters(qs, filters, opinion_ids):
     """Narrow a TagSuggestion queryset by the shared filters."""
     if filters["tag"]:
         qs = qs.filter(tag__slug=filters["tag"])
     if filters["category"]:
         qs = qs.filter(tag__category=filters["category"])
-    if court_ids is not None:
-        qs = qs.filter(opinion__court_id__in=court_ids)
+    if opinion_ids is not None:
+        qs = qs.filter(opinion_id__in=opinion_ids)
     if filters["min_confidence"]:
         try:
             qs = qs.filter(confidence__gte=float(filters["min_confidence"]))
@@ -101,14 +108,15 @@ def tag_review(request):
     finishable piles with their own progress bar, not one bottomless list.
     """
     status = request.GET.get("status", TagSuggestion.Status.PENDING)
-    filters, court_ids = _suggestion_filters(request.GET)
+    filters, opinion_ids = _suggestion_filters(request.GET)
 
     qs = _apply_suggestion_filters(
         TagSuggestion.objects
         .filter(status=status)
         .select_related("opinion", "opinion__court", "tag")
+        .defer("opinion__raw_text", "opinion__html_content")
         .order_by("-confidence"),
-        filters, court_ids,
+        filters, opinion_ids,
     )
 
     paginator = Paginator(qs, REVIEW_PAGE_SIZE)
@@ -143,11 +151,11 @@ def tag_review(request):
     slice_total = slice_reviewed = slice_pending = slice_pct = 0
     if slice_active:
         slice_total = _apply_suggestion_filters(
-            TagSuggestion.objects.all(), filters, court_ids
+            TagSuggestion.objects.all(), filters, opinion_ids
         ).count()
         slice_pending = _apply_suggestion_filters(
             TagSuggestion.objects.filter(status=TagSuggestion.Status.PENDING),
-            filters, court_ids,
+            filters, opinion_ids,
         ).count()
         slice_reviewed = slice_total - slice_pending
         slice_pct = round(100 * slice_reviewed / slice_total) if slice_total else 0
@@ -196,7 +204,7 @@ def tag_review_bulk(request):
     non-destructive -- it just records the negative).
     """
     action = request.POST.get("action", "")
-    filters, court_ids = _suggestion_filters(request.POST)
+    filters, opinion_ids = _suggestion_filters(request.POST)
 
     if action == "accept" and not (filters["tag"] or filters["min_confidence"]):
         return HttpResponseBadRequest(
@@ -206,7 +214,7 @@ def tag_review_bulk(request):
 
     qs = _apply_suggestion_filters(
         TagSuggestion.objects.filter(status=TagSuggestion.Status.PENDING),
-        filters, court_ids,
+        filters, opinion_ids,
     )
 
     now = timezone.now()
