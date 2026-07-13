@@ -49,30 +49,36 @@ REVIEW_PAGE_SIZE = 25
 def _suggestion_filters(request_data):
     """Parse the shared filter params (used by both the list + bulk views).
 
-    Returns ``(filters_dict, opinion_ids_or_None)``. A state filter resolves to
-    the state's OPINION ids, not court ids: filtering TagSuggestion by
-    ``opinion__court_id__in`` joins the 2.75GB opinions table and the optimizer
-    picks a corpus-scanning plan on bigger states (AZ timed out at 25s; NH was
-    fine). ``opinion_id__in`` against a pre-resolved id set is a direct indexed
-    lookup on tagsuggestion -- ~300ms even for AZ's 38K ids. See CLAUDE.md
-    "aggregate over a court_id__in filter scans the corpus".
+    Pure parse, no DB work -- returns just the filters dict. Resolving a state
+    to opinion ids is done separately by ``_resolve_state_opinions`` and ONLY
+    when we actually need it (a list/bulk op is being built), because that
+    resolution is a real query against the 2.75GB opinions table and the no-tag
+    picker view -- which never uses it -- must stay cheap.
     """
-    filters = {
+    return {
         "tag": (request_data.get("tag") or "").strip(),
         "category": (request_data.get("category") or "").strip(),
         "state": (request_data.get("state") or "").strip().upper(),
         "min_confidence": (request_data.get("min_confidence") or "").strip(),
     }
-    opinion_ids = None
-    if filters["state"]:
-        court_ids = Court.objects.filter(
-            state__code=filters["state"]
-        ).values_list("id", flat=True)
-        opinion_ids = list(
-            Opinion.objects.filter(court_id__in=list(court_ids))
-            .values_list("id", flat=True)
-        )
-    return filters, opinion_ids
+
+
+def _resolve_state_opinions(state_code):
+    """Return the OPINION ids for a state (or None if no state given).
+
+    We later filter TagSuggestion by ``opinion_id__in`` rather than
+    ``opinion__court_id__in``: the join form makes the optimizer pick a
+    corpus-scanning plan on bigger states (AZ timed out at 25s; NH was fine),
+    while a pre-resolved id set is a direct indexed lookup on tagsuggestion --
+    ~300ms even for AZ's 38K ids. See CLAUDE.md "aggregate over a court_id__in
+    filter scans the corpus".
+    """
+    if not state_code:
+        return None
+    court_ids = Court.objects.filter(state__code=state_code).values_list("id", flat=True)
+    return list(
+        Opinion.objects.filter(court_id__in=list(court_ids)).values_list("id", flat=True)
+    )
 
 
 def _apply_suggestion_filters(qs, filters, opinion_ids):
@@ -108,7 +114,7 @@ def tag_review(request):
     finishable piles with their own progress bar, not one bottomless list.
     """
     status = request.GET.get("status", TagSuggestion.Status.PENDING)
-    filters, opinion_ids = _suggestion_filters(request.GET)
+    filters = _suggestion_filters(request.GET)
     active_tag = bool(filters["tag"])
 
     # Stats header (always shown). Both are index-backed (status idx, tag+status
@@ -145,6 +151,7 @@ def tag_review(request):
     slice_active = active_tag
     slice_total = slice_reviewed = slice_pending = slice_pct = 0
     if active_tag:
+        opinion_ids = _resolve_state_opinions(filters["state"])
         qs = _apply_suggestion_filters(
             TagSuggestion.objects
             .filter(status=status)
@@ -208,13 +215,15 @@ def tag_review_bulk(request):
     non-destructive -- it just records the negative).
     """
     action = request.POST.get("action", "")
-    filters, opinion_ids = _suggestion_filters(request.POST)
+    filters = _suggestion_filters(request.POST)
 
     if action == "accept" and not (filters["tag"] or filters["min_confidence"]):
         return HttpResponseBadRequest(
             "Bulk accept needs a tag or a minimum-confidence filter so it can't "
             "apply the entire low-confidence pile in one click."
         )
+
+    opinion_ids = _resolve_state_opinions(filters["state"])
 
     qs = _apply_suggestion_filters(
         TagSuggestion.objects.filter(status=TagSuggestion.Status.PENDING),
