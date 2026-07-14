@@ -55,7 +55,10 @@ RAW="$(
         d = substr($1, RSTART + 1, RLENGTH - 1);
         if (!(d in want)) next;
         ua = tolower($4);
-        split($2, rq, " "); p = rq[2];
+        # $2 is the full request line ("GET /path HTTP/1.1"); the path itself
+        # can contain spaces (case numbers like "No. 28,473"), so strip the
+        # leading method + trailing protocol rather than splitting on spaces.
+        p = $2; sub(/^[A-Z]+ /, "", p); sub(/ HTTP\/[0-9.]+$/, "", p);
         mr = ""; mt = "";
         for (k in ret) if (index(ua, k)) mr = k;
         if (mr == "") for (k in trn) if (index(ua, k)) mt = k;
