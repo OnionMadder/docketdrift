@@ -4,7 +4,81 @@ Survival kit for any Claude session working on this repo. Read once,
 re-read whenever a recurring gotcha bites. The goal of this document is
 to make the next session productive within the first 5 minutes.
 
-## Latest session (2026-06-28) — START HERE
+## Latest session (2026-07-12) — START HERE
+
+Shipped this session (committed + deployed):
+
+- **NH + AZ now have editorial tags** — ran the tag-suggestion pipeline for the
+  two states that showed "0 legal topics to browse". `embed_tags` was already
+  done (32/32 tags embedded) so this was **$0 Voyage — `suggest_tags` is pure
+  MariaDB cosine**, no API call. Results: NH **17 tags auto-applied / 7,552
+  queued** for review; AZ **16 / 22,574 queued**. (MN unchanged: 19 applied /
+  ~21K queued.) The pending review queue is now ~50K across all three — expected;
+  the tag-review overhaul below is what makes it approachable.
+- **`suggest_tags` gained `--state <CODE>`** (`575db19`) — mirrors
+  `embed_opinions`/`extract_statutes`; scopes a run to one state's courts so you
+  don't re-score every un-scored opinion corpus-wide (MN was only partially
+  scored, so a global run would've dragged in ~50K MN rows). Also **lifts
+  `max_statement_time` for the batch cosine scans** (`8edaec1`): the per-tag
+  `VEC_DISTANCE_COSINE` passes are batch work but inherited settings' 25s web
+  cap and died with errno 1969 under daytime contention — now `SET SESSION = 0`
+  + a per-scan `SET STATEMENT` guard.
+- **State-landing "0 legal topics" fixed** (`575db19`, `state_landing.html`) —
+  the tags stat tile + Tags browse card render only when `total_tags_used > 0`
+  (was a naked "0 … to browse" stat + a card that dead-ended to an empty page on
+  NH/AZ); the card now cites the in-state applied count, not the whole vocabulary.
+- **Tag-review admin overhauled to feel finishable**
+  (`d3d22f5` + `4a77f2b`/`034c266`/`6bd8520`, `admin_views.py` +
+  `admin/tag_review.html`). The 50K pile is now a **pile picker**: pick one tag
+  "pile" (shown with its pending count), work it under a per-slice progress bar
+  (+ an overall progress bar), **one-click bulk accept/reject** the whole
+  filtered slice (confidence-sorted so the top is near-certain; bulk-accept
+  gated to a tag/min-confidence filter so it can't blanket the low-confidence
+  tail), a **state filter** (MN/NH/AZ), and **keyboard flow** (A accept / R
+  reject / S skip / arrows, auto-advancing). Three perf lessons baked in: the
+  state filter uses pre-resolved `opinion_id__in`, NOT `opinion__court_id__in`
+  (the join scans the 2.75GB opinions table → 25s timeout on AZ); the no-tag
+  landing is the picker only (no unfiltered `ORDER BY -confidence` over ~50K
+  pending, which also removed a poison-cascade risk); the state→opinion-id
+  resolution is lazy (runs only when a list is actually built).
+- **Polish audit** written to `docs/POLISH_OPPORTUNITIES.md` (untracked) —
+  return-heavy small fixes across the live site. Top finds: the "0 legal topics"
+  bug (now fixed); the **Beta/Flagship labels undersell the 60K MN corpus**
+  (stamped "Beta" while smaller NH is "Flagship"); **per-page Twitter-card meta
+  is broken** (`{{ self.og_title }}` is a Jinja idiom that no-ops in Django
+  templates → every X card shows the generic title); and **surface the POST-only
+  query-privacy story on the Privacy page** (the strongest differentiator is
+  invisible). Pick from it anytime.
+
+**Isolation discipline used this session — KEEP DOING THIS.** The working tree
+carries substantial **uncommitted parked holdings work** (migrations 0026/0027,
+`extract_holdings`, `admin/holding_review*`, plus the holdings-aware
+`about.html`/`how_we_differ.html` rewrite) that must NOT ship until its backend
+is on prod. `admin_views.py` + `docketdrift_site/urls.py` are **entangled**
+(holdings + tag-review edits in the same files), so every tag-review commit was
+isolated via a git worktree or `git stash push -- <file>`, with the holdings
+changes restored after. If you commit in those two files, do the same — do NOT
+`git add` the whole file, or you'll ship the parked holdings feature (whose
+model fields aren't on prod → 500s).
+
+**Next-session pickup, in order:**
+1. **Triage the tag queue** via the new interface at
+   `/admin/opinions/tag-review/` (Priority-3 item 11, ~50K pending) — work it a
+   pile at a time. (Item 12, "re-run `suggest_tags` after NH embed," is now DONE
+   for NH/AZ.)
+2. **Harden the tag-review heavy slice (deferred this session).** A state +
+   specific tag on a *big* state (AZ) can still be slow under DB contention, and
+   the admin runs on the single gunicorn worker → a stalled query could ripple
+   to the public site (the poison-cascade gotcha). The default paths are cheap
+   now, so exposure is small; the clean fix is to self-bind those slice-count /
+   list queries with `SET STATEMENT max_statement_time` + catch-and-close,
+   mirroring `semantic.py`.
+3. **Register the `freshness-check` NFSN scheduled task** (still pending from the
+   prior session — member panel, not scriptable; see the prior-session block).
+4. **Build the MN COA scraper** (still pending — recon done; see the
+   prior-session block + `docs/MN_COA_BACKFILL.md`).
+
+## Prior session (2026-06-28)
 
 Shipped this session (committed + deployed unless noted):
 
