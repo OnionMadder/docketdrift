@@ -62,6 +62,13 @@ INDEXER_CRAWLER_TOKENS = (
     "bytespider",
     "facebookexternalhit",
     "meta-externalagent",
+    # Live retrieval agents -- a user's AI session fetching a page to cite it
+    # right then. They hit opinion pages but never use the similar-opinions
+    # widget, so skip the expensive cosine scan for them too (chatgpt-user is
+    # already above). Added 2026-07-14 after the access-log digest
+    # (scripts/ai_citations.sh) showed real claude-user retrieval traffic.
+    "claude-user",
+    "perplexity-user",
 )
 
 
