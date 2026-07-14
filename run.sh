@@ -9,10 +9,18 @@
 # from the public web to this port.
 #
 # Tuning notes (2026-06-12 revision):
-# - workers=1 + threads=4: single Python process to fit NFSN's shared-host
+# - workers=1 + threads=8: single Python process to fit NFSN's shared-host
 #   memory budget (each worker process is ~50-80MB Django; two workers were
-#   pushing the daemon into NFSN's silent kill threshold). Threads handle
-#   the low concurrency of a beta read-mostly site fine.
+#   pushing the daemon into NFSN's SILENT kill threshold -- no log, whole site
+#   down). So we scale concurrency with THREADS, which share the one process's
+#   heap (near-zero extra memory), NOT a second worker. Requests here are
+#   DB-I/O-bound (waiting on MariaDB, which releases the GIL), so threads give
+#   real concurrency for the read-mostly load. Bumped 4 -> 8 on 2026-07-14 for
+#   more headroom + resilience (a slow query no longer soaks up 1-of-4 slots).
+#   Watch the shared-MariaDB connection count if it ever misbehaves: each busy
+#   thread can hold a pooled connection (CONN_MAX_AGE 30s), so 8 is the new peak.
+#   Going to workers=2 would double memory and needs the NFSN process-RAM
+#   allocation confirmed first (member panel) -- the silent-kill risk is real.
 # - preload: imports Django + opinions app once in the master before
 #   forking the worker, saving memory and speeding restarts.
 # - max-requests 5000 + jitter 500: each worker auto-recycles after
@@ -46,7 +54,7 @@ cd /home/private/docketdrift
 exec ./.venv/bin/gunicorn docketdrift_site.wsgi:application \
     --bind 127.0.0.1:8000 \
     --workers 1 \
-    --threads 4 \
+    --threads 8 \
     --timeout 60 \
     --graceful-timeout 30 \
     --max-requests 5000 \
