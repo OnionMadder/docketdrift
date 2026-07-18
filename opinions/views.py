@@ -25,7 +25,7 @@ from django.views.decorators.cache import cache_control, cache_page
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.vary import vary_on_headers
 
-from opinions.models import Judge, Opinion, State, StatuteCitation, Tag
+from opinions.models import Court, Judge, Opinion, State, StatuteCitation, Tag
 
 
 # Cache-Control max-age budgets, in seconds. Set on views below via the
@@ -756,6 +756,28 @@ def opinion_list(request):
     })
 
 
+# A docket number is NOT unique: a case keeps it through intermediate review,
+# so ~1,292 MN cases have BOTH a Court of Appeals opinion and the later Supreme
+# Court opinion under one case_number. They are distinct opinions, not
+# duplicates -- deleting either would lose real law -- so /opinion/<case>/ has
+# to choose. It serves the HIGHEST court (the Supreme decision supersedes) and
+# links to the sibling; ``?court=appeals|supreme`` selects one explicitly, which
+# is what makes the other decision reachable at all. (Before this, .get() raised
+# MultipleObjectsReturned and 500'd all ~1,300 of those pages.)
+_COURT_RANK = {Court.Level.SUPREME: 0, Court.Level.APPEALS: 1}
+
+
+def _pick_opinion(matches, want_court=""):
+    """Choose which opinion a shared case_number resolves to."""
+    want = (want_court or "").strip().lower()
+    if want:
+        for o in matches:
+            if o.court.level_slug == want:
+                return o
+    # Highest court first; stable tiebreak on id so the choice never drifts.
+    return sorted(matches, key=lambda o: (_COURT_RANK.get(o.court.level, 9), o.id))[0]
+
+
 @cache_control(public=True, max_age=86400)
 def opinion_pdf(request, case_number):
     """Stream an opinion's stored PDF.
@@ -769,14 +791,13 @@ def opinion_pdf(request, case_number):
     from django.http import FileResponse
 
     state = getattr(request, "state", None)
-    qs = Opinion.objects.defer("raw_text", "html_content")
+    qs = Opinion.objects.defer("raw_text", "html_content").select_related("court")
     if state is not None:
         qs = qs.filter(court__state=state)
-    # See opinion_detail: case_number is not unique, so .get() 500s on the
-    # ~1,300 double-ingested MN cases. Resolve deterministically instead.
-    opinion = qs.filter(case_number=case_number).order_by("id").first()
-    if opinion is None:
+    matches = list(qs.filter(case_number=case_number))
+    if not matches:
         raise Http404("Opinion not found")
+    opinion = _pick_opinion(matches, request.GET.get("court"))
     if not opinion.pdf_file:
         raise Http404("No PDF available for this opinion.")
     filename = os.path.basename(opinion.pdf_file.name) or ("%s.pdf" % case_number)
@@ -795,15 +816,11 @@ def opinion_detail(request, case_number):
     )
     if state is not None:
         qs = qs.filter(court__state=state)
-    # case_number is NOT unique in practice: ~1,300 MN cases were ingested twice
-    # (bulk load + a second path), so .get() raised MultipleObjectsReturned and
-    # 500'd every one of those detail pages -- dead to readers AND to the AI
-    # agents/crawlers that follow a reporter cite here. Resolve deterministically
-    # to the first-ingested row instead of blowing up. Deduping the underlying
-    # duplicate Opinion rows is the real fix; this keeps the pages served.
-    opinion = qs.filter(case_number=case_number).order_by("id").first()
-    if opinion is None:
+    matches = list(qs.filter(case_number=case_number))
+    if not matches:
         raise Http404("Opinion not found")
+    opinion = _pick_opinion(matches, request.GET.get("court"))
+    siblings = [o for o in matches if o.pk != opinion.pk]
 
     # Similar-opinions widget. One cosine-distance (VEC_DISTANCE_COSINE)
     # query against the corpus using the opinion's own stored embedding.
@@ -874,6 +891,9 @@ def opinion_detail(request, case_number):
     return render(request, "opinions/opinion_detail.html", {
         "opinion": opinion,
         "similar_opinions": similar_opinions,
+        # Other decisions filed under this same docket number (e.g. the Court
+        # of Appeals opinion when we're showing the Supreme Court's).
+        "siblings": siblings,
         "cited_by": cited_by,
         "cites": cites,
         "treatment_summary": treatment_summary,

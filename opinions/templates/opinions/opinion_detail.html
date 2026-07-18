@@ -81,6 +81,21 @@
     <strong>{{ opinion.court.name }}</strong> &middot; Filed {{ opinion.release_date|date:"F j, Y" }}{% if opinion.reporter_cite %} &middot; <span class="reporter-cite">{{ opinion.reporter_cite }}</span>{% endif %}
   </p>
 
+  {% comment %}
+  A docket number follows a case through review, so the same case_number can
+  carry both the Court of Appeals opinion and the later Supreme Court one.
+  We show the highest court by default; this links the sibling decision(s),
+  which is what makes them reachable at all (?court=<level>).
+  {% endcomment %}
+  {% if siblings %}
+    <p class="opinion-sibling">
+      Also decided in this case:
+      {% for s in siblings %}
+        <a href="{% url 'opinions:detail' case_number=s.case_number %}?court={{ s.court.level_slug }}">{{ s.court.short_label }}{% if s.release_date %}, {{ s.release_date|date:"Y" }}{% endif %}</a>{% if s.reporter_cite %} <span class="reporter-cite">{{ s.reporter_cite }}</span>{% endif %}{% if not forloop.last %};{% endif %}
+      {% endfor %}
+    </p>
+  {% endif %}
+
   {% with tags=opinion.tags.all %}
     {% if tags %}
       <ul class="opinion-tags" aria-label="Editorial tags">

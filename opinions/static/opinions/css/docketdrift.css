@@ -283,6 +283,27 @@
   white-space: nowrap;
 }
 
+/* "Also decided in this case" -- the sibling COA/Supreme opinion sharing this
+   docket number. Quiet by default; it's an orientation cue, not a CTA. */
+.opinion-sibling {
+  margin: -0.4rem 0 0.85rem;
+  padding-left: 0.85rem;
+  border-left: 2px solid rgba(var(--neon-cyan-rgb), 0.3);
+  font-size: 0.85rem;
+  color: var(--text-dim);
+}
+
+.opinion-sibling a {
+  color: var(--neon-cyan);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+.opinion-sibling a:hover,
+.opinion-sibling a:focus-visible {
+  border-bottom-color: var(--neon-cyan);
+}
+
 /* Actions + the NH "Cite this case" tool share one wrapping row so the
    buttons sit side by side instead of stacking — tightens the header card. */
 .opinion-action-row {
