@@ -3,7 +3,7 @@
 {% load citations %}
 {% load static %}
 {% block title %}{{ opinion.case_number }} &middot; {{ opinion.title|truncatechars:60 }} &middot; DocketDrift{% endblock %}
-{% block description %}{{ opinion.case_number }}: {{ opinion.title|truncatechars:150 }}{% if opinion.disposition %} &mdash; {{ opinion.disposition }}{% endif %} &mdash; {{ opinion.court.name }}, {{ opinion.release_date|date:"F Y" }}.{% endblock %}
+{% block description %}{{ opinion.case_number }}{% if opinion.reporter_cite %} &middot; {{ opinion.reporter_cite }}{% endif %}: {{ opinion.title|truncatechars:150 }}{% if opinion.disposition %} &mdash; {{ opinion.disposition }}{% endif %} &mdash; {{ opinion.court.name }}, {{ opinion.release_date|date:"F Y" }}.{% endblock %}
 
 {% block og_type %}article{% endblock %}
 {% block og_title %}{{ opinion.case_number }} &middot; {{ opinion.title|truncatechars:90 }}{% endblock %}
@@ -78,7 +78,7 @@
   <h1>{{ opinion.title }}</h1>
 
   <p class="opinion-meta">
-    <strong>{{ opinion.court.name }}</strong> &middot; Filed {{ opinion.release_date|date:"F j, Y" }}
+    <strong>{{ opinion.court.name }}</strong> &middot; Filed {{ opinion.release_date|date:"F j, Y" }}{% if opinion.reporter_cite %} &middot; <span class="reporter-cite">{{ opinion.reporter_cite }}</span>{% endif %}
   </p>
 
   {% with tags=opinion.tags.all %}

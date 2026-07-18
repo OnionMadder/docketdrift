@@ -273,6 +273,16 @@
   font-weight: 700;
 }
 
+/* Reporter/neutral citation in the opinion header (912 N.W.2d 1, 2026 N.H. 7,
+   568 P.3d 377). Populated for all three states now -- monospace + amber so it
+   reads as the citeable stamp lawyers scan for. */
+.reporter-cite {
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  color: var(--neon-amber);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* Actions + the NH "Cite this case" tool share one wrapping row so the
    buttons sit side by side instead of stacking — tightens the header card. */
 .opinion-action-row {
