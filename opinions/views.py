@@ -772,9 +772,10 @@ def opinion_pdf(request, case_number):
     qs = Opinion.objects.defer("raw_text", "html_content")
     if state is not None:
         qs = qs.filter(court__state=state)
-    try:
-        opinion = qs.get(case_number=case_number)
-    except Opinion.DoesNotExist:
+    # See opinion_detail: case_number is not unique, so .get() 500s on the
+    # ~1,300 double-ingested MN cases. Resolve deterministically instead.
+    opinion = qs.filter(case_number=case_number).order_by("id").first()
+    if opinion is None:
         raise Http404("Opinion not found")
     if not opinion.pdf_file:
         raise Http404("No PDF available for this opinion.")
@@ -794,9 +795,14 @@ def opinion_detail(request, case_number):
     )
     if state is not None:
         qs = qs.filter(court__state=state)
-    try:
-        opinion = qs.get(case_number=case_number)
-    except Opinion.DoesNotExist:
+    # case_number is NOT unique in practice: ~1,300 MN cases were ingested twice
+    # (bulk load + a second path), so .get() raised MultipleObjectsReturned and
+    # 500'd every one of those detail pages -- dead to readers AND to the AI
+    # agents/crawlers that follow a reporter cite here. Resolve deterministically
+    # to the first-ingested row instead of blowing up. Deduping the underlying
+    # duplicate Opinion rows is the real fix; this keeps the pages served.
+    opinion = qs.filter(case_number=case_number).order_by("id").first()
+    if opinion is None:
         raise Http404("Opinion not found")
 
     # Similar-opinions widget. One cosine-distance (VEC_DISTANCE_COSINE)
