@@ -4,9 +4,63 @@ Survival kit for any Claude session working on this repo. Read once,
 re-read whenever a recurring gotcha bites. The goal of this document is
 to make the next session productive within the first 5 minutes.
 
-## Latest session (2026-07-12) — START HERE
+## Latest session (2026-07-12 → 07-18) — START HERE
+
+**Headline: MN + AZ are now citeable and AI-discoverable.** Reporter cites and
+a 605K-edge citation graph landed for the two big corpora, both built OFFLINE
+from CourtListener bulk files (zero API calls, no rate-limit trap). See
+"Reporter cites + citation graph" below — that's the biggest change here.
 
 Shipped this session (committed + deployed):
+
+- **Reporter cites for MN/AZ — 103,349 filled** (`99fc63d`, `d9dbd10`).
+  MN/AZ cites (N.W.2d, P.3d) aren't in our opinion text, so they came from CL's
+  `citations-2026-03-31.csv.bz2` bulk export (127MB), matched by
+  `courtlistener_id` (= CL **cluster_id**). Coverage now **MN 93% / NH 90% /
+  AZ 75%** (the gap is unpublished opinions, which genuinely have no cite).
+  `load_reporter_cites` is idempotent (fills empty only, so NH's parser-derived
+  neutral cites survive; it also backfilled old pre-neutral NH A.2d/A.3d cites).
+  **Paste-a-cite search worked instantly for MN/AZ** — the routing was already
+  state-agnostic — and the cite now renders in the opinion header + meta.
+- **Citation graph for MN/AZ — 605,353 edges** (`be4917d`). From CL's
+  `citation-map-2026-03-31.csv.bz2` (522MB, = `search_opinionscited`). That file
+  is keyed on CL **opinion** ids, so the mapping hop is
+  opinion_id → cluster_id (from the subset `opinions.csv`, col 0 → col 21) →
+  our Opinion. Kept only INTERNAL edges (both endpoints in-corpus), collapsed to
+  case level, deduped: 77M edges scanned → 721K internal → 605K after scoping to
+  MN/AZ citing opinions (NH skipped — it has its richer text-extracted graph).
+  "Cited by" + "Authorities cited" panels now render on MN/AZ. **The graph is
+  demonstrably correct**: it independently surfaced *Thiele v. Stich* as MN's
+  most-cited case (900×) and *State v. Leon* for AZ (1,228×).
+  NOTE: bulk edges carry no `context_quote`, so the "How this document has been
+  cited" quoted-passage panel stays NH-only (that needs text extraction).
+- **A docket number is NOT unique — and ~1,292 MN opinions had no URL**
+  (`2f26452`, `f6d4381`). `opinion_detail`/`opinion_pdf` used
+  `qs.get(case_number=...)`, which raised MultipleObjectsReturned and **500'd
+  ~1,300 MN pages**. Root cause is NOT duplicate ingestion: a case keeps its
+  docket number through review, so 1,292 MN case_numbers carry BOTH the Court of
+  Appeals opinion AND the later Supreme Court opinion (only 32 are true
+  same-court dupes). They're distinct opinions — deleting either loses real law.
+  Fix: serve the **highest court** (Supreme supersedes), render an "Also decided
+  in this case" link, and support `?court=appeals|supreme` — which is what makes
+  the sibling reachable at all. Thiele's landmark Supreme decision
+  (425 N.W.2d 580) had no reachable URL before this.
+- **Instrumentation — we can now see how the site is used.** Three read-only
+  tools, all privacy-clean (the access log is query-stripped, so they report
+  WHICH opinions get fetched, never anyone's questions):
+  `scripts/ai_citations.sh` (weekly digest: **live citations** — chatgpt-user /
+  claude-user / perplexity-user, a human asked an AI and it fetched a page right
+  then — vs **training crawlers**); `ai_citation_profile` (joins those fetches to
+  DB metadata: what KIND of law AI grounds on); `corpus_insights` (disposition
+  mix, caseload trend, most-cited, hot statutes). First findings in
+  "What the data said" below.
+- **gunicorn threads 4 → 8** (`a736fa7`, `run.sh`). Doubles concurrency without
+  the memory risk that forced `workers=1` (threads share one process heap).
+  Verified fast under heavy crawler load. Going to `workers=2` still needs the
+  NFSN process-RAM ceiling confirmed in the member panel first.
+- **`claude-user` + `perplexity-user` added to `INDEXER_CRAWLER_TOKENS`**
+  (`fb31842`) so live AI retrieval agents skip the expensive cosine scan they
+  never use — exactly the traffic we want to welcome cheaply.
 
 - **NH + AZ now have editorial tags** — ran the tag-suggestion pipeline for the
   two states that showed "0 legal topics to browse". `embed_tags` was already
@@ -50,6 +104,30 @@ Shipped this session (committed + deployed):
   query-privacy story on the Privacy page** (the strongest differentiator is
   invisible). Pick from it anytime.
 
+**What the data said (run these again; they're free and rerunnable):**
+
+- **AI already grounds on DocketDrift — 94% of it on NH.** In one week, live
+  agents fetched 84 opinions (75 chatgpt-user, 9 claude-user): **94% NH, 6% AZ,
+  0% MN**. Why? NH was the only state with reporter cites, and AI looks cases up
+  BY cite. That was the evidence for doing the cite backfill above — **re-run
+  `ai_citation_profile` in a few weeks; MN/AZ should now start appearing.** That
+  is the cleanest available measure of whether this session worked.
+- AI reaches for both new and foundational law: 32% of fetches were 2020s cases,
+  but 21% were from the **1930s** (top single fetch: a 1932 NH case, 12×).
+- **MN — the flagship — has a coverage hole.** Caseload by year: ~1,400/yr
+  through 2016, then 438 (2017), 208 (2018), 176 (2019), **zero for 2020-2022**,
+  115 (2023). That is not a filing-rate change; it's the documented MN COA
+  CourtListener gap, now quantified. AZ (a "beta" state) has *more current*
+  coverage than MN. This makes the MN COA scraper a priority, not a someday.
+- **Disposition bucketing is a per-state gap:** MN **98%** populated (parser
+  works), AZ **~4%**, NH **~0.2%**. So NH/AZ opinion outcomes render blank.
+- **Hot statutes leaderboard is publishable content today** — e.g. Minn. Stat.
+  § 645.16 (statutory-construction canons) ranks top-tier because it's cited
+  whenever a court construes a statute; family/juvenile/civil-commitment
+  statutes dominate the appellate docket across all three states.
+- Small data glitches spotted: NH judge "Hantz **marconi**" (bad casing); the NH
+  citation graph skews recent (only neutral-cited opinions resolved).
+
 **Isolation discipline used this session — KEEP DOING THIS.** The working tree
 carries substantial **uncommitted parked holdings work** (migrations 0026/0027,
 `extract_holdings`, `admin/holding_review*`, plus the holdings-aware
@@ -62,10 +140,19 @@ changes restored after. If you commit in those two files, do the same — do NOT
 model fields aren't on prod → 500s).
 
 **Next-session pickup, in order:**
-1. **Triage the tag queue** via the new interface at
-   `/admin/opinions/tag-review/` (Priority-3 item 11, ~50K pending) — work it a
-   pile at a time. (Item 12, "re-run `suggest_tags` after NH embed," is now DONE
-   for NH/AZ.)
+0. **Register two NFSN scheduled tasks** (member panel, not scriptable — the
+   only things blocking otherwise-finished work):
+   `ai-citations` → `/bin/sh /home/private/docketdrift/scripts/ai_citations.sh 7`
+   weekly (emails the AI-usage digest); and the still-pending `freshness-check`
+   → `/home/private/docketdrift/scripts/freshness_check.sh` weekly.
+1. **Fill the per-state gaps — "three states fully functional" is the goal.**
+   Each state has ONE different weak spot now:
+   **MN** = the 2017-2023 coverage hole (build the COA scraper; recon done in
+   `docs/MN_COA_BACKFILL.md`). **NH** = disposition bucketing (~0.2%; MN's
+   parser proves the field works). **AZ** = weak judge/panel extraction (only
+   142 panel votes, single-name judges like "Becke") + missing COA judge bios.
+2. **Triage the tag queue** via `/admin/opinions/tag-review/` (~50K pending) —
+   work it a pile at a time with the new picker/bulk/keyboard flow.
 2. **Harden the tag-review heavy slice (deferred this session).** A state +
    specific tag on a *big* state (AZ) can still be slow under DB contention, and
    the admin runs on the single gunicorn worker → a stalled query could ripple
@@ -731,6 +818,44 @@ If you ever need to migrate the `embedding` VECTOR column itself
 (e.g. NOT NULL constraint for VECTOR INDEX) **set max_statement_time
 to 0 inside the migration first** (see next gotcha) -- otherwise the
 ALTER will run past the 25s cap.
+
+### `case_number` is NOT unique — a docket follows a case through review
+
+A case keeps its docket number when it's appealed, so the SAME `case_number`
+carries the Court of Appeals opinion AND the later Supreme Court opinion.
+In MN that's **1,292 case_numbers with two opinions each** (only 32 are true
+same-court duplicates). They are DISTINCT opinions — never "dedupe" them by
+deleting one; you'd be deleting real law.
+
+Consequences, both hit live in 2026-07:
+- `Opinion.objects.get(case_number=...)` raises `MultipleObjectsReturned` and
+  **500s the page**. Use `_pick_opinion()` in `views.py` (highest court wins,
+  stable id tiebreak) — never a bare `.get()` on case_number.
+- `/opinion/<case_number>/` can only show ONE of the pair, so the other has no
+  URL unless you disambiguate. `?court=appeals|supreme` selects explicitly and
+  the detail page renders an "Also decided in this case" link. Any new
+  case_number lookup (or a future per-court URL scheme) has to honor this.
+
+### Batch commands + report scripts MUST lift max_statement_time
+
+`settings.py` puts `SET SESSION max_statement_time = 25` on EVERY connection --
+right for web requests, wrong for batch work, and management commands inherit
+it. Anything doing a corpus-scale scan, GROUP BY, or big read gets killed with
+errno **1969** (or the connection is dropped outright, errno **2013**).
+This bit `suggest_tags`, `corpus_insights`, `load_reporter_cites`, and two
+throwaway export scripts in a single session. Standard opener for any batch
+command:
+
+```python
+if connection.vendor == "mysql":
+    with connection.cursor() as cur:
+        cur.execute("SET SESSION max_statement_time = 0")
+```
+
+Also: don't materialize a huge result in one query on the shared DB — a single
+`list(qs)` over ~98K rows got dropped (2013) even with the cap lifted. Batch it
+(PK-windowed or chunked `__in`) with retry-and-reconnect, per
+`load_reporter_cites` / `backfill_reporter_cite`.
 
 ### Long migrations trip max_statement_time = 25
 
