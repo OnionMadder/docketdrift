@@ -29,6 +29,7 @@ from __future__ import annotations
 import time
 
 from django.core.management.base import BaseCommand
+from django.db import connection
 
 from opinions.models import Opinion
 from opinions.utils import compute_disposition_bucket
@@ -66,6 +67,14 @@ class Command(BaseCommand):
         # which has its own state model dependency. Importing inside the
         # command avoids a circular import at app load time.
         from opinions.parsing import parse as parse_opinion
+
+        # Batch work: settings.py pins every connection to a 25s
+        # max_statement_time, which is right for web requests and wrong
+        # here -- the corpus-wide COUNT and the 500-row bulk_updates both
+        # cross it under daytime contention (errno 1969).
+        if connection.vendor == "mysql":
+            with connection.cursor() as cur:
+                cur.execute("SET SESSION max_statement_time = 0")
 
         qs = (
             Opinion.objects.filter(disposition="")
