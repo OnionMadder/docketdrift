@@ -130,6 +130,88 @@ DISPOSITION_RE = re.compile(
     re.IGNORECASE,
 )
 
+# --- Historic (roughly pre-1980) disposition vocabulary -----------------
+# NH opinions from the 19th and early 20th century close with a terse
+# procedural disposition instead of the modern "Affirmed." one-liner.
+# The corpus break is sharp: modern-style text matches DISPOSITION_RE at
+# ~99%, while pre-1980 text matches at near zero.
+#
+# These stems are frequency-ranked from a scan of 6,000 unmatched NH
+# opinions; everything below ~10 occurrences is genuinely one-off prose
+# and is deliberately left unmatched rather than guessed at.
+#
+# NOTE: none of these carry an affirmed / reversed / vacated / remanded /
+# dismissed token, so compute_disposition_bucket() files every one of
+# them under "other". That is the intended outcome, not an oversight --
+# we transcribe the words the court actually wrote and do NOT
+# editorialize a 19th-century procedural posture ("exceptions
+# overruled") into a modern outcome bucket ("affirmed"). Recording what
+# the court said is transcription; deciding what it meant is not ours.
+_HISTORIC_CORE = (
+    r"(?:(?:the\s+)?(?:plaintiff|defendant|petitioner|respondent)s?[''’]?s?\s+)?"
+    r"(?:"
+    r"exceptions?\s+(?:overruled|sustained)"
+    r"|judgments?\s+on\s+the\s+verdicts?"
+    r"|judgments?\s+for\s+(?:the\s+)?(?:plaintiffs?|defendants?)"
+    r"|decrees?\s+for\s+(?:the\s+)?(?:plaintiffs?|defendants?)"
+    r"|case\s+discharged"
+    r"|verdicts?\s+set\s+aside"
+    r"|demurrers?\s+(?:overruled|sustained)"
+    r"|motions?\s+(?:denied|granted)"
+    r"|petitions?\s+(?:denied|granted)"
+    r"|appeals?\s+sustained"
+    r"|new\s+trial"
+    r")"
+)
+
+# A historic disposition is matched only as (essentially) the WHOLE final
+# sentence -- anchored, not a substring search. "new trial" and "motion
+# denied" appear constantly in ordinary body prose ("he moved for a new
+# trial"), so an unanchored search would mint false dispositions across
+# the corpus. Optional leading filler covers the observed "The order is
+# exceptions overruled." framing; the optional trailing clause covers
+# compounds like "Exceptions overruled: judgment on the verdict."
+HISTORIC_DISPOSITION_RE = re.compile(
+    r"^(?:the\s+order\s+is\s+|and\s+)?"
+    r"(" + _HISTORIC_CORE + r"(?:\s*[:;,]\s*" + _HISTORIC_CORE + r")?)"
+    r"\s*\.?$",
+    re.IGNORECASE,
+)
+
+# Trailing panel/concurrence footer on historic opinions. The literal
+# LAST sentence of these opinions is almost always this footer ("All
+# concurred.", "BRANCH, J., did not sit: the others concurred."), so it
+# has to come off before the disposition sentence is reachable.
+_PANEL_FOOTER_RE = re.compile(
+    r"(?:"
+    r"(?:[A-Z][A-Za-z\-']+(?:\s+and\s+[A-Z][A-Za-z\-']+)*,?\s*)?"
+    r"(?:C\.\s*)?JJ?\.,?\s*(?:did not sit|was absent|took no part[^.]*|dissented|concurred)[^.]*\."
+    r"|All\s+concurred\."
+    r"|The\s+others\s+concurred\."
+    r"|See\s+foot-?note[^.]*\."
+    r")\s*$",
+    re.IGNORECASE,
+)
+
+
+def _disposition_sentence(raw_text: str) -> str:
+    """Return the final sentence of ``raw_text`` with the panel footer removed.
+
+    Historic NH opinions end with a concurrence footer, so the disposition
+    is the sentence *before* the literal last one -- and there may be
+    several footer sentences stacked ("BRANCH, J., did not sit: the
+    others concurred."). Strip them iteratively, then return whatever
+    sentence is left at the end.
+    """
+    text = " ".join(raw_text.split())
+    for _ in range(6):
+        stripped = _PANEL_FOOTER_RE.sub("", text).strip()
+        if stripped == text:
+            break
+        text = stripped
+    parts = re.split(r"(?<=[.;])\s+", text[-400:])
+    return parts[-1].strip() if parts else text.strip()
+
 # Statute citation -- NH style:  "RSA 159-B:1", "RSA 632-A:2, III (2016)",
 # "RSA 126-A:5, VIII".
 STATUTE_RE = re.compile(
@@ -196,16 +278,33 @@ class NewHampshireParser(StateParser):
         # right before the panel-footer "C.J., and ..., JJ., concurred."
         # signoff. Anchoring at the tail avoids accidentally matching
         # mid-body discussions of "we affirmed Smith" / "we reversed Doe".
+        # Three tiers, most trustworthy first:
+        #   1. modern one-liner in the tail          (0.85)
+        #   2. historic procedural final sentence    (0.80)
+        #   3. modern token anywhere in the body     (0.40, last resort)
+        # Tier 3 is deliberately last: on a historic opinion it will
+        # happily match a passing mention of a case the court "affirmed"
+        # below and mint a disposition the court never entered. Tier 2
+        # exists mostly to keep tier 3 from having to guess.
         tail = raw_text[-1500:]
-        m_disp = DISPOSITION_RE.search(tail)
-        if m_disp:
-            result.disposition = self._normalize_disposition(m_disp.group(1))
+        m_modern = DISPOSITION_RE.search(tail)
+        m_historic = (
+            None if m_modern
+            else HISTORIC_DISPOSITION_RE.match(_disposition_sentence(raw_text))
+        )
+        m_body = (
+            None if (m_modern or m_historic)
+            else DISPOSITION_RE.search(raw_text)
+        )
+        if m_modern:
+            result.disposition = self._normalize_disposition(m_modern.group(1))
             result.confidence["disposition"] = 0.85
-        else:
-            m_disp = DISPOSITION_RE.search(raw_text)
-            if m_disp:
-                result.disposition = self._normalize_disposition(m_disp.group(1))
-                result.confidence["disposition"] = 0.4
+        elif m_historic:
+            result.disposition = self._normalize_disposition(m_historic.group(1))
+            result.confidence["disposition"] = 0.8
+        elif m_body:
+            result.disposition = self._normalize_disposition(m_body.group(1))
+            result.confidence["disposition"] = 0.4
 
         # --- Author byline -------------------------------------------------
         # NH bylines sit on their own line just before the body. Three
