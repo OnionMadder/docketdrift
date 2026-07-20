@@ -147,9 +147,9 @@
   </div>{# /.opinion-action-row #}
 </div>
 
-{% if opinion.holding_summary and opinion.court.state.code == 'NH' %}
+{% if opinion.holding_summary %}
   {% comment %}
-  The holding (NH-only proving-ground rollout). This is NOT generated text:
+  The holding, all states. This is NOT generated text:
   extract_holdings_text locates the sentence in which the court states what it
   decided and quotes it VERBATIM, so what renders here is the court's own
   language, not a paraphrase. That is why the panel is headed "The holding"
@@ -162,12 +162,15 @@
 
   Carries its OWN review status (holding_review_status), shown with the same
   amber/cyan/red dot convention as the opinion's editorial review_status.
-  Disclosed in full on /how-we-differ/. Dismissible site-wide via the "hide"
-  toggle (persisted in localStorage). Only renders when a holding exists.
+  NOT yet documented on /how-we-differ/ -- that page's holdings section is
+  still parked and describes the LLM version we did not ship. Dismissible
+  site-wide via the "hide" toggle (persisted in localStorage). Only renders
+  when a holding exists, so states with no extraction run simply don't show
+  the panel.
   {% endcomment %}
   {% with hstatus=opinion.holding_review_status %}
   <section class="glossy-frame holding-panel" id="holding-panel"
-           aria-label="Summarized holding">
+           aria-label="The holding, in the court&rsquo;s own words">
     <div class="holding-panel__head">
       <h2 class="holding-panel__title">
         The holding <span class="holding-panel__sub">in the court&rsquo;s own words</span>
@@ -216,10 +219,10 @@
 
   <script>
   {% comment %}
-  Dismiss/restore the summarized-holding panel site-wide. "hide" sets a
-  localStorage flag and collapses the panel to a one-line stub the reader can
-  click to bring summaries back; the flag is read on every NH opinion page so
-  the choice persists across the site and across sessions. Vanilla JS, no deps.
+  Dismiss/restore the holding panel site-wide. "hide" sets a localStorage
+  flag and collapses the panel to a one-line stub the reader can click to
+  bring holdings back; the flag is read on every opinion page so the choice
+  persists across the site and across sessions. Vanilla JS, no deps.
   {% endcomment %}
   (function () {
     var KEY = "dd-hide-holdings";
@@ -231,8 +234,8 @@
 
     var stub = document.createElement("div");
     stub.className = "holding-stub glossy-frame";
-    stub.innerHTML = 'Summarized holding hidden. ' +
-      '<a href="#" class="holding-show">Show summaries</a>';
+    stub.innerHTML = 'Holding hidden. ' +
+      '<a href="#" class="holding-show">Show holdings</a>';
     panel.parentNode.insertBefore(stub, panel);
 
     function apply() {
