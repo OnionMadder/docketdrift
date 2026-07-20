@@ -4,7 +4,76 @@ Survival kit for any Claude session working on this repo. Read once,
 re-read whenever a recurring gotcha bites. The goal of this document is
 to make the next session productive within the first 5 minutes.
 
-## Latest session (2026-07-12 → 07-18) — START HERE
+## Latest session (2026-07-19) — START HERE
+
+**Headline: the NH disposition gap is closed — 0.2% → 78.5%** (46 → 16,255 of
+20,720). It was two problems stacked, and the second one was a data-integrity
+bug, not a coverage gap.
+
+- **`backfill_dispositions --state NH` had simply never been run.** The NH
+  parser was fine all along; a dry run scored 299/300. One command took NH from
+  0.2% → 54.5%. (CL's `bulk_create` bypasses `Opinion.save()`, so the parser
+  save-hook never fired — the same reason MN needed this backfill originally.)
+- **The residual 9,419 were a different century, not a bug.** Pre-1980 NH
+  opinions close with terse procedural dispositions — *Exceptions overruled.* /
+  *Case discharged.* / *Judgment on the verdict.* / *Demurrer sustained.* — not
+  the modern *Affirmed.* one-liner. The break is sharp: modern text matches at
+  ~99%, pre-1980 at near zero. `parsing/nh.py` now has a historic tier
+  (`HISTORIC_DISPOSITION_RE`), stems frequency-ranked from a scan of 6,000
+  unmatched opinions; the sub-10-occurrence tail is left unmatched on purpose.
+  **This matters commercially** — the instrumentation says 21% of live AI
+  fetches are 1930s NH cases, so historic NH is disproportionately what AI
+  grounds on.
+- **TWO structural gotchas the extraction depends on** (both bit me):
+  1. The literal LAST sentence of a historic opinion is the **concurrence
+     footer** ("All concurred.", "BRANCH, J., did not sit: the others
+     concurred."), NOT the disposition. `_disposition_sentence()` strips
+     stacked footers first, then takes the final sentence. A naive
+     last-sentence read returns "all concurred." 3,347 times.
+  2. The historic match is **anchored to that whole sentence**, not a substring
+     search. "new trial" / "motion denied" are everywhere in ordinary body
+     prose, so an unanchored search mints dispositions the court never entered.
+     Verified 24/24 on observed vocabulary, 0 false positives on prose.
+- **The 0.4-confidence "modern token anywhere in the body" fallback was
+  writing WRONG dispositions.** On a historic opinion it matched a passing
+  mention of some case the court affirmed below: 1979 opinions whose actual
+  disposition is *Exceptions overruled* were stored as **Vacated / Dismissed /
+  Remanded / Affirmed**. Not weak — wrong, and a misstatement of the record.
+  Tiering is now modern-tail (0.85) > historic (0.80) > body (0.40).
+- **`backfill_dispositions` gained `--recompute` + `--min-confidence`** — it
+  only ever filled EMPTY rows, so a bad value was permanently stuck. Repair run
+  (`--recompute --min-confidence 0.8`): **5,388 filled, 363 corrected, 434
+  cleared, 10,504 unchanged, 4,465 genuine no-match.** Clearing (rather than
+  keeping) a value the parser can't justify is the deliberate choice — blank is
+  honest, a stale wrong disposition is not. **Always `--dry-run` first**; the
+  summary breaks out corrected/cleared/unchanged.
+
+**Editorial rule set this session (Onion's call — follow it):** historic
+dispositions are **transcribed, never mapped**. None of the historic stems
+carry an affirmed/reversed/vacated token, so `compute_disposition_bucket()`
+files them all under `other` (neutral tan) automatically — no special-casing
+needed. Recording what the court wrote is transcription; deciding that
+"exceptions overruled" *means* "affirmed" is an editorial read of the record
+and is **not ours to make**. Don't "improve" this later by adding a mapping.
+
+Verified end-to-end on the live site (not just in the DB): `/opinion/78-263/`
+and `/opinion/No. 78-207/` both render 200 with the transcribed disposition and
+`disposition-other`.
+
+**Next-session pickup, in order:**
+1. **AZ disposition — 4.2%, and the cause is that there is NO AZ PARSER.**
+   `parsing/REGISTRY` holds only MN + NH, so `parse("AZ", ...)` returns None and
+   `backfill_dispositions --state AZ` is a **silent no-op** across 38K opinions.
+   Needs `parsing/az.py` written and registered. (Onion picked this as the next
+   gap.) Doing so should also improve the weak AZ judge/panel extraction — only
+   142 panel votes, single-name judges like "Becke".
+2. **NH's remaining 4,465 no-match** are genuine one-off 19th-c. prose
+   ("There must be a decree in favor of the plaintiffs..."). Diminishing
+   returns; only worth another pass if a frequency scan shows a new cluster.
+3. Everything below from the prior session still stands — MN COA scraper, the
+   two unregistered NFSN scheduled tasks, tag-queue triage.
+
+## Prior session (2026-07-12 → 07-18)
 
 **Headline: MN + AZ are now citeable and AI-discoverable.** Reporter cites and
 a 605K-edge citation graph landed for the two big corpora, both built OFFLINE
