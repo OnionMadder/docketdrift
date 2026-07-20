@@ -330,6 +330,81 @@ class Opinion(models.Model):
         help_text="Internal editor notes. Not shown publicly.",
     )
 
+    # ------------------------------------------------------------------
+    # Summarized holding (LLM-extracted editorial summary). NH-only so far
+    # (proving-ground rollout). This is the ONE place the site lets an LLM
+    # produce prose -- a 2-3 sentence summary of what the court held, drawn
+    # strictly from the opinion's own text. It carries its OWN review-status
+    # field, parallel to `review_status` above and using the same enum +
+    # dot-color convention, so a reader can tell at a glance whether the
+    # summary is machine-only (amber) or human-curated (cyan). Surfaced on
+    # opinion_detail under a "Summarized holding" header (NOT "AI"), and
+    # disclosed in full on /how-we-differ/. Populated by extract_holdings.
+    # ------------------------------------------------------------------
+    holding_summary = models.TextField(
+        blank=True,
+        default="",
+        help_text=(
+            "What the court held. Populated by extract_holdings as the court's "
+            "OWN sentence, quoted verbatim -- not a paraphrase or a generated "
+            "summary. Empty until extraction runs, and the public section "
+            "doesn't render when blank (a blank holding is honest; a guessed "
+            "one would misstate the record)."
+        ),
+    )
+    holding_source_paras = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Court-assigned paragraph numbers (ints) the holding was drawn "
+            "from, so the UI can deep-link 'From paragraphs ¶12, ¶47' to the "
+            "cite-anchored #para-N targets. ONLY the court's own [¶N] markers "
+            "ever appear here -- empty list when the opinion carries none, "
+            "since a synthesized pinpoint cite would misstate the record."
+        ),
+    )
+    holding_review_status = models.CharField(
+        max_length=16,
+        choices=ReviewStatus.choices,
+        default=ReviewStatus.AI_ONLY,
+        db_index=True,
+        help_text=(
+            "Editorial review state of the holding -- SAME enum + public "
+            "dot-color semantics as review_status, but tracked independently. "
+            "Defaults to AI_ONLY on fresh extraction; flip to REVIEWED via the "
+            "admin holdings-review action once a human has read and "
+            "(optionally) edited it."
+        ),
+    )
+    holding_reviewed_by = models.CharField(
+        max_length=120,
+        blank=True,
+        default="",
+        help_text="Username of the editor who marked this holding human-reviewed.",
+    )
+    holding_reviewed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Auto-stamped when holding_review_status flips to human-reviewed.",
+    )
+    holding_extracted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When holding extraction last ran for this opinion.",
+    )
+    holding_model = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text=(
+            "Provenance of holding_summary -- which extractor produced it "
+            "(e.g. 'extractive-v1'). Deterministic extraction is the default "
+            "and quotes the court verbatim; if an LLM is ever run over the "
+            "residual it records its model id here instead, so the two methods "
+            "stay auditable side by side on every row."
+        ),
+    )
+
     tags = models.ManyToManyField(
         "Tag",
         blank=True,
@@ -479,6 +554,17 @@ class Opinion(models.Model):
         ):
             from django.utils import timezone
             self.reviewed_at = timezone.now()
+
+        # Same catch-all for the parallel holding review state: a one-off form
+        # edit that flips holding_review_status to REVIEWED without filling in
+        # the timestamp gets stamped here (the admin bulk action stamps
+        # explicitly).
+        if (
+            self.holding_review_status == self.ReviewStatus.REVIEWED
+            and self.holding_reviewed_at is None
+        ):
+            from django.utils import timezone
+            self.holding_reviewed_at = timezone.now()
 
         super().save(*args, **kwargs)
 
@@ -755,6 +841,45 @@ class OpinionCitation(models.Model):
         default="",
         help_text="Text window around the citation -- for treatment cues + display.",
     )
+    context_quote = models.TextField(
+        blank=True,
+        default="",
+        help_text=(
+            "Clean, sentence-trimmed passage from the CITING opinion that "
+            "states the proposition this case is cited for -- the public "
+            '"How this document has been cited" quote (Google-Scholar style). '
+            "Set by the extractor; empty when no clean sentence was found."
+        ),
+    )
+    context_embedding = models.JSONField(
+        null=True,
+        blank=True,
+        help_text=(
+            "voyage-law-2 embedding of context_quote (1024 floats), set by "
+            "embed_citations. Null until embedded. Used only to cluster "
+            "near-identical citing passages (cluster_citations); not indexed "
+            "and never read at request time."
+        ),
+    )
+    cluster_label = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text=(
+            "Index of the similar-passage cluster this edge belongs to, "
+            "WITHIN its cited_opinion's incoming citations. Set by "
+            "cluster_citations; null until clustered or for external edges."
+        ),
+    )
+    is_cluster_lead = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text=(
+            "True for the one representative edge per cluster -- the quote "
+            'shown in "How this document has been cited"; the rest are '
+            'counted as "and N similar citations".'
+        ),
+    )
     text_offset = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     cited_opinion = models.ForeignKey(
@@ -777,9 +902,6 @@ class OpinionCitation(models.Model):
     def __str__(self):
         target = self.cited_opinion_id or self.cited_reference
         return f"{self.citing_opinion_id} -> {target} ({self.treatment})"
-
-    def __str__(self):
-        return f"{self.reference_display} in opinion {self.opinion_id}"
 
 
 class Tag(models.Model):

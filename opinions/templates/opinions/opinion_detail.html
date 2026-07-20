@@ -149,31 +149,41 @@
 
 {% if opinion.holding_summary and opinion.court.state.code == 'NH' %}
   {% comment %}
-  Summarized holding (NH-only proving-ground rollout). The site's single
-  LLM-generated surface -- a 2-3 sentence summary drawn strictly from the
-  opinion's own text by extract_holdings. Carries its OWN review status
-  (holding_review_status), shown with the same amber/cyan/red dot convention
-  as the opinion's editorial review_status, so a reader knows at a glance
-  whether a human has curated this summary. Headed "Summarized holding" (not
-  "AI") on purpose -- honest about what it is, no scarlet-letter framing.
+  The holding (NH-only proving-ground rollout). This is NOT generated text:
+  extract_holdings_text locates the sentence in which the court states what it
+  decided and quotes it VERBATIM, so what renders here is the court's own
+  language, not a paraphrase. That is why the panel is headed "The holding"
+  with an explicit "in the court's own words" -- the provenance is the whole
+  value, and claiming a summary we didn't write would be dishonest.
+
+  Do NOT reword this to say "summarized", "AI", or name a model unless the
+  populator actually changes: holding_model records which extractor produced
+  each row ("extractive-v1" vs an LLM id), so the copy must follow the data.
+
+  Carries its OWN review status (holding_review_status), shown with the same
+  amber/cyan/red dot convention as the opinion's editorial review_status.
   Disclosed in full on /how-we-differ/. Dismissible site-wide via the "hide"
-  toggle (persisted in localStorage). Only renders when a summary exists.
+  toggle (persisted in localStorage). Only renders when a holding exists.
   {% endcomment %}
   {% with hstatus=opinion.holding_review_status %}
   <section class="glossy-frame holding-panel" id="holding-panel"
            aria-label="Summarized holding">
     <div class="holding-panel__head">
       <h2 class="holding-panel__title">
-        Summarized holding
+        The holding <span class="holding-panel__sub">in the court&rsquo;s own words</span>
         <span class="review-dot review-dot--{{ hstatus }} holding-dot"
               role="img" tabindex="0"
-              title="{% if hstatus == 'reviewed' %}Human-reviewed{% if opinion.holding_reviewed_by %} by {{ opinion.holding_reviewed_by }}{% endif %}{% elif hstatus == 'flagged' %}Flagged for editorial review{% else %}Summarized by Claude Haiku, not yet human-reviewed{% endif %}"
-              aria-label="{% if hstatus == 'reviewed' %}Human-reviewed holding{% elif hstatus == 'flagged' %}Holding flagged for review{% else %}Holding summarized by Claude Haiku, not yet human-reviewed{% endif %}"></span>
+              title="{% if hstatus == 'reviewed' %}Human-reviewed{% if opinion.holding_reviewed_by %} by {{ opinion.holding_reviewed_by }}{% endif %}{% elif hstatus == 'flagged' %}Flagged for editorial review{% else %}Quoted from the opinion, not yet human-reviewed{% endif %}"
+              aria-label="{% if hstatus == 'reviewed' %}Human-reviewed holding{% elif hstatus == 'flagged' %}Holding flagged for review{% else %}Holding quoted from the opinion, not yet human-reviewed{% endif %}"></span>
       </h2>
-      <button type="button" class="holding-hide" aria-label="Hide summarized holdings site-wide">hide</button>
+      <button type="button" class="holding-hide" aria-label="Hide holdings site-wide">hide</button>
     </div>
 
-    <p class="holding-panel__text">{{ opinion.holding_summary }}</p>
+    {% comment %}
+    <blockquote>, not <p> -- this is the court's text reproduced word for
+    word, and the markup should say so to a screen reader and a crawler.
+    {% endcomment %}
+    <blockquote class="holding-panel__text">{{ opinion.holding_summary }}</blockquote>
 
     <div class="holding-panel__foot">
       {% if opinion.holding_source_paras %}
@@ -188,12 +198,19 @@
       {% if hstatus == 'reviewed' %}
         Read and confirmed by a human editor{% if opinion.holding_reviewed_by %}, {{ opinion.holding_reviewed_by }}{% endif %}.
       {% elif hstatus == 'flagged' %}
-        This summary is flagged for a closer human read.
+        This passage is flagged for a closer human read.
       {% else %}
-        Summarized by Claude Haiku from the opinion&rsquo;s own text &mdash;
-        not yet human-reviewed.
+        Quoted verbatim from the opinion &mdash; no paraphrase, nothing
+        generated. Not yet human-reviewed.
       {% endif %}
-      <a href="{% url 'opinions:how_we_differ' %}">How we summarize</a>.
+      {% comment %}
+      Generic link on purpose. /how-we-differ/ has no holdings section yet --
+      its parked rewrite describes the LLM version we did NOT ship, and
+      pointing "How we find the holding" at a page that never explains it
+      would be a broken promise. Retarget once that page documents the
+      extractive method.
+      {% endcomment %}
+      <a href="{% url 'opinions:how_we_differ' %}">How we work</a>.
     </p>
   </section>
 
