@@ -105,8 +105,17 @@ class Command(BaseCommand):
         opinions_skipped = 0
 
         try:
+            # Pass --limit down so it bounds PAGINATION, not just processing.
+            # Each cluster costs one fetch_opinion call per sub-opinion, and
+            # CL's rate limiter answers a burst with multi-hour backoffs (a
+            # 21-hour one is on record), so an unbounded listing is how a
+            # catch-up run turns into a cooldown. Capping the listing keeps a
+            # run's API budget predictable; re-run with the same --since to
+            # continue.
             for cluster in client.iter_clusters_for_court(
-                courtlistener_id, since=since_date.isoformat()
+                courtlistener_id,
+                since=since_date.isoformat(),
+                max_clusters=limit,
             ):
                 clusters_seen += 1
                 cluster_id = cluster.get("id")

@@ -11,7 +11,9 @@ Docs: https://www.courtlistener.com/api/rest/v4/
 """
 from __future__ import annotations
 
+import datetime
 import logging
+import re
 import time
 from typing import Iterator, Optional
 from urllib.parse import urljoin
@@ -62,6 +64,55 @@ def _normalize_search_result(result: dict) -> dict:
         if camel in out and snake not in out:
             out[snake] = out[camel]
     return out
+
+
+# /clusters/ returns sub-opinions as hyperlinks
+# ("https://.../api/rest/v4/opinions/12345/"), while the ingest layer reads
+# ids out of cluster["opinions"] (the shape /search/ produced). Adapt rather
+# than touch the consumer, so both endpoints stay interchangeable.
+_OPINION_URL_ID_RE = re.compile(r"/opinions/(\d+)/?$")
+
+
+def _normalize_cluster_result(result: dict) -> dict:
+    """Give a /clusters/ record the ``opinions: [{"id": N}]`` shape."""
+    out = dict(result)
+    if "opinions" not in out:
+        ids = []
+        for ref in out.get("sub_opinions") or []:
+            if isinstance(ref, dict) and ref.get("id") is not None:
+                ids.append({"id": ref["id"]})
+                continue
+            if isinstance(ref, int):
+                ids.append({"id": ref})
+                continue
+            m = _OPINION_URL_ID_RE.search(str(ref))
+            if m:
+                ids.append({"id": int(m.group(1))})
+        out["opinions"] = ids
+    return out
+
+
+def _has_sane_date_filed(cluster: dict) -> bool:
+    """Reject records dated in the future.
+
+    CL carries genuinely bad filing dates -- arizctapp's newest cluster on
+    2026-07-20 was stamped 2026-10-20, three months out. Ingesting one
+    poisons every "newest opinion" display and silently defeats
+    check_freshness, which asks how stale the newest opinion is: a
+    future-dated row makes a dead pipeline look perfectly current. Drop
+    them at the client boundary so no caller has to remember.
+
+    A missing/unparseable date is allowed through -- that is the ingest
+    layer's business, and dropping records for it would lose real opinions.
+    """
+    raw = cluster.get("date_filed")
+    if not raw:
+        return True
+    try:
+        filed = datetime.date.fromisoformat(str(raw)[:10])
+    except ValueError:
+        return True
+    return filed <= datetime.date.today() + datetime.timedelta(days=1)
 
 
 class CourtListenerClient:
@@ -178,24 +229,50 @@ class CourtListenerClient:
         self,
         court_id: str,
         since: Optional[str] = None,
+        max_clusters: Optional[int] = None,
     ) -> Iterator[dict]:
         """Yield opinion clusters for ``court_id``, newest first.
 
         A "cluster" groups all opinions for one decision (majority +
         concurrences + dissents). If ``since`` is provided (ISO 'YYYY-MM-DD')
-        the result is filtered to ``date_filed__gte=since``.
+        the result is filtered to ``date_filed__gte=since``. ``max_clusters``
+        stops iteration early so a caller can bound an ingest run.
+
+        Uses /clusters/, NOT /search/ -- this was the source of a ~90%
+        silent under-ingestion across every state (found 2026-07-20).
+
+        The previous implementation listed via ``/search/?type=o`` on the
+        stated grounds that "/clusters/ doesn't whitelist `court` OR
+        `docket__court` (both return 400 unknown_params)". That is no longer
+        true on v4: ``docket__court`` filters fine. Meanwhile /search/ is
+        Elasticsearch-backed and returns only a fraction of what exists --
+        measured the same day, same court, same window:
+
+            arizctapp since 2026-06-01:  /search/ 13   vs  /clusters/ 137
+            minnctapp since 2026-06-01:  /search/  4   vs  /clusters/  37
+
+        We had been ingesting roughly a tenth of published opinions. MN made
+        it visible first only because its volume is high enough that the loss
+        showed up as a stale newest-opinion date.
+
+        If you ever consider reverting to /search/ for speed: re-run that
+        count comparison first. The endpoint is not authoritative.
         """
-        # CL v4's /clusters/ endpoint doesn't whitelist `court` OR
-        # `docket__court` as filter params (both return 400 "unknown_params").
-        # The /search/?type=o endpoint DOES accept `court=` directly and
-        # provides cluster-level metadata in a single response -- the only
-        # cost is that search returns camelCase keys, which `_paginate` runs
-        # through `_normalize_search_result` for us.
-        params = {"type": "o", "court": court_id, "order_by": "dateFiled desc"}
+        params = {
+            "docket__court": court_id,
+            "order_by": "-date_filed",
+        }
         if since:
-            params["filed_after"] = since
-        for item in self._paginate("search/", params):
-            yield _normalize_search_result(item)
+            params["date_filed__gte"] = since
+        seen = 0
+        for item in self._paginate("clusters/", params):
+            item = _normalize_cluster_result(item)
+            if not _has_sane_date_filed(item):
+                continue
+            yield item
+            seen += 1
+            if max_clusters is not None and seen >= max_clusters:
+                return
 
     def fetch_opinion(self, opinion_id: str | int) -> dict:
         """Return a single opinion record by ID.
