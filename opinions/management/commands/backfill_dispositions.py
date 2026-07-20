@@ -19,6 +19,18 @@ Usage::
     python manage.py backfill_dispositions --limit 100 --dry-run
     python manage.py backfill_dispositions --state MN --batch-size 1000
 
+Repairing rows a weaker parser already wrote::
+
+    python manage.py backfill_dispositions --state NH \
+        --recompute --min-confidence 0.8 --dry-run
+
+``--recompute`` also visits rows that already have a disposition. A
+stored value the parser now disagrees with is CORRECTED; one it can no
+longer justify at ``--min-confidence`` is CLEARED. Clearing is
+deliberate: a blank disposition is honest, while a stale wrong one
+misstates what the court did. Always dry-run first -- the summary
+reports corrected / cleared / unchanged separately.
+
 After running, the editor still owns final review -- nothing here flips
 ``review_status`` past ``ai_only``. A disposition extracted by parser
 stays AI-attributed until a human confirms via the admin "Mark as
@@ -61,8 +73,31 @@ class Command(BaseCommand):
             default=500,
             help="bulk_update batch size (default 500).",
         )
+        parser.add_argument(
+            "--recompute",
+            action="store_true",
+            help=(
+                "Also re-parse rows that ALREADY have a disposition, and "
+                "correct them. Overwrites when the parser is at least "
+                "--min-confidence and disagrees with what's stored; CLEARS "
+                "the stored value when the parser no longer stands behind "
+                "it. Use to repair rows written by a weaker parser."
+            ),
+        )
+        parser.add_argument(
+            "--min-confidence",
+            type=float,
+            default=0.0,
+            help=(
+                "Refuse to write a disposition the parser reports below this "
+                "confidence (default 0.0 = write anything). Under --recompute "
+                "this doubles as the threshold below which an existing value "
+                "is cleared."
+            ),
+        )
 
-    def handle(self, *args, state, limit, dry_run, batch_size, **options):
+    def handle(self, *args, state, limit, dry_run, batch_size,
+               recompute, min_confidence, **options):
         # Local import: parse module loads the registry of state parsers
         # which has its own state model dependency. Importing inside the
         # command avoids a circular import at app load time.
@@ -76,11 +111,9 @@ class Command(BaseCommand):
             with connection.cursor() as cur:
                 cur.execute("SET SESSION max_statement_time = 0")
 
-        qs = (
-            Opinion.objects.filter(disposition="")
-            .exclude(raw_text="")
-            .select_related("court__state")
-        )
+        qs = Opinion.objects.exclude(raw_text="").select_related("court__state")
+        if not recompute:
+            qs = qs.filter(disposition="")
         if state:
             qs = qs.filter(court__state__code=state.upper())
 
@@ -96,6 +129,7 @@ class Command(BaseCommand):
 
         to_update: list[Opinion] = []
         scanned = filled = no_match = 0
+        corrected = cleared = unchanged = 0
         t0 = time.time()
 
         # iterator() so we don't load 49K rows into memory at once
@@ -117,14 +151,38 @@ class Command(BaseCommand):
 
             state_code = op.court.state_id
             result = parse_opinion(state_code, op.raw_text)
-            if result is None or not result.disposition:
-                no_match += 1
-                continue
+            confidence = (
+                result.confidence.get("disposition", 0.0) if result else 0.0
+            )
+            found = result.disposition if result else None
+            # A parse we don't stand behind is treated as no parse at all.
+            if found and confidence < min_confidence:
+                found = None
 
-            op.disposition = result.disposition[:128]
-            op.disposition_bucket = compute_disposition_bucket(op.disposition)
-            to_update.append(op)
-            filled += 1
+            if not found:
+                no_match += 1
+                # Under --recompute an existing value the parser can no
+                # longer justify is CLEARED. Blank is honest; a stale
+                # wrong disposition misstates what the court did.
+                if recompute and op.disposition:
+                    op.disposition = ""
+                    op.disposition_bucket = ""
+                    to_update.append(op)
+                    cleared += 1
+                else:
+                    continue
+            else:
+                new_disposition = found[:128]
+                if op.disposition == new_disposition:
+                    unchanged += 1
+                    continue
+                if op.disposition:
+                    corrected += 1
+                else:
+                    filled += 1
+                op.disposition = new_disposition
+                op.disposition_bucket = compute_disposition_bucket(new_disposition)
+                to_update.append(op)
 
             if len(to_update) >= batch_size and not dry_run:
                 Opinion.objects.bulk_update(
@@ -140,8 +198,16 @@ class Command(BaseCommand):
             )
 
         elapsed = time.time() - t0
-        self.stdout.write(self.style.SUCCESS(
+        summary = (
             f"\nDone in {elapsed/60:.1f} min. "
             f"scanned={scanned:,} filled={filled:,} no-match={no_match:,}"
-            + (" (dry-run; nothing saved)" if dry_run else "")
+        )
+        if recompute:
+            summary += (
+                f"\n  corrected={corrected:,} (had a disposition, parser disagreed)"
+                f"\n  cleared={cleared:,} (parser no longer stands behind it)"
+                f"\n  unchanged={unchanged:,}"
+            )
+        self.stdout.write(self.style.SUCCESS(
+            summary + (" (dry-run; nothing saved)" if dry_run else "")
         ))
