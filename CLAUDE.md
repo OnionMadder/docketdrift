@@ -151,7 +151,68 @@ what caught them — keep doing that.
    tightening the threshold starts dropping genuine second holdings ("We hold
    X" + "We further hold Y"). Do not tune this without checking both sides.
 
+### WE WERE INGESTING ~10% OF OPINIONS — ON EVERY STATE (found 2026-07-20)
+
+Chased down from "why is MN a month behind". It was never an MN problem.
+
+`iter_clusters_for_court` listed via **`/search/?type=o`**, which is
+Elasticsearch-backed and returns a fraction of what exists. Same day, same
+court, same window:
+
+| court | `/search/` (what we used) | `/clusters/` (authoritative) |
+|---|---|---|
+| arizctapp since 2026-06-01 | 13 | **137** |
+| minnctapp since 2026-06-01 | 4 | **37** |
+
+**The missing records are the UNPUBLISHED / nonprecedential ones.** MN merely
+surfaced it first because its volume is high enough that losing 90% reads as a
+stale date; AZ looked healthy because the few that arrived were recent.
+
+The old code chose `/search/` on the stated grounds that "`/clusters/` doesn't
+whitelist `court` OR `docket__court` (both return 400 unknown_params)". **That
+is no longer true on v4** — `docket__court` filters fine. The workaround
+outlived the problem. Now fixed to list from `/clusters/`.
+
+**THIS LIKELY INVALIDATES THE "MN COA COURTLISTENER GAP".** `docs/
+MN_COA_BACKFILL.md` and the roadmap say CL doesn't carry recent MN COA
+nonprecedential/order opinions, and that a residential mn.gov scraper is
+needed. But CL *does* carry them — we just weren't asking for them. **Re-test
+that premise before building the scraper**; it may be largely unnecessary.
+
+Two more things this exposed:
+
+- **14,440 opinions (~12% of corpus) have a synthetic `CL-<id>` case_number.**
+  `case_number` is the URL key AND what paste-a-docket search matches, so
+  those are unreachable by the only identifier a lawyer has, rendering as
+  `/opinion/CL-10878289/`. Cause: `/clusters/` doesn't denormalize
+  `docket_number` (only `docket_id`), so ingest fell back to the cluster id.
+  Fixed going forward via `fetch_docket()` (cached per run). **NOT
+  retro-fixed** — `update_or_create` keys on `(court, case_number)`, so
+  re-ingesting under corrected numbers creates DUPLICATES beside the CL- rows
+  instead of repairing them. Needs a deliberate repair pass that rewrites
+  case_number in place.
+- **CL serves future-dated records.** An `arizctapp` cluster was stamped
+  **2026-10-20** on 2026-07-20. One of those poisons every "newest opinion"
+  display and **silently defeats `check_freshness`** (which measures staleness
+  from the newest row — a future date makes a dead pipeline look current).
+  Now dropped at the client boundary.
+
+**Gotcha for the catch-up:** `--limit` now bounds PAGINATION, not just
+processing. Each cluster costs a `fetch_opinion` per sub-opinion plus a
+possible `fetch_docket`, and CL answers bursts with multi-hour backoffs (a
+**21-hour** one is in the June logs). Unbounded catch-up = cooldown.
+Also: deleting Opinions cascades widely enough to drop the connection
+(errno 2013) — delete in small batches with retry-reconnect.
+
+Verified: MN COA newest went 2026-06-22 → **2026-07-06**, `/opinion/A25-2082/`
+and `/opinion/A25-1259/` both 200, zero CL- rows in the window, and the
+already-correct `A25-1808` was UPDATED not duplicated.
+
 **Next-session pickup, in order:**
+0. **Finish the catch-up ingest.** Only the newest 12 MN COA clusters were
+   pulled as a smoke test. Work back through MN/AZ/NH in bounded runs
+   (`--since` + `--limit`), watching for 429s. Then re-check per-state counts
+   against `/clusters/` to confirm they line up.
 1. **AZ disposition — 4.2%, and the cause is that there is NO AZ PARSER.**
    `parsing/REGISTRY` holds only MN + NH, so `parse("AZ", ...)` returns None and
    `backfill_dispositions --state AZ` is a **silent no-op** across 38K opinions.
