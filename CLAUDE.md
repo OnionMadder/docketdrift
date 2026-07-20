@@ -77,10 +77,21 @@ not needed for the bulk of the corpus**.
   in the tree, unrun, for the residual if ever wanted.
 - **Result: ML stays in exactly TWO places.** Holdings do NOT become a third
   ML surface, so the `/how-we-differ/` disclosure remains true.
-- **Coverage (measure by ERA, not overall):** NH **72.9% modern (≥1980)**,
-  9.7% historic, **35.3% overall** (7,318 rows). Same pre-1980 vocabulary
-  cliff as dispositions. MN ~68% / AZ ~21% on modern-skewed samples — not yet
-  run.
+- **LIVE ON ALL THREE STATES — 39,402 holdings.** Final measured coverage
+  (always read the modern column; overall is dragged down by pre-1980 text
+  that predates this vocabulary entirely):
+
+  | State | overall | modern (≥1980) | ¶ anchors |
+  |---|---|---|---|
+  | MN | 18,507 / 60,379 (30.7%) | **51.7%** | 49 |
+  | NH | 7,321 / 20,720 (35.3%) | **72.9%** | 181 |
+  | AZ | 13,574 / 38,074 (35.7%) | **41.0%** | 5,115 |
+
+  AZ landed at 35.7%, far above the 21% I'd estimated from a sample — the
+  sampling bias cut the other way there. AZ carries by far the most ¶ anchors
+  because its opinions use court-assigned paragraph markers; MN almost never
+  does, so MN holdings deep-link rarely. That is correct behavior, not a bug:
+  we only ever emit the court's own [¶N].
 - **Frequency alone is a trap.** `accordingly, we` (47.6%) is the DISPOSITION
   sentence; `we agree`/`we disagree` (34%/32%) characterize a party's
   argument. Excluded on purpose — including them triples coverage and wrecks
@@ -115,10 +126,32 @@ templates). Its **schema (0027) IS applied** — columns exist, feature dark.
    same day (99% on the first chunk, 36% after). On this corpus a leading
    sample is not a random sample.
 
+### Two holdings bugs found by READING THE RENDERED PAGE, not by test
+
+Both fixtures were too clean to expose these. Verifying on the live site is
+what caught them — keep doing that.
+
+1. **Numbered citations were being truncated.** The sentence-boundary
+   abbreviation guard covered known words and single letters but not decimals,
+   so "rule 24.03" split at "24." and the panel quoted the court as saying
+   "not precluded by rule 24." **That is a misquote of the record** — the
+   exact failure the module exists to prevent. A period between two digits is
+   now always a decimal point. Same fix covers "Minn. Stat. 609.185".
+2. **Restated holdings were joined.** Courts restate to lead into the next
+   section ("Because we conclude that X, we need not reach Y"). Exact-match
+   dedup missed it; prefix comparison would too, since the restatement opens
+   with a different connective. Now compares word sets at 0.75 overlap, with
+   tokens punctuation-stripped ("24.03" vs "24.03," and differing final
+   periods were counting real matches as distinct, dragging a true
+   restatement to 0.73 — just under the line).
+
+   **KNOWN LIMITATION:** long real-world restatements can still fall under
+   0.75 and render as two similar sentences (see MN `A25-1808`). Left as-is
+   deliberately — it is cosmetic redundancy of the court's own words, and
+   tightening the threshold starts dropping genuine second holdings ("We hold
+   X" + "We further hold Y"). Do not tune this without checking both sides.
+
 **Next-session pickup, in order:**
-0. **Populate MN/AZ holdings** — `extract_holdings_text --state MN` (then AZ).
-   Free, ~1 min/state. Note the panel is gated to `state.code == 'NH'` in
-   `opinion_detail.html`; lift that gate to make them visible.
 1. **AZ disposition — 4.2%, and the cause is that there is NO AZ PARSER.**
    `parsing/REGISTRY` holds only MN + NH, so `parse("AZ", ...)` returns None and
    `backfill_dispositions --state AZ` is a **silent no-op** across 38K opinions.
