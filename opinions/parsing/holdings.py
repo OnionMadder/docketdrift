@@ -94,6 +94,34 @@ _MAX_HOLDING_CHARS = 700
 _ORPHAN_LEAD = " \t”’\"')]}>.,;:—-"
 
 
+# Share of the shorter sentence's words that must also appear in the longer
+# for the two to count as the same holding restated. 0.75 separates a genuine
+# restatement from two distinct holdings that merely share boilerplate
+# ("We hold that the search was unlawful" vs "We further hold that the error
+# was not harmless" overlap only on the frame).
+_RESTATEMENT_OVERLAP = 0.75
+
+
+def _words(s: str) -> set[str]:
+    """Word set for overlap comparison, punctuation stripped.
+
+    Stripping matters more than it looks: the same token appears as "24.03"
+    in one sentence and "24.03," in the other, and trailing periods differ on
+    every final word. Comparing raw ``split()`` output counts those as
+    distinct and drags a real restatement below the threshold.
+    """
+    return {w.strip(".,;:()[]\"'“”’—") for w in s.split()} - {""}
+
+
+def _is_restatement(a: str, b: str) -> bool:
+    """True when two holding sentences say substantially the same thing."""
+    wa, wb = _words(a), _words(b)
+    if not wa or not wb:
+        return False
+    shorter = wa if len(wa) <= len(wb) else wb
+    return len(wa & wb) / len(shorter) >= _RESTATEMENT_OVERLAP
+
+
 @dataclass(frozen=True)
 class ExtractedHolding:
     """One holding sentence, exactly as the court wrote it."""
@@ -105,7 +133,23 @@ class ExtractedHolding:
 
 
 def _is_abbreviation(text: str, period_index: int) -> bool:
-    """True when the "." at ``period_index`` closes a known abbreviation."""
+    """True when the "." at ``period_index`` does NOT end a sentence.
+
+    Covers two cases: a known abbreviation ("N.H."), and a decimal point
+    inside a numbered citation.
+    """
+    # Numbered citations are everywhere in this corpus -- "rule 24.03",
+    # "Minn. Stat. § 609.185", "RSA 91-A:4". A period between two digits is a
+    # decimal point, never a full stop. Without this the extractor truncates
+    # "rule 24.03" to "rule 24." and misquotes the court, which is exactly the
+    # failure this module exists to avoid.
+    if (
+        period_index > 0
+        and period_index + 1 < len(text)
+        and text[period_index - 1].isdigit()
+        and text[period_index + 1].isdigit()
+    ):
+        return True
     # Walk back over the word (and any interior dots, so "N.H." is one token).
     start = period_index
     while start > 0 and (text[start - 1].isalnum() or text[start - 1] == "."):
@@ -195,6 +239,15 @@ def extract_holdings(
                 continue
             key = sentence.lower()
             if key in seen:
+                continue
+            # Courts restate a holding to lead into the next section
+            # ("Because we conclude that X, we need not reach Y"), so
+            # exact-match dedup isn't enough. Prefix comparison doesn't work
+            # either -- the restatement usually opens with a different
+            # connective, so the two diverge at character one. Compare word
+            # sets instead: if most of the shorter sentence's words are in the
+            # longer, it is the same holding said twice.
+            if any(_is_restatement(key, prior) for prior in seen):
                 continue
             seen.add(key)
             found.append(ExtractedHolding(
