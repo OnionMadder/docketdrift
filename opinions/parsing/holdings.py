@@ -87,6 +87,12 @@ _ABBREV = {
 _MIN_HOLDING_CHARS = 40
 _MAX_HOLDING_CHARS = 700
 
+# Punctuation that can never open a holding sentence. A backward scan that
+# stops at the "." closing a quotation leaves the quote's own closing mark
+# stranded at the front ('" We need not address...'), which looks like a
+# transcription error on a page whose whole promise is exact quotation.
+_ORPHAN_LEAD = " \t”’\"')]}>.,;:—-"
+
 
 @dataclass(frozen=True)
 class ExtractedHolding:
@@ -180,8 +186,12 @@ def extract_holdings(
         seen: set[str] = set()
         for m in pattern.finditer(text):
             start, end = _sentence_bounds(text, m.start())
-            sentence = text[start:end].strip()
+            sentence = text[start:end].strip().lstrip(_ORPHAN_LEAD).strip()
             if not (_MIN_HOLDING_CHARS <= len(sentence) <= _MAX_HOLDING_CHARS):
+                continue
+            # An unbalanced opening quote means the boundary landed inside a
+            # quotation; the fragment would read as a mis-transcription.
+            if sentence.count("“") != sentence.count("”"):
                 continue
             key = sentence.lower()
             if key in seen:
