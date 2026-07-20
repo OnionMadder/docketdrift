@@ -23,11 +23,24 @@ def prepare_connection(apps, schema_editor):
        cannot restart a shared MariaDB daemon. See the "MariaDB VECTOR INDEX
        is infeasible" gotcha in CLAUDE.md.
 
-       NOCOPY forbids the COPY path outright, so if MariaDB cannot do one of
-       these as INSTANT/INPLACE it raises errno 1845 IMMEDIATELY instead of
-       starting a rebuild we cannot abort. A migration that fails in one
-       second is strictly better than one that cannot be stopped -- if it
-       does fail, split that column out rather than removing this guard.
+       NOCOPY forbids the COPY path, so MariaDB raises errno 1845 instead of
+       starting a rebuild we cannot abort.
+
+       MEASURED OUTCOME, 2026-07-19 -- READ THIS BEFORE REUSING THE PATTERN:
+       NOCOPY is weaker than it sounds. It permits ALGORITHM=INPLACE, and
+       InnoDB's INPLACE ADD COLUMN still rebuilds the table -- "in place"
+       means no external copy, NOT cheap. This migration therefore took
+       **39 minutes** for its 7 columns (several minutes each; the TEXT and
+       JSON columns worst). It did complete, it was killable, and the site
+       served reads throughout -- so NOCOPY did its real job of ruling out
+       the unkillable COPY path. But it is not a fast-path guarantee.
+
+       For a genuinely instant add, set alter_algorithm = 'INSTANT': MariaDB
+       then refuses anything needing a rebuild, so you find out in one second
+       rather than 39 minutes. INSTANT cannot cover an indexed column
+       (holding_review_status), so that one must be split into a plain
+       ADD COLUMN plus a separate online CREATE INDEX. Budget the time or do
+       the split -- do not just delete this guard.
 
     Both are vendor-guarded so local SQLite dev is a clean no-op.
     """

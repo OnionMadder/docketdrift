@@ -60,7 +60,65 @@ Verified end-to-end on the live site (not just in the DB): `/opinion/78-263/`
 and `/opinion/No. 78-207/` both render 200 with the transcribed disposition and
 `disposition-other`.
 
+### Holdings are LIVE on NH — and they are EXTRACTED, not generated
+
+The parked holdings feature shipped, but **not** the way it was built. It is
+populated deterministically; the ~$90 Claude Haiku batch was **not run and is
+not needed for the bulk of the corpus**.
+
+- **Why.** A corpus scan showed courts announce holdings with a small stable
+  phrase set — `we conclude` 80.9%, `we hold` 14.3%, etc. An LLM summary of an
+  opinion that already says "We hold that X" is a lossy, unverifiable
+  paraphrase of a sentence we can quote **exactly**. New
+  `opinions/parsing/holdings.py` + `extract_holdings_text` do that.
+- **The $90 figure was stale** — it assumed Haiku 3 pricing. The command is
+  pinned to `claude-haiku-4-5` at $1/$5 per M, so the real cost is **~$88 for
+  NH alone, ~$500 corpus-wide**. The LLM `extract_holdings` command is still
+  in the tree, unrun, for the residual if ever wanted.
+- **Result: ML stays in exactly TWO places.** Holdings do NOT become a third
+  ML surface, so the `/how-we-differ/` disclosure remains true.
+- **Coverage (measure by ERA, not overall):** NH **72.9% modern (≥1980)**,
+  9.7% historic, **35.3% overall** (7,318 rows). Same pre-1980 vocabulary
+  cliff as dispositions. MN ~68% / AZ ~21% on modern-skewed samples — not yet
+  run.
+- **Frequency alone is a trap.** `accordingly, we` (47.6%) is the DISPOSITION
+  sentence; `we agree`/`we disagree` (34%/32%) characterize a party's
+  argument. Excluded on purpose — including them triples coverage and wrecks
+  precision. Matching is **anchored to the whole sentence**, never a substring.
+- **The public copy was WRONG and is fixed.** `opinion_detail.html` (already
+  committed, dormant) said "Summarized by Claude Haiku" in three places. It
+  now reads "The holding / in the court's own words" in a `<blockquote>`.
+  **Do not reword it to say "summarized"/"AI" unless the populator changes** —
+  `holding_model` records which extractor produced each row.
+
+**PARKED AND MUST NOT SHIP AS-IS:** the `about.html` / `how_we_differ.html`
+rewrites describe the LLM version and assert a generated surface **in indexed
+FAQ schema.org JSON-LD**. Shipping them now would publish false architecture
+claims. `/how-we-differ/` has no holdings section yet, so the panel links to a
+generic "How we work" — retarget once that page documents the extractive
+method. Also still parked: the whole citation-clustering FEATURE code
+(`cluster_citations`, `embed_citations`, `opinion_cited_by`, views/urls/
+templates). Its **schema (0027) IS applied** — columns exist, feature dark.
+
+### Two lessons from this run — both bit me
+
+1. **`alter_algorithm='NOCOPY'` is NOT a fast-path guarantee.** It rules out
+   the unkillable COPY rebuild (worth having), but permits INPLACE, and
+   InnoDB's INPLACE ADD COLUMN still rebuilds the table. Migration 0026 took
+   **39 minutes** for 7 columns on `opinions_opinion`. It completed, stayed
+   killable, and the site served reads throughout. Use `'INSTANT'` if you want
+   to fail in one second instead — but INSTANT can't cover an indexed column,
+   so split that into ADD COLUMN + separate online CREATE INDEX.
+2. **`.iterator()` order skews modern — always measure coverage BY ERA.** I
+   quoted 86.6% NH holdings from a 2,500-row sample and the real number was
+   35.3%. The identical mistake appeared in the disposition run earlier the
+   same day (99% on the first chunk, 36% after). On this corpus a leading
+   sample is not a random sample.
+
 **Next-session pickup, in order:**
+0. **Populate MN/AZ holdings** — `extract_holdings_text --state MN` (then AZ).
+   Free, ~1 min/state. Note the panel is gated to `state.code == 'NH'` in
+   `opinion_detail.html`; lift that gate to make them visible.
 1. **AZ disposition — 4.2%, and the cause is that there is NO AZ PARSER.**
    `parsing/REGISTRY` holds only MN + NH, so `parse("AZ", ...)` returns None and
    `backfill_dispositions --state AZ` is a **silent no-op** across 38K opinions.
