@@ -274,6 +274,19 @@ class CourtListenerClient:
             if max_clusters is not None and seen >= max_clusters:
                 return
 
+    def fetch_docket(self, docket_id: str | int) -> dict:
+        """Return a single docket record by ID.
+
+        /clusters/ carries only ``docket_id`` and a ``docket`` hyperlink -- it
+        does NOT denormalize ``docket_number``, which /search/ did. Without
+        this lookup every cluster falls back to a synthetic "cl-<id>" case
+        number, and that number is the site's URL key AND what docket search
+        matches on, so the opinion becomes unreachable by its real docket.
+        Callers should cache per run: one extra request per cluster is a real
+        cost against CL's rate limiter.
+        """
+        return self._get(f"dockets/{docket_id}/")
+
     def fetch_opinion(self, opinion_id: str | int) -> dict:
         """Return a single opinion record by ID.
 

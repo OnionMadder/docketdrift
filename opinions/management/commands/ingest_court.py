@@ -103,6 +103,8 @@ class Command(BaseCommand):
         opinions_created = 0
         opinions_updated = 0
         opinions_skipped = 0
+        # docket_id -> docket_number, so a run resolves each docket once.
+        docket_number_cache: dict = {}
 
         try:
             # Pass --limit down so it bounds PAGINATION, not just processing.
@@ -148,13 +150,42 @@ class Command(BaseCommand):
                     else ""
                 )
 
-                # cluster has a docket URL we'd need to fetch for the real
-                # docket_number; when the cluster doesn't denormalize it
-                # directly we fall back to the cluster id. Either way we
-                # canonicalize to the dashed-uppercase form (CL stores
-                # docket numbers undashed and occasionally lowercase).
-                raw_docket = cluster.get("docket_number") or f"cl-{cluster_id}"
-                case_number = normalize_docket_number(raw_docket)
+                # The real docket number is the site's URL key and what
+                # paste-a-docket search matches on, so falling back to the
+                # cluster id ("cl-12345") makes an opinion unreachable by the
+                # only identifier a lawyer actually has. /search/ used to
+                # denormalize docket_number; /clusters/ does not -- it gives
+                # docket_id only -- so resolve it explicitly and treat the
+                # synthetic id as a genuine last resort.
+                #
+                # Cached per run: many clusters share a docket (an appeal and
+                # its later decision), and this is one extra request each
+                # against a rate limiter that answers bursts with multi-hour
+                # backoffs.
+                raw_docket = cluster.get("docket_number") or ""
+                if not raw_docket and cluster.get("docket_id") is not None:
+                    d_id = cluster["docket_id"]
+                    if d_id in docket_number_cache:
+                        raw_docket = docket_number_cache[d_id]
+                    else:
+                        try:
+                            raw_docket = (
+                                client.fetch_docket(d_id).get("docket_number") or ""
+                            )
+                        except CourtListenerError as exc:
+                            # Don't lose the opinion over a docket lookup --
+                            # fall through to the synthetic id.
+                            self.stderr.write(
+                                f"    docket {d_id} lookup failed ({exc}); "
+                                f"using synthetic case number"
+                            )
+                            raw_docket = ""
+                        docket_number_cache[d_id] = raw_docket
+                # Canonicalize to the dashed-uppercase form (CL stores docket
+                # numbers undashed and occasionally lowercase).
+                case_number = normalize_docket_number(
+                    raw_docket or f"cl-{cluster_id}"
+                )
 
                 self.stdout.write(
                     f"  [{clusters_seen}] {date_filed} {case_number} | "
