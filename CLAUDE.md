@@ -208,12 +208,41 @@ Verified: MN COA newest went 2026-06-22 → **2026-07-06**, `/opinion/A25-2082/`
 and `/opinion/A25-1259/` both 200, zero CL- rows in the window, and the
 already-correct `A25-1808` was UPDATED not duplicated.
 
+### MN COA scraper BUILT + VALIDATED (residential Chrome, mirrors NH)
+
+`scripts/mn_scraper/scrape_mn_coa.py` + `run_mn_weekly.ps1`. An owned,
+debuggable pipeline independent of CL — the whole reason it was built even
+after the `/clusters/` fix (Onion: NH is the one source that "just works";
+give MN the same). 19 real COA opinions (2026-07-20 + 2026-07-13) scraped →
+ingested → live end-to-end on first use; MN COA newest 2026-07-06 → 2026-07-20.
+
+- **How it works:** headed real Chrome pages `opinions-archive.jsp` (a
+  newest-first list of ALL recent opinions, no search needed), keeps COA PDFs
+  with row-date ≥ `--since`, downloads via in-page fetch → `scp` →
+  `ingest_pdfs --state MN --court appeals`. The MN parser re-derives all
+  metadata from each PDF.
+- **The recon doc's URL scheme was STALE** — corrected in
+  `docs/MN_COA_BACKFILL.md` "BUILD NOTES". Live paths are
+  `archive/<cat>/<year>/OP<case>-<mmddyy>.pdf` (cats: `ctappub` `ctapun`
+  `COAspectorders`; `supct` excluded), not `archive/<cat>/a<n>.pdf`.
+- **Reliability lessons baked in:** never `networkidle` (a chat widget keeps
+  the network live forever) — wait for result anchors with reload-on-empty.
+  **Radware CAPTCHA** hits rapid reloads / deep pagination but NOT a fresh
+  page-1 load; a persistent browser profile banks any clearance, and a CAPTCHA
+  is **never auto-solved** — the scraper waits for the logged-on human (same
+  "run only when logged on" model as NH). Page 1 is captcha-free → weekly
+  forward-fill is reliable there; deep backfill is a separate attended sweep.
+
 **Next-session pickup, in order:**
-0. **Finish the catch-up ingest.** Only the newest 12 MN COA clusters were
-   pulled as a smoke test. Work back through MN/AZ/NH in bounded runs
-   (`--since` + `--limit`), watching for 429s. Then re-check per-state counts
-   against `/clusters/` to confirm they line up.
-1. **AZ disposition — 4.2%, and the cause is that there is NO AZ PARSER.**
+0. **Register `run_mn_weekly.ps1`** as a logged-on Windows Task Scheduler entry
+   (mirror the NH task). Then the MN COA scraper is fully autonomous for
+   forward-fill.
+1. **MN COA deep backfill** (attended) for the thin years — walk the pager in
+   bounded windows, solving the occasional CAPTCHA. Weekly forward-fill is done.
+2. **Finish the CL catch-up ingest** (separate pipeline). Only the newest 12 MN
+   COA clusters were pulled as a smoke test; work back through MN/AZ/NH in
+   bounded `/clusters/` runs (`--since` + `--limit`), watching for 429s.
+3. **AZ disposition — 4.2%, and the cause is that there is NO AZ PARSER.**
    `parsing/REGISTRY` holds only MN + NH, so `parse("AZ", ...)` returns None and
    `backfill_dispositions --state AZ` is a **silent no-op** across 38K opinions.
    Needs `parsing/az.py` written and registered. (Onion picked this as the next

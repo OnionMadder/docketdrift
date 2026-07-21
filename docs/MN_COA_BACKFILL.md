@@ -1,8 +1,21 @@
 # MN Court of Appeals coverage backfill — order / nonprecedential opinions
 
-Status: **planned, not built** (this doc). Written 2026-06-27 after the
-Rickmyer v. Brooks (A25-0969) miss surfaced a systematic gap. See the
-memory note `project_mn_coa_courtlistener_gap` for the discovery trail.
+Status: **BUILT + VALIDATED 2026-07-20.** Scraper lives at
+`scripts/mn_scraper/scrape_mn_coa.py` (+ `run_mn_weekly.ps1`), mirroring the
+NH model. 19 real COA opinions scraped → ingested → live end-to-end on first
+use (2026-07-20 and 2026-07-13 filings). The rest of this doc is the original
+2026-06-27 recon; **see "BUILD NOTES (2026-07-20)" at the bottom for what was
+actually true when built — several recon details were stale.**
+
+Written 2026-06-27 after the Rickmyer v. Brooks (A25-0969) miss surfaced a
+systematic gap. See the memory note `project_mn_coa_courtlistener_gap`.
+
+> **Caveat on the premise:** the CL under-ingestion this doc blames was
+> *partly* our own bug — `ingest_court` listed via `/search/` (published-only)
+> instead of `/clusters/`, fixed 2026-07-20. So CL carries more MN COA than
+> this doc assumes. The scraper was still built deliberately: an owned,
+> debuggable pipeline independent of CL, matching NH (the one source that
+> "just works"). Both pipelines now feed MN and dedup against each other.
 
 ## The problem
 
@@ -171,3 +184,50 @@ UI makes it an interactive build best done in a focused session).
 - **Disposition fix**: build the order-opinion disposition extractor before or
   after the backfill? (Before = cleaner data on first ingest; after = don't
   block the backfill on parser polish, re-run `ingest_pdfs --update` later.)
+
+## BUILD NOTES (2026-07-20) — what was actually true
+
+Built live against the site. Several 2026-06-27 recon details had gone stale;
+these are the corrected facts the scraper is written against.
+
+- **PDF URL scheme (recon doc was WRONG).** Not `archive/<cat>/a<NNNNNN>.pdf`.
+  The live paths are **`archive/<cat>/<year>/OP<case>-<mmddyy>.pdf`**, e.g.
+  `archive/ctappub/2026/OPa251985-071326.pdf`. Categories confirmed:
+  `ctappub` (COA published), `ctapun` (COA unpublished), `COAspectorders`
+  (COA orders), `supct` (Supreme — excluded). Case letter case varies
+  (`OPa…`/`OPA…`), so the category regex is case-insensitive.
+- **No search submission needed.** `opinions-archive.jsp` lands on a
+  reverse-chronological list of ALL recent opinions (all three COA categories
+  + Supreme pre-checked), 10/page, ~1,400 deep, each row carrying a case
+  title, `Date: <Month D, YYYY>`, and the PDF link. The scraper pages this
+  newest-first and keeps COA PDFs with row-date ≥ `--since`. Metadata is
+  re-derived from each PDF by the MN parser at ingest, so the scraper only
+  needs the URL + row date (to bound the walk).
+- **NEVER `networkidle`, never fixed sleeps.** A live chat widget keeps the
+  network busy forever, so `networkidle` never fires (this is the "JS-flaky"
+  symptom the recon flagged). Wait for the result anchors with a
+  reload-on-empty retry instead.
+- **The bot wall is real but manageable.** Radware serves a CAPTCHA to rapid
+  reloads / deep pagination, but a **single fresh page-1 load passes cleanly**.
+  So: (1) a PERSISTENT browser profile (`launch_persistent_context`) banks any
+  cleared challenge across runs; (2) access is paced; (3) a CAPTCHA is **never
+  auto-solved** — the scraper waits for the logged-on human to clear it in the
+  visible window, else proceeds with page 1. This is the same "run only when
+  logged on" constraint as NH.
+- **Pagination = real `?url=…root-<offset>-10` URLs** with a per-session
+  vivisimo token; follow the page's own hrefs through the robust loader, never
+  construct them. Page 1 (10 newest) is reliably captcha-free → that's where
+  weekly forward-fill lives (`run_mn_weekly.ps1`, `--max-pages 3`). Deep
+  backfill over many pages is a **separate attended sweep** (the human solves
+  the occasional CAPTCHA); the scraper stops cleanly at the visible pager
+  window (pages 1–10) and says so rather than silently truncating.
+
+### Still open
+
+- **Deep backfill** (years we're thin) not yet run — it's the attended,
+  many-page sweep. The weekly forward-fill IS built and reliable.
+- **Register the Windows Task Scheduler entry** for `run_mn_weekly.ps1`
+  (mirror the NH task; run only when logged on).
+- Order-opinion disposition polish (whole-doc-scan grabbing the district
+  court's action) still stands — non-blocking; re-run `ingest_pdfs --update`
+  after a parser fix.
