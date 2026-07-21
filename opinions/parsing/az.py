@@ -98,14 +98,59 @@ DISPOSITION_LINE_RE = re.compile(
     re.MULTILINE,
 )
 
-# Tail fallback for older opinions with no header disposition block: the
-# operative "we affirm / reverse / vacate ..." sentence near the end.
-TAIL_DISPOSITION_RE = re.compile(
-    r"\bwe\s+(?:therefore\s+|accordingly\s+|hereby\s+)?"
-    r"(affirm|reverse|vacate|remand|dismiss|grant|deny|quash|modify)"
-    r"(?:\s+in\s+part)?",
+# Tail fallbacks for opinions with no ALL-CAPS header disposition block --
+# older opinions, and the modern special-action (CA-SA) / post-conviction
+# (PRPC) classes, which dispose in prose at the end rather than in a header.
+# All are read only from the tail (operative-conclusion) region.
+
+# Relief-based (special actions / petitions for review): "grants review but
+# denies relief", "accept jurisdiction and deny relief", "grant relief". The
+# relief outcome is the disposition -- check DENY before GRANT so "grants
+# review but denies relief" maps to Denied, not Granted.
+RELIEF_DENY_RE = re.compile(r"den(?:y|ies|ied)\s+relief", re.IGNORECASE)
+RELIEF_GRANT_RE = re.compile(r"grant(?:s|ed)?\s+relief", re.IGNORECASE)
+
+# Operative verb, active ("we/this court affirm[s]") or passive ("the judgment
+# is affirmed"). Group 1 = verb stem.
+TAIL_ACTIVE_RE = re.compile(
+    r"\b(?:we|this\s+court|the\s+court)\s+"
+    r"(?:therefore\s+|accordingly\s+|hereby\s+|thus\s+)?"
+    r"(affirm|reverse|vacate|remand|dismiss|quash|modify)(?:s|es)?"
+    r"(?P<part>\s+in\s+part)?",
     re.IGNORECASE,
 )
+TAIL_PASSIVE_RE = re.compile(
+    r"\b(?:is|are)\s+(?:hereby\s+)?"
+    r"(affirmed|reversed|vacated|remanded|dismissed|quashed|modified)"
+    r"(?P<part>\s+in\s+part)?",
+    re.IGNORECASE,
+)
+
+_VERB_PAST = {
+    "affirm": "Affirmed", "reverse": "Reversed", "vacate": "Vacated",
+    "remand": "Remanded", "dismiss": "Dismissed", "quash": "Quashed",
+    "modify": "Modified",
+    "affirmed": "Affirmed", "reversed": "Reversed", "vacated": "Vacated",
+    "remanded": "Remanded", "dismissed": "Dismissed", "quashed": "Quashed",
+    "modified": "Modified",
+}
+
+
+def _tail_disposition(tail: str) -> str | None:
+    """Operative disposition from the tail region, or None. Order matters:
+    relief outcome first (special actions), then active, then passive."""
+    if RELIEF_DENY_RE.search(tail):
+        return "Denied"
+    if RELIEF_GRANT_RE.search(tail):
+        return "Granted"
+    for rx in (TAIL_ACTIVE_RE, TAIL_PASSIVE_RE):
+        m = rx.search(tail)
+        if m:
+            disp = _VERB_PAST[m.group(1).lower()]
+            if m.group("part"):
+                disp += " in part"
+            return disp
+    return None
 
 
 # ---------- Author byline ------------------------------------------------
@@ -220,20 +265,12 @@ class ArizonaParser(StateParser):
             result.disposition = phrase[:1].upper() + phrase[1:].lower()
             result.confidence["disposition"] = 0.9
         else:
-            # Older-format fallback: operative sentence near the tail.
-            tm = TAIL_DISPOSITION_RE.search(raw_text[-1800:])
-            if tm:
-                verb = tm.group(1).lower()
-                past = {
-                    "affirm": "Affirmed", "reverse": "Reversed",
-                    "vacate": "Vacated", "remand": "Remanded",
-                    "dismiss": "Dismissed", "grant": "Granted",
-                    "deny": "Denied", "quash": "Quashed", "modify": "Modified",
-                }[verb]
-                if "in part" in tm.group(0).lower():
-                    past += " in part"
-                result.disposition = past
-                result.confidence["disposition"] = 0.4
+            # No header block (older opinions, special actions, PRPC petitions):
+            # read the operative disposition from the tail region only.
+            tail_disp = _tail_disposition(raw_text[-1800:])
+            if tail_disp:
+                result.disposition = tail_disp
+                result.confidence["disposition"] = 0.5
 
         # --- Author ----------------------------------------------------
         if is_supreme:
