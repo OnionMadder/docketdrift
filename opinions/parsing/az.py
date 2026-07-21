@@ -136,20 +136,64 @@ _VERB_PAST = {
 }
 
 
+# "<verb> ... in part" -- reconstruct the actual compound the court wrote.
+_IN_PART_RE = re.compile(
+    r"(affirm|revers|vacat|remand|dismiss|modif)\w*\s+in\s+part", re.IGNORECASE)
+_STEM_WORD = {"affirm": "Affirmed", "revers": "Reversed", "vacat": "Vacated",
+              "remand": "Remanded", "dismiss": "Dismissed", "modif": "Modified"}
+# A split disposition with no literal "in part": "otherwise affirm", "affirm in
+# all other respects".
+_OTHERWISE_RE = re.compile(
+    r"otherwise\s+(?:affirm|revers|vacat)|in\s+all\s+other\s+respects?",
+    re.IGNORECASE)
+
+
 def _tail_disposition(tail: str) -> str | None:
-    """Operative disposition from the tail region, or None. Order matters:
-    relief outcome first (special actions), then active, then passive."""
+    """Operative disposition from the tail region, or None.
+
+    Precedence matters, because a subsidiary action in an earlier sentence
+    ("we dismiss the cross-appeal ... and otherwise affirm") must not be read
+    as the primary disposition:
+
+      1. Relief outcome (special actions / petitions) -- deny before grant.
+      2. Explicit "<verb> in part" compounds -> reconstruct them verbatim
+         (buckets to mixed).
+      3. Split signalled without "in part" ("otherwise affirm" / "in all other
+         respects"), or affirm co-occurring with reverse/vacate -> mixed.
+      4. A single operative verb -- take the LAST occurrence, i.e. the final
+         disposition sentence, not an earlier subsidiary one.
+    """
     if RELIEF_DENY_RE.search(tail):
         return "Denied"
     if RELIEF_GRANT_RE.search(tail):
         return "Granted"
-    for rx in (TAIL_ACTIVE_RE, TAIL_PASSIVE_RE):
-        m = rx.search(tail)
-        if m:
-            disp = _VERB_PAST[m.group(1).lower()]
-            if m.group("part"):
-                disp += " in part"
-            return disp
+
+    parts = _IN_PART_RE.findall(tail)
+    if parts:
+        seen, phrase = set(), []
+        for stem in parts:
+            w = _STEM_WORD[stem.lower()]
+            if w not in seen:
+                seen.add(w)
+                phrase.append("%s in part" % w)
+        joined = ", ".join(phrase)
+        return joined[:1].upper() + joined[1:].lower()  # sentence-case
+
+    low = tail.lower()
+    has_affirm = re.search(r"\baffirm", low)
+    has_undo = re.search(r"\b(revers|vacat)", low)
+    if _OTHERWISE_RE.search(tail) or (has_affirm and has_undo):
+        # A split we can't itemize precisely; "Affirmed in part" is directional
+        # and honest, and buckets to mixed.
+        return "Affirmed in part"
+
+    matches = list(TAIL_ACTIVE_RE.finditer(tail)) or list(TAIL_PASSIVE_RE.finditer(tail))
+    if matches:
+        m = matches[-1]
+        disp = _VERB_PAST[m.group(1).lower()]
+        if m.group("part"):
+            disp += " in part"
+        return disp
     return None
 
 
