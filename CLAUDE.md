@@ -242,12 +242,19 @@ ingested → live end-to-end on first use; MN COA newest 2026-07-06 → 2026-07-
 2. **Finish the CL catch-up ingest** (separate pipeline). Only the newest 12 MN
    COA clusters were pulled as a smoke test; work back through MN/AZ/NH in
    bounded `/clusters/` runs (`--since` + `--limit`), watching for 429s.
-3. **AZ disposition — 4.2%, and the cause is that there is NO AZ PARSER.**
-   `parsing/REGISTRY` holds only MN + NH, so `parse("AZ", ...)` returns None and
-   `backfill_dispositions --state AZ` is a **silent no-op** across 38K opinions.
-   Needs `parsing/az.py` written and registered. (Onion picked this as the next
-   gap.) Doing so should also improve the weak AZ judge/panel extraction — only
-   142 panel votes, single-name judges like "Becke".
+3. ~~**AZ disposition — 4.2%, NO AZ PARSER.**~~ ✅ DONE 2026-07-21.
+   `parsing/az.py` written + registered (both AZ courts, both COA divisions).
+   **AZ dispositions 4.2% → 67.7%** (25,779 / 38,074). Header path (ALL-CAPS
+   disposition line, take the FIRST = merits result not the COA-below line) at
+   0.9; tail fallback at 0.5 for the special-action (CA-SA) / PRPC classes that
+   dispose in prose ("grants review but denies relief" → Denied) + older
+   opinions. Modern coverage 2020s 94% / 2010s 87%; the ~12K no-match remainder
+   is genuinely historic AZ text (the NH diminishing-returns pattern). Bucket
+   mix is legally sane (affirmed ~50%). The parser also extracts the author
+   byline (Supreme "JUSTICE X authored"; COA "Judge/Presiding/Vice Chief Judge
+   X delivered|authored"), which should help the weak AZ judge/panel
+   extraction — **still TODO: re-run `resolve_judges --state AZ` to cash that
+   in** (142 panel votes, single-name judges like "Becke").
 2. **NH's remaining 4,465 no-match** are genuine one-off 19th-c. prose
    ("There must be a decree in favor of the plaintiffs..."). Diminishing
    returns; only worth another pass if a frequency scan shows a new cluster.
