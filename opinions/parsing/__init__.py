@@ -18,6 +18,7 @@ that pin the expected ParsedOpinion against a handful of real opinions.
 """
 from __future__ import annotations
 
+from .az import ArizonaParser
 from .base import ParsedOpinion, StateParser
 from .mn import MinnesotaParser
 from .nh import NewHampshireParser
@@ -25,6 +26,7 @@ from .nh import NewHampshireParser
 REGISTRY: dict[str, StateParser] = {
     "MN": MinnesotaParser(),
     "NH": NewHampshireParser(),
+    "AZ": ArizonaParser(),
 }
 
 
