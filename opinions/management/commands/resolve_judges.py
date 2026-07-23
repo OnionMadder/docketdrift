@@ -500,22 +500,24 @@ class Command(BaseCommand):
         court_ids = list(
             _State.objects.get(code=state_code).courts.values_list("id", flat=True)
         )
-        # order_by("id") + id__gt makes --min-id a stable resume cursor.
-        opinion_qs = (
-            Opinion.objects.filter(court_id__in=court_ids, id__gt=min_id)
-            .exclude(raw_text="")
-            .select_related("court")
-            .order_by("id")
-        )
+        # Fetch a CHEAP ordered id list first (PK + court_id index only, no
+        # raw_text). Pulling raw_text via select_related+order_by in one big
+        # query forces a filesort over the full corpus THEN streams 100KB
+        # blobs, and the first chunk fetch alone can eat a whole --max-runtime
+        # budget before any opinion is processed. The raw_text="" filter is
+        # dropped here (it would read the blob) and empties are skipped in the
+        # loop instead. order_by("id") + id__gt makes --min-id a stable cursor.
+        id_qs = Opinion.objects.filter(court_id__in=court_ids, id__gt=min_id)
         if since:
             try:
                 cutoff = date.fromisoformat(since)
             except ValueError:
                 self.stderr.write(f"Bad --since date: {since!r}; use YYYY-MM-DD.")
                 return
-            opinion_qs = opinion_qs.filter(release_date__gte=cutoff)
+            id_qs = id_qs.filter(release_date__gte=cutoff)
+        id_list = list(id_qs.order_by("id").values_list("id", flat=True))
 
-        total = opinion_qs.count()
+        total = len(id_list)
         if limit:
             total = min(total, limit)
 
@@ -534,14 +536,32 @@ class Command(BaseCommand):
         timed_out = False
         t0 = time.time()
 
-        for opinion in opinion_qs.iterator(chunk_size=500):
+        # PK-windowed fetch: pull full rows (with raw_text) in small batches
+        # keyed on the pre-materialized id list, so no single query streams the
+        # whole corpus and the time budget is checked between real work units.
+        _BATCH = 200
+
+        def _iter_opinions():
+            for bstart in range(0, len(id_list), _BATCH):
+                batch_ids = id_list[bstart:bstart + _BATCH]
+                rows = (Opinion.objects.filter(id__in=batch_ids)
+                        .select_related("court").order_by("id"))
+                for op in rows:
+                    yield op
+
+        for opinion in _iter_opinions():
             if limit and scanned >= limit:
                 break
             if max_runtime and (time.time() - t0) >= max_runtime:
                 timed_out = True
                 break
-            scanned += 1
+            # Advance the cursor on every row seen (incl. skipped empties) so a
+            # resumed run never re-scans them; the dropped exclude(raw_text="")
+            # is enforced here instead.
             last_id = opinion.id
+            if not opinion.raw_text:
+                continue
+            scanned += 1
 
             if scanned % 2_000 == 0:
                 elapsed = time.time() - t0
