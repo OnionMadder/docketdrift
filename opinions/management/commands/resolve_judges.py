@@ -39,6 +39,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from django.core.management.base import BaseCommand
+from django.db import connection
 from django.utils.text import slugify
 
 from opinions.models import Judge, Opinion, PanelVote
@@ -393,6 +394,14 @@ class Command(BaseCommand):
 
         state_code = state.upper()
 
+        # Batch command: lift settings' 25s web-tier max_statement_time so the
+        # corpus-wide COUNT + scan don't get KILLed under contention (errno
+        # 1969). Vendor-guarded so local SQLite dev is a clean no-op. See the
+        # "Batch commands MUST lift max_statement_time" gotcha in CLAUDE.md.
+        if connection.vendor == "mysql":
+            with connection.cursor() as cur:
+                cur.execute("SET SESSION max_statement_time = 0")
+
         # Build last_name -> [Judge,...] lookup for the state. Ambiguity
         # (multiple judges sharing a last name) gets logged + skipped.
         judges = list(Judge.objects.filter(state__code=state_code))
@@ -468,8 +477,13 @@ class Command(BaseCommand):
             forged_judges += 1
             return new_j
 
+        # Pre-resolve court IDs so the scan is an FK-index lookup, not a JOIN
+        # over the 2.75GB opinions table (the documented perf gotcha).
+        court_ids = list(
+            _State.objects.get(code=state_code).courts.values_list("id", flat=True)
+        )
         opinion_qs = (
-            Opinion.objects.filter(court__state__code=state_code)
+            Opinion.objects.filter(court_id__in=court_ids)
             .exclude(raw_text="")
             .select_related("court")
         )
