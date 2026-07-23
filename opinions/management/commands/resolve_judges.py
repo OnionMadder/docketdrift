@@ -372,6 +372,23 @@ class Command(BaseCommand):
             help="Only opinions filed >= YYYY-MM-DD. Useful for incremental re-runs.",
         )
         parser.add_argument(
+            "--min-id", type=int, default=0,
+            help=(
+                "Only opinions with id > this. Stateless resume cursor: the "
+                "byline extraction is CPU-heavy and NFSN culls long processes "
+                "on CPU time, so a full state is run as bounded chunks -- each "
+                "run prints 'next --min-id <N>' to feed the next one."
+            ),
+        )
+        parser.add_argument(
+            "--max-runtime", type=int, default=0,
+            help=(
+                "Self-exit cleanly after N seconds (0 = run to completion). "
+                "Keeps a run under NFSN's CPU-time cull; pair with --min-id to "
+                "resume. Mirrors embed_opinions."
+            ),
+        )
+        parser.add_argument(
             "--dry-run", action="store_true",
             help="Compute matches + counts but don't create PanelVote rows.",
         )
@@ -388,7 +405,8 @@ class Command(BaseCommand):
             ),
         )
 
-    def handle(self, *args, state, limit, since, dry_run, create_missing, **options):
+    def handle(self, *args, state, limit, since, dry_run, create_missing,
+               min_id, max_runtime, **options):
         # Local import: parsing module loads the state-parser registry
         from opinions.parsing import parse as parse_opinion
 
@@ -482,10 +500,12 @@ class Command(BaseCommand):
         court_ids = list(
             _State.objects.get(code=state_code).courts.values_list("id", flat=True)
         )
+        # order_by("id") + id__gt makes --min-id a stable resume cursor.
         opinion_qs = (
-            Opinion.objects.filter(court_id__in=court_ids)
+            Opinion.objects.filter(court_id__in=court_ids, id__gt=min_id)
             .exclude(raw_text="")
             .select_related("court")
+            .order_by("id")
         )
         if since:
             try:
@@ -510,12 +530,18 @@ class Command(BaseCommand):
         author_ambiguous = panel_ambiguous = 0
         new_author_votes = new_join_votes = upgraded_votes = 0
         new_dissent_votes = dissent_ambiguous = 0
+        last_id = min_id
+        timed_out = False
         t0 = time.time()
 
         for opinion in opinion_qs.iterator(chunk_size=500):
             if limit and scanned >= limit:
                 break
+            if max_runtime and (time.time() - t0) >= max_runtime:
+                timed_out = True
+                break
             scanned += 1
+            last_id = opinion.id
 
             if scanned % 2_000 == 0:
                 elapsed = time.time() - t0
@@ -668,8 +694,15 @@ class Command(BaseCommand):
         elapsed = time.time() - t0
         self.stdout.write("")
         self.stdout.write(self.style.SUCCESS(
-            f"Done in {elapsed/60:.1f} min."
+            f"{'Timed out' if timed_out else 'Done'} in {elapsed/60:.1f} min."
         ))
+        if timed_out:
+            self.stdout.write(self.style.WARNING(
+                f"  time budget hit; resume the rest with:  "
+                f"--min-id {last_id}"
+            ))
+        else:
+            self.stdout.write(f"  reached end of corpus (last id {last_id}).")
         self.stdout.write(
             f"  scanned:             {scanned:>7,}\n"
             f"  authors resolved:    {author_resolved:>7,}  "
