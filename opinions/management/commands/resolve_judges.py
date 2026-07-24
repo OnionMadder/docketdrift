@@ -99,7 +99,16 @@ _PANEL_GROUP_RE = re.compile(
     # NH style: "MACDONALD, C.J., and ..."
     # AZ-CtApp style: "Vasquez, P.J., and ..."   (Presiding Judge)
     rf"(?:\b(?P<chief>{_SURNAME}),\s*(?:C\.J\.|P\.J\.),\s*and\s+)?"
-    rf"\b(?P<panel>(?:{_SURNAME})(?:\s*,?\s*(?:and\s+)?(?:{_SURNAME}))*)"
+    # Panel surname list. The separator between two surnames MUST contain a
+    # comma or "and" -- it is NOT allowed to be whitespace-only. That matters
+    # for more than tidiness: with a nullable separator, `S(?:sepS)*` can
+    # partition any run of Capitalized Words a combinatorial number of ways,
+    # and when the trailing `JJ., concurred` role suffix is absent (the common
+    # case) the engine backtracks through all of them -- catastrophic ReDoS
+    # that hung on a whole era of 2017-2019 AZ opinions and CPU-culled the
+    # command mid-run. Requiring a real delimiter makes the split unambiguous
+    # and the match linear. Real panel lists always use commas/"and" anyway.
+    rf"\b(?P<panel>(?:{_SURNAME})(?:(?:\s*,\s*(?:and\s+)?|\s+and\s+)(?:{_SURNAME}))*)"
     rf",?\s+(?P<role>C\.J\.|P\.J\.|JJ?\.)\s*,?\s*(?:concurred|concurring|join(?:ed)?)\b"
 )
 
