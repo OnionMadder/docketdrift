@@ -252,9 +252,26 @@ ingested → live end-to-end on first use; MN COA newest 2026-07-06 → 2026-07-
    is genuinely historic AZ text (the NH diminishing-returns pattern). Bucket
    mix is legally sane (affirmed ~50%). The parser also extracts the author
    byline (Supreme "JUSTICE X authored"; COA "Judge/Presiding/Vice Chief Judge
-   X delivered|authored"), which should help the weak AZ judge/panel
-   extraction — **still TODO: re-run `resolve_judges --state AZ` to cash that
-   in** (142 panel votes, single-name judges like "Becke").
+   X delivered|authored").
+   **AZ judge/panel extraction — DONE 2026-07-24. Panel votes 142 → 29,089**
+   (opinions with a panel 42 → 11,265). The "142" was NEVER a coverage gap —
+   it was a **catastrophic-backtracking (ReDoS) bug** in `resolve_judges`'
+   `_PANEL_GROUP_RE`: a whitespace-only-nullable separator in the surname list
+   made a whole era of 2017-2019 AZ opinions take ~3.4s EACH in one regex, so
+   every run burned CPU and got NFSN-CPU-culled before progressing. Fixed by
+   requiring a comma/"and" between panel surnames (3.4s → ~0ms; verified 4,001
+   opinions in the bad range now 0 slow). Along the way `resolve_judges` gained
+   the machinery it needed to run at scale on NFSN at all: lifts
+   `max_statement_time`, pre-resolves court IDs, pk-windowed fetch,
+   `--max-runtime`/`--min-id`/`--id-batch` (cull-safe chunked resume). Full AZ
+   sweep then ran in ~10 min / 12 chunks.
+   **Gotcha for the driver:** NFSN's CPU cull sits at ~40s, so a chunk must
+   self-exit under that; `--max-runtime 35 --id-batch 6000` is a safe combo.
+   **FOLLOWUP (editorial):** `--create-missing` forged **280 UNKNOWN-status
+   AZ judges** from bylines (surname-only like "Becke", plus duplicates of
+   full-name rows and some non-judge noise). Votes are structurally correct
+   but that roster needs a review/merge/cull pass in admin before the AZ judge
+   pages are clean — same human step MN/NH had.
 2. **NH's remaining 4,465 no-match** are genuine one-off 19th-c. prose
    ("There must be a decree in favor of the plaintiffs..."). Diminishing
    returns; only worth another pass if a frequency scan shows a new cluster.
