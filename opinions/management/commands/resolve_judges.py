@@ -389,6 +389,17 @@ class Command(BaseCommand):
             ),
         )
         parser.add_argument(
+            "--id-batch", type=int, default=0,
+            help=(
+                "Read at most N candidate ids per run (0 = all remaining). "
+                "At a low --min-id the ordered id-list read alone is tens of "
+                "seconds; capping it keeps per-chunk setup cheap so a chunked "
+                "sweep isn't dominated by re-reading the shrinking id list. A "
+                "run that fills the cap reports a resume cursor even if it "
+                "didn't hit --max-runtime."
+            ),
+        )
+        parser.add_argument(
             "--dry-run", action="store_true",
             help="Compute matches + counts but don't create PanelVote rows.",
         )
@@ -406,7 +417,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, state, limit, since, dry_run, create_missing,
-               min_id, max_runtime, **options):
+               min_id, max_runtime, id_batch, **options):
         # Local import: parsing module loads the state-parser registry
         from opinions.parsing import parse as parse_opinion
 
@@ -515,7 +526,13 @@ class Command(BaseCommand):
                 self.stderr.write(f"Bad --since date: {since!r}; use YYYY-MM-DD.")
                 return
             id_qs = id_qs.filter(release_date__gte=cutoff)
-        id_list = list(id_qs.order_by("id").values_list("id", flat=True))
+        id_query = id_qs.order_by("id").values_list("id", flat=True)
+        if id_batch:
+            id_query = id_query[:id_batch]
+        id_list = list(id_query)
+        # A run that exactly fills the id-batch cap has almost certainly not
+        # reached the true end of the corpus -- there are more ids past it.
+        batch_capped = bool(id_batch) and len(id_list) == id_batch
 
         total = len(id_list)
         if limit:
@@ -712,14 +729,18 @@ class Command(BaseCommand):
                         upgraded_votes += 1
 
         elapsed = time.time() - t0
+        # More work remains if we stopped on the clock or only saw a capped
+        # slice of ids. Either way we hand back a cursor; only a run that
+        # drained an uncapped (or under-cap) id list has reached the true end.
+        more_remaining = timed_out or batch_capped
         self.stdout.write("")
         self.stdout.write(self.style.SUCCESS(
-            f"{'Timed out' if timed_out else 'Done'} in {elapsed/60:.1f} min."
+            f"{'Stopped' if more_remaining else 'Done'} in {elapsed/60:.1f} min."
         ))
-        if timed_out:
+        if more_remaining:
+            reason = "time budget hit" if timed_out else "id-batch cap filled"
             self.stdout.write(self.style.WARNING(
-                f"  time budget hit; resume the rest with:  "
-                f"--min-id {last_id}"
+                f"  {reason}; resume the rest with:  --min-id {last_id}"
             ))
         else:
             self.stdout.write(f"  reached end of corpus (last id {last_id}).")
