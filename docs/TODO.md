@@ -44,11 +44,16 @@ The working tree is now clean and main is in sync with origin. What happened:
   full-name dupes, some non-judge noise). Votes are structurally correct, but
   the roster needs a review/merge/cull pass in admin before AZ judge pages are
   clean — same human step MN/NH had. Onion (admin work).
-- [ ] **Holdings page-number artifacts (~5%).** ~897 MN + ~460 AZ holdings
-  have a stray PDF page number mid-sentence ("determin**ing 2 t**hat"). It
-  corrupts the verbatim-quote promise. Deterministic fix in `holdings.py`
-  (strip lone digits sitting between lowercase words at page breaks) +
-  re-extract. Small–medium; needs care not to strip real numbers.
+- [x] **Holdings page-number artifacts.** ✅ DONE 2026-07-24. `holdings.py`
+  now strips stray PDF page numbers verbatim-safely — the data showed ~half
+  the flagged cases were *legitimate* numbers ("subdivision 6", "51 years"),
+  so the fix defaults to KEEP and only drops a bare mid-sentence integer with
+  no "real number" signal around it (proper noun / enum noun / month before;
+  unit / plural / range after). Verified 10/10 stray removed, 21/21 legit
+  preserved, re-extracted all 3 states. **Known limitation (deliberate):** a
+  small tail of spurious numbers before a plural noun ("substantial 10
+  rights") is left alone — indistinguishable from a real count ("5 factors"),
+  and a wrong strip is worse than the noise.
 
 ## Tier 2 — automation (turn finished work autonomous)
 
