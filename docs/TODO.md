@@ -124,10 +124,14 @@ Already registered + running (nothing to do): `embed-tick` (~10 min),
   truth. Also fixed a latent bug: judge cards now use the judge photo
   (og:image fallback) instead of the generic cover. Verified live on opinion,
   judge, and apex pages.
-- [ ] **Beta/Flagship labels undersell the 60K MN corpus** (stamped "Beta"
-  while smaller NH is "Flagship"). Copy-only. Small.
-- [ ] **State-router middleware lookup cache** — `_resolve_state` hits the DB
-  every request; cache by Host header per worker lifetime.
+- [x] **Beta/Flagship labels.** ✅ DONE 2026-07-25. MN is now the Flagship
+  (largest, most complete corpus); NH + AZ get an affirmative green "Live"
+  pill (new `.status-pill--live` replacing `--beta`). Updated state-landing,
+  about pills, and the API-docs prose. Verified live.
+- [x] **State-router middleware lookup cache.** ✅ DONE 2026-07-25.
+  `_resolve_state` memoizes the subdomain→State lookup by 2-letter code
+  (misses included) for the worker's lifetime — no more per-request DB hit.
+  Bounded key space, read-only instance (thread-safe), cleared on restart.
 
 ## Diminishing returns (only if a frequency scan shows a new cluster)
 
