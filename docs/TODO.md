@@ -84,9 +84,13 @@ All member-panel / logged-on — Onion registers, not scriptable by me.
 - [ ] **Harden the tag-review heavy slice** — self-bind slice/count queries
   with `SET STATEMENT max_statement_time` + catch-and-close (poison-cascade
   defense), mirroring `semantic.py`.
-- [ ] **Fix the broken per-page Twitter-card meta** — `{{ self.og_title }}`
-  is a Jinja idiom that no-ops in Django, so every X card shows the generic
-  title (from `docs/POLISH_OPPORTUNITIES.md`). Small.
+- [x] **Fix the broken per-page Twitter-card meta.** ✅ DONE 2026-07-25.
+  `twitter:title`/`description` used the no-op `{{ self.og_title }}` Jinja
+  idiom, so every X card showed "DocketDrift". Fixed by dropping the broken
+  twitter:* tags and relying on the (working) og:* fallback — one source of
+  truth. Also fixed a latent bug: judge cards now use the judge photo
+  (og:image fallback) instead of the generic cover. Verified live on opinion,
+  judge, and apex pages.
 - [ ] **Beta/Flagship labels undersell the 60K MN corpus** (stamped "Beta"
   while smaller NH is "Flagship"). Copy-only. Small.
 - [ ] **State-router middleware lookup cache** — `_resolve_state` hits the DB
