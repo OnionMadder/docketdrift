@@ -1807,15 +1807,15 @@ LLMS_TXT = """\
 
 Three states live as of June 2026:
 
-- **Minnesota** (beta): 60,000+ published opinions from the MN Supreme
+- **Minnesota** (flagship): 60,000+ published opinions from the MN Supreme
   Court and MN Court of Appeals, 1851-present. Full statute citation
   graph (124K cites). Full-text indexed via MariaDB FULLTEXT; semantic
   search via voyage-law-2 embeddings. Tag-suggestion review pipeline
   with 21K candidates.
-- **New Hampshire** (beta): 20,000+ opinions of the NH Supreme Court.
+- **New Hampshire** (live): 20,000+ opinions of the NH Supreme Court.
   Byline-extracted judicial panel graph. Semantic search and
   tag-suggestion pipelines running.
-- **Arizona** (beta): 38,000+ opinions of the AZ Supreme Court and
+- **Arizona** (live): 38,000+ opinions of the AZ Supreme Court and
   Court of Appeals. Byline extraction live for both courts.
 
 New states are added one at a time. See https://docketdrift.com/ for

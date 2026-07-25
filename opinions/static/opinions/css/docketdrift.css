@@ -1520,15 +1520,19 @@ button.cta-primary {
   white-space: nowrap;
 }
 
-.status-pill--beta {
-  color: var(--neon-cyan);
-  border-color: rgba(38, 255, 230, 0.55);
-  background: rgba(38, 255, 230, 0.1);
-  box-shadow: 0 0 10px rgba(38, 255, 230, 0.18);
+/* Live (fully operational) states. Green = "stands / live" from the site's
+   semantic key -- an affirmative status, distinct from the flagship pink.
+   Replaces the old "beta" pill: every live state is 100% embedded with
+   dispositions, holdings, and a citation graph, so "beta" undersold them. */
+.status-pill--live {
+  color: var(--dd-green);
+  border-color: rgba(var(--dd-green-rgb), 0.5);
+  background: rgba(var(--dd-green-rgb), 0.1);
+  box-shadow: 0 0 10px rgba(var(--dd-green-rgb), 0.16);
 }
 
-/* Flagship state (NH -- the proving ground). Magenta/pink so it reads as
-   prestige + distinct from the cyan beta pill. */
+/* Flagship state (Minnesota -- the largest, most complete corpus). Magenta/
+   pink so it reads as prestige + distinct from the green live pill. */
 .status-pill--flagship {
   color: var(--neon-pink);
   border-color: rgba(255, 43, 179, 0.6);
