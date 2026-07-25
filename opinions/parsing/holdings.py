@@ -122,6 +122,85 @@ def _is_restatement(a: str, b: str) -> bool:
     return len(wa & wb) / len(shorter) >= _RESTATEMENT_OVERLAP
 
 
+# --- Stray page-number cleanup ------------------------------------------
+# pypdf drops the page number into the text stream at a page break, so a
+# holding sentence that spans one reads e.g. "determining 2 that intervention"
+# -- a digit the court never wrote, sitting mid-sentence. Removing it makes
+# the quote MORE faithful, but only if we never touch a number the court DID
+# write ("subdivision 6", "Section 19", "51 years"). The verbatim promise
+# means a wrong strip is worse than the noise, so the default is KEEP and we
+# only drop a bare integer when nothing around it looks legitimate.
+
+_ENUM_NOUNS = frozenset("""
+section subsection subdivision subd rule count counts article title class
+paragraph paragraphs para chapter page pages figure exhibit table no number
+law part item items clause division subpart application phase level tier step
+question issue claim claims factor factors element elements juror jurors
+segment segments note notes line lines appendix act amendment footnote count
+""".split())
+
+_MONTHS = frozenset("""january february march april may june july august
+september october november december""".split())
+
+_UNITS = frozenset("""day days month months year years week weeks hour hours
+minute minutes percent dollars foot feet mile miles page pages count counts
+""".split())
+
+_RANGE_WORDS = frozenset("and or to through thru".split())
+_TIME_SUFFIX = frozenset("a.m. p.m. am pm o'clock".split())
+
+_STRIP_PUNCT = ".,;:)('\"“”‘’"
+
+
+def _looks_plural(word: str) -> bool:
+    """Crude plural test used to spare legit counts ("the 5 factors")."""
+    w = word.lower()
+    if w.endswith("'s") or w.endswith("’s"):   # possessive, not plural
+        return False
+    return len(w) > 2 and w.endswith("s")
+
+
+def _strip_page_numbers(sentence: str) -> str:
+    """Drop stray PDF page numbers from a holding sentence, verbatim-safely.
+
+    A bare integer is removed ONLY when it's mid-sentence AND none of the
+    "this number is real" signals hold: the preceding token is Capitalized
+    (a proper noun like "Shaft 10"), or an enumeration noun ("subdivision 6"),
+    or a month; the following token is a measurement unit ("51 years"), a
+    plural noun ("5 factors"), or a range word; or either neighbour is a range
+    word ("15 and 20"). Everything else the court wrote is preserved untouched.
+    """
+    toks = sentence.split()
+    if len(toks) < 3:
+        return sentence
+    out = []
+    for i, tok in enumerate(toks):
+        core = tok.strip(_STRIP_PUNCT)
+        if (core.isdigit() and tok == core and 0 < i < len(toks) - 1):
+            prev = toks[i - 1].strip(_STRIP_PUNCT)
+            nxt = toks[i + 1].strip(_STRIP_PUNCT)
+            # A genuine range has a digit on BOTH sides of the connective
+            # ("1 and 2", "13 or 28") -- otherwise "and"/"or"/"to" is just a
+            # conjunction ("trial and 11 exploring") and mustn't shield a
+            # stray number.
+            after_next = toks[i + 2].strip(_STRIP_PUNCT) if i + 2 < len(toks) else ""
+            before_prev = toks[i - 2].strip(_STRIP_PUNCT) if i - 2 >= 0 else ""
+            keep = (
+                prev[:1].isupper()
+                or prev.lower() in _ENUM_NOUNS
+                or prev.lower() in _MONTHS
+                or nxt.lower() in _UNITS
+                or nxt.lower() in _TIME_SUFFIX
+                or _looks_plural(nxt)
+                or (nxt.lower() in _RANGE_WORDS and after_next.isdigit())
+                or (prev.lower() in _RANGE_WORDS and before_prev.isdigit())
+            )
+            if not keep:
+                continue  # spurious page number -> drop
+        out.append(tok)
+    return " ".join(out)
+
+
 @dataclass(frozen=True)
 class ExtractedHolding:
     """One holding sentence, exactly as the court wrote it."""
@@ -231,6 +310,7 @@ def extract_holdings(
         for m in pattern.finditer(text):
             start, end = _sentence_bounds(text, m.start())
             sentence = text[start:end].strip().lstrip(_ORPHAN_LEAD).strip()
+            sentence = _strip_page_numbers(sentence)
             if not (_MIN_HOLDING_CHARS <= len(sentence) <= _MAX_HOLDING_CHARS):
                 continue
             # An unbalanced opening quote means the boundary landed inside a
