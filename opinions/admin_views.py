@@ -302,3 +302,125 @@ def _get_setting(name: str, default):
     """Read a Django settings value with a safe default."""
     from django.conf import settings
     return getattr(settings, name, default)
+
+
+# ----------------------------------------------------------------------
+# Summarized-holdings review surface -- the same high-throughput HTMX flow
+# as tag review, applied to the LLM-extracted holding summaries. Onion sits
+# down with the AI_ONLY queue, reads each summary against the opinion, edits
+# the text in place if needed, and flips it to human-REVIEWED -- 50/hour, no
+# full-page reloads. NH-only today (only NH opinions have summaries).
+# ----------------------------------------------------------------------
+
+HOLDING_REVIEW_PAGE_SIZE = 20
+
+
+@staff_member_required
+def holding_review(request):
+    """Render the bulk summarized-holding review grid.
+
+    Query params:
+      status=<status>   review state to show (default ai_only)
+      page=N            pagination
+
+    Only opinions that actually have a summary are shown; the newest
+    extractions surface first so a review pass tracks the latest batch.
+    """
+    status = request.GET.get("status", Opinion.ReviewStatus.AI_ONLY)
+    qs = (
+        Opinion.objects
+        .exclude(holding_summary="")
+        .filter(holding_review_status=status)
+        .select_related("court", "court__state")
+        .only(
+            "id", "case_number", "title", "court__id", "court__state__id",
+            "court__state__slug", "court__level", "court__name",
+            "holding_summary", "holding_source_paras", "holding_review_status",
+            "holding_model", "holding_extracted_at", "holding_reviewed_by",
+        )
+        .order_by("-holding_extracted_at", "-id")
+    )
+
+    paginator = Paginator(qs, HOLDING_REVIEW_PAGE_SIZE)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
+
+    # Status header counts. Restricted to rows that have a summary so the
+    # numbers reflect the holdings queue, not the opinion-level review state.
+    status_counts = dict(
+        Opinion.objects
+        .exclude(holding_summary="")
+        .values_list("holding_review_status")
+        .annotate(n=Count("id"))
+        .values_list("holding_review_status", "n")
+    )
+
+    return render(request, "opinions/admin/holding_review.html", {
+        "title": "Summarized holdings review",
+        "page_obj": page_obj,
+        "status_counts": status_counts,
+        "active_status": status,
+    })
+
+
+@staff_member_required
+@require_http_methods(["POST"])
+def holding_review_action(request, opinion_id: int, action: str):
+    """Apply one holding-review decision; return the row-replacement HTML.
+
+    Actions (POSTed via HTMX from the per-row buttons):
+      review   -> mark human-REVIEWED, saving any edits to the summary text
+      flag     -> mark FLAGGED (keep the summary; default extract runs skip it)
+      requeue  -> clear the summary + stamps so the next DEFAULT extract_holdings
+                  run regenerates it; status returns to AI_ONLY
+      ai_only  -> revert to AI_ONLY (un-review), clearing reviewer stamps
+
+    Uses a targeted ``.update()`` (not ``Opinion.save()``) so the parser
+    save-hook never fires for an editorial metadata change.
+    """
+    try:
+        opinion = Opinion.objects.only(
+            "id", "case_number", "holding_summary", "holding_review_status"
+        ).get(pk=opinion_id)
+    except Opinion.DoesNotExist:
+        return HttpResponseNotFound("Opinion not found")
+
+    fields: dict = {}
+    if action == "review":
+        # Persist any edits the reviewer made to the summary textarea.
+        edited = (request.POST.get("summary") or "").strip()
+        if edited:
+            fields["holding_summary"] = edited
+        fields.update(
+            holding_review_status=Opinion.ReviewStatus.REVIEWED,
+            holding_reviewed_by=request.user.username,
+            holding_reviewed_at=timezone.now(),
+        )
+    elif action == "flag":
+        fields["holding_review_status"] = Opinion.ReviewStatus.FLAGGED
+    elif action == "requeue":
+        # Clear the summary so the next default extract_holdings run picks it
+        # up again (its filter is holding_summary='').
+        fields.update(
+            holding_summary="",
+            holding_source_paras=[],
+            holding_review_status=Opinion.ReviewStatus.AI_ONLY,
+            holding_reviewed_by="",
+            holding_reviewed_at=None,
+            holding_extracted_at=None,
+            holding_model="",
+        )
+    elif action == "ai_only":
+        fields.update(
+            holding_review_status=Opinion.ReviewStatus.AI_ONLY,
+            holding_reviewed_by="",
+            holding_reviewed_at=None,
+        )
+    else:
+        return HttpResponseBadRequest("Unknown action")
+
+    Opinion.objects.filter(pk=opinion.pk).update(**fields)
+
+    return render(request, "opinions/admin/_holding_review_row_done.html", {
+        "case_number": opinion.case_number,
+        "action": action,
+    })

@@ -359,6 +359,69 @@ def mark_ai_only(modeladmin, request, queryset):
     modeladmin.message_user(request, f"{n} opinion(s) reverted to Processed.")
 
 
+@admin.action(description="Holdings: mark summary human-reviewed")
+def mark_holding_reviewed(modeladmin, request, queryset):
+    """Bulk-flip the SUMMARIZED HOLDING to REVIEWED (cyan dot), stamping editor.
+
+    Parallel to mark_reviewed but for the independent holding_review_status.
+    Only touches rows that actually have a summary -- flipping the status on a
+    row with no holding would be meaningless. Uses .update() to skip the
+    parser save-hook (editorial metadata only).
+    """
+    from django.utils import timezone
+    n = (
+        queryset.exclude(holding_summary="")
+        .update(
+            holding_review_status=Opinion.ReviewStatus.REVIEWED,
+            holding_reviewed_by=request.user.username,
+            holding_reviewed_at=timezone.now(),
+        )
+    )
+    modeladmin.message_user(request, f"{n} holding summary(ies) marked human-reviewed.")
+
+
+@admin.action(description="Holdings: flag summary for review")
+def flag_holding(modeladmin, request, queryset):
+    n = queryset.exclude(holding_summary="").update(
+        holding_review_status=Opinion.ReviewStatus.FLAGGED
+    )
+    modeladmin.message_user(request, f"{n} holding summary(ies) flagged.")
+
+
+@admin.action(description="Holdings: re-queue for extraction (clears summary)")
+def requeue_holding_extraction(modeladmin, request, queryset):
+    """Clear the summary so the next default extract_holdings run regenerates it.
+
+    The extractor's default filter is holding_summary='' -- blanking the
+    summary (and its stamps) is what puts a row back in the queue. Use after a
+    prompt change when you want specific opinions redone without --force over
+    the whole corpus.
+    """
+    n = queryset.update(
+        holding_summary="",
+        holding_source_paras=[],
+        holding_review_status=Opinion.ReviewStatus.AI_ONLY,
+        holding_reviewed_by="",
+        holding_reviewed_at=None,
+        holding_extracted_at=None,
+        holding_model="",
+    )
+    modeladmin.message_user(
+        request,
+        f"{n} holding(s) cleared and re-queued for extraction.",
+    )
+
+
+@admin.action(description="Holdings: revert summary to Processed (un-review)")
+def revert_holding_ai_only(modeladmin, request, queryset):
+    n = queryset.exclude(holding_summary="").update(
+        holding_review_status=Opinion.ReviewStatus.AI_ONLY,
+        holding_reviewed_by="",
+        holding_reviewed_at=None,
+    )
+    modeladmin.message_user(request, f"{n} holding summary(ies) reverted to Processed.")
+
+
 @admin.action(description="Re-run parser on selected (fill missing disposition + bucket)")
 def rerun_parser(modeladmin, request, queryset):
     """Run the state parser on selected opinions to fill missing
@@ -487,6 +550,7 @@ class OpinionAdmin(admin.ModelAdmin):
     )
     list_filter = (
         "review_status",
+        "holding_review_status",
         "court__state",
         "court",
         SuspiciousDateFilter,
@@ -497,7 +561,7 @@ class OpinionAdmin(admin.ModelAdmin):
     )
     search_fields = ("case_number", "title", "courtlistener_id", "disposition")
     date_hierarchy = "release_date"
-    readonly_fields = ("reviewed_at",)
+    readonly_fields = ("reviewed_at", "holding_reviewed_at", "holding_extracted_at")
     filter_horizontal = ("tags",)
     inlines = [
         PanelVoteInline,
@@ -505,7 +569,12 @@ class OpinionAdmin(admin.ModelAdmin):
         OpinionHoldingInline,
         ParseLogInline,
     ]
-    actions = [mark_reviewed, mark_flagged, mark_ai_only, rerun_parser, flag_pre_1849]
+    actions = [
+        mark_reviewed, mark_flagged, mark_ai_only,
+        mark_holding_reviewed, flag_holding, requeue_holding_extraction,
+        revert_holding_ai_only,
+        rerun_parser, flag_pre_1849,
+    ]
     # 60K opinions in the corpus -- without these, the changelist tries
     # to count + render too much per request.
     list_per_page = 50
@@ -621,6 +690,23 @@ class OpinionAdmin(admin.ModelAdmin):
                 "Tags are the controlled-vocabulary editorial layer -- add via the "
                 "Tag changelist; apply via the multi-select widget below."
             ),
+        }),
+        ("Summarized holding (LLM)", {
+            "fields": (
+                "holding_summary", "holding_source_paras",
+                "holding_review_status", "holding_reviewed_by",
+                "holding_reviewed_at", "holding_extracted_at", "holding_model",
+            ),
+            "description": (
+                "The opinion's machine-summarized holding (extract_holdings). "
+                "holding_summary is editable -- fix it here and set "
+                "holding_review_status to Human-reviewed to publish a curated "
+                "summary (auto-stamps holding_reviewed_at on save). For "
+                "high-throughput passes use the holdings-review surface at "
+                "/admin/opinions/holding-review/. Independent of the "
+                "opinion-level review status above."
+            ),
+            "classes": ("collapse",),
         }),
     )
 
