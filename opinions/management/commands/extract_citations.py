@@ -96,6 +96,7 @@ class Command(BaseCommand):
                                     cited_reference=c.reporter_cite,
                                     treatment=classify_treatment(c.context),
                                     context=c.context[:500],
+                                    context_quote=c.quote[:500],
                                     text_offset=c.text_offset,
                                 ))
                                 if target:

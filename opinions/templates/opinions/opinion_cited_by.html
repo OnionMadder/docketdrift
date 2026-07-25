@@ -1,0 +1,63 @@
+{% extends "opinions/base.html" %}
+{% block title %}Citing documents &middot; {{ opinion.title|truncatechars:60 }} &middot; DocketDrift{% endblock %}
+{% block description %}Every appellate opinion in the DocketDrift {% if request.state %}{{ request.state.name }} {% endif %}corpus that cites {{ opinion.title|truncatechars:80 }}{% if opinion.reporter_cite %} ({{ opinion.reporter_cite }}){% endif %} &mdash; ranked by recency.{% endblock %}
+
+{% block content %}
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+  <ol>
+    <li><a href="https://docketdrift.com/">DocketDrift</a></li>
+    {% if request.state %}<li><a href="{% url 'opinions:home' %}">{{ request.state.name }}</a></li>{% endif %}
+    <li><a href="{% url 'opinions:detail' case_number=opinion.case_number %}">{{ opinion.title|truncatechars:48 }}</a></li>
+    <li aria-current="page">Citing documents</li>
+  </ol>
+</nav>
+
+<div class="glossy-frame">
+  <h1>Cited by</h1>
+  <p class="subtle-lead">
+    Opinions{% if request.state %} in {{ request.state.name }}{% endif %} that cite
+    <a href="{% url 'opinions:detail' case_number=opinion.case_number %}">{{ opinion.title|truncatechars:90 }}</a>{% if opinion.reporter_cite %}, <span class="cite-ref">{{ opinion.reporter_cite }}</span>{% endif %}.
+  </p>
+  <p class="opinion-meta"><strong>{{ total_count }}</strong> citing document{{ total_count|pluralize }}.</p>
+</div>
+
+{% if edges %}
+  <div class="glossy-frame citation-graph">
+    <ul class="cite-list cite-list--full">
+      {% for e in edges %}
+        <li>
+          {% if e.treatment != "CITED" %}<span class="treatment-badge treatment-{{ e.treatment|lower }}">{{ e.get_treatment_display }}</span>{% endif %}
+          <a href="{% url 'opinions:detail' case_number=e.citing_opinion.case_number %}">{{ e.citing_opinion.title|truncatewords:18 }}</a>
+          {% if e.citing_opinion.reporter_cite %}<span class="cite-ref">{{ e.citing_opinion.reporter_cite }}</span>{% endif %}
+          <span class="cite-date">{{ e.citing_opinion.court.short_label }}{% if e.citing_opinion.release_date %} {{ e.citing_opinion.release_date|date:"Y" }}{% endif %}</span>
+          {% if e.context_quote %}<blockquote class="cite-quote">{{ e.context_quote }}</blockquote>{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+
+    {% if page_obj.has_other_pages %}
+      <nav class="pagination" aria-label="Citing-documents pagination">
+        <div class="pagination-prev">
+          {% if page_obj.has_previous %}
+            <a href="?page=1" aria-label="First page">&laquo; First</a>
+            <a href="?page={{ page_obj.previous_page_number }}" rel="prev">&lsaquo; Prev</a>
+          {% endif %}
+        </div>
+        <div class="pagination-state">
+          <span class="pagination-current">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+        </div>
+        <div class="pagination-next">
+          {% if page_obj.has_next %}
+            <a href="?page={{ page_obj.next_page_number }}" rel="next">Next &rsaquo;</a>
+            <a href="?page={{ page_obj.paginator.num_pages }}" aria-label="Last page">Last &raquo;</a>
+          {% endif %}
+        </div>
+      </nav>
+    {% endif %}
+  </div>
+{% else %}
+  <div class="glossy-frame">
+    <p class="glitch-line">Nothing in our corpus cites this opinion yet.</p>
+  </div>
+{% endif %}
+{% endblock %}
