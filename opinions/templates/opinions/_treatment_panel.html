@@ -1,33 +1,65 @@
 {% comment %}
-Citation-graph panel (Phase 14): how later opinions have treated this one
-(KeyCite / Shepard's style) and what authorities it cites. Rendered on
-opinion_detail only when there's graph data. Context: cited_by, cites,
-treatment_summary -- all set by the opinion_detail view.
+Citation-graph panel (Phase 14 + 16b). Two-column "How this document has been
+cited" (left: clustered citing passages, Google-Scholar style) + "Cited by"
+(right: the distinct citing opinions), then "Authorities cited" below.
+Rendered on opinion_detail only when there's graph data. Context:
+cited_how, cited_by, cited_by_total, cites, treatment_summary -- all set by the
+opinion_detail view. NH-only in practice (only NH has a reporter-cite graph).
 {% endcomment %}
-{% if cited_by or cites %}
+{% if cited_how or cited_by or cites %}
 <div class="glossy-frame citation-graph">
-  {% if cited_by %}
-    <h2>Citing references</h2>
-    <p class="subtle-lead">
-      Cited by <strong>{{ cited_by|length }}</strong> later opinion{{ cited_by|length|pluralize }} in our corpus.
-      {% for label, n in treatment_summary %}
-        <span class="treatment-badge treatment-{{ label|lower }}">{{ label }} in {{ n }}</span>
-      {% endfor %}
-    </p>
-    <ul class="cite-list">
-      {% for e in cited_by %}
-        <li>
-          {% if e.treatment != "CITED" %}<span class="treatment-badge treatment-{{ e.treatment|lower }}">{{ e.get_treatment_display }}</span>{% endif %}
-          <a href="{% url 'opinions:detail' case_number=e.citing_opinion.case_number %}">{{ e.citing_opinion.title|truncatewords:16 }}</a>
-          {% if e.citing_opinion.reporter_cite %}<span class="cite-ref">{{ e.citing_opinion.reporter_cite }}</span>{% endif %}
-          {% if e.citing_opinion.release_date %}<span class="cite-date">{{ e.citing_opinion.release_date|date:"Y" }}</span>{% endif %}
-        </li>
-      {% endfor %}
-    </ul>
+  {% if cited_how or cited_by %}
+  <div class="cite-columns">
+
+    {% if cited_how %}
+    <section class="cite-how">
+      <h2>How this document has been cited</h2>
+      <ul class="cite-quote-list">
+        {% for e in cited_how %}
+          <li>
+            <blockquote class="cite-quote">{{ e.context_quote }}</blockquote>
+            <p class="cite-quote-src">
+              {% if e.treatment != "CITED" %}<span class="treatment-badge treatment-{{ e.treatment|lower }}">{{ e.get_treatment_display }}</span>{% endif %}
+              &mdash; in <a href="{% url 'opinions:detail' case_number=e.citing_opinion.case_number %}">{{ e.citing_opinion.title|truncatewords:8 }}</a>{% if e.citing_opinion.release_date %}, {{ e.citing_opinion.release_date|date:"Y" }}{% endif %}{% if e.similar_count %} and {{ e.similar_count }} similar citation{{ e.similar_count|pluralize }}{% endif %}
+            </p>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
+    {% if cited_by %}
+    <section class="cite-by">
+      <h2>Cited by</h2>
+      {% if treatment_summary %}
+        <p class="subtle-lead">
+          {% for label, n in treatment_summary %}
+            <span class="treatment-badge treatment-{{ label|lower }}">{{ label }} in {{ n }}</span>
+          {% endfor %}
+        </p>
+      {% endif %}
+      <ul class="cite-list">
+        {% for e in cited_by %}
+          <li>
+            <a href="{% url 'opinions:detail' case_number=e.citing_opinion.case_number %}">{{ e.citing_opinion.title|truncatewords:14 }}</a>
+            {% if e.citing_opinion.reporter_cite %}<span class="cite-ref">{{ e.citing_opinion.reporter_cite }}</span>{% endif %}
+            <span class="cite-date">{{ e.citing_opinion.court.short_label }}{% if e.citing_opinion.release_date %} {{ e.citing_opinion.release_date|date:"Y" }}{% endif %}</span>
+          </li>
+        {% endfor %}
+      </ul>
+      {% if cited_by_total > cited_by|length %}
+        <p class="cite-all-link">
+          <a href="{% url 'opinions:opinion_cited_by' case_number=opinion.case_number %}">all {{ cited_by_total }} citing documents &raquo;</a>
+        </p>
+      {% endif %}
+    </section>
+    {% endif %}
+
+  </div>
   {% endif %}
 
   {% if cites %}
-    <h2{% if cited_by %} class="cite-block-sep"{% endif %}>Authorities cited</h2>
+    <h2{% if cited_how or cited_by %} class="cite-block-sep"{% endif %}>Authorities cited</h2>
     <p class="subtle-lead">Identified automatically; this list may not be exhaustive.</p>
     <ul class="cite-list">
       {% for e in cites %}

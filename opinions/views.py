@@ -869,20 +869,53 @@ def opinion_detail(request, case_number):
             )
         similar_opinions.sort(key=lambda op: ordering.get(op.pk, 999))
 
-    # Citation graph (Phase 14): who cites this opinion (grouped by treatment)
-    # and what it cites. FK-indexed lookups; opinion_detail is CDN-cached.
-    from collections import Counter
-    cited_by = list(
-        opinion.citations_received
+    # Citation graph (Phase 14 + 16b): how this opinion has been cited, and
+    # what it cites. FK-indexed lookups; opinion_detail is CDN-cached.
+    #   - cited_how: the clustered citing PASSAGES (Google-Scholar-style "How
+    #     this document has been cited") -- one representative quote per
+    #     cluster of near-identical passages, with a "+N similar" count.
+    #     NH-only in practice (only NH carries a reporter-cite graph).
+    #   - cited_by: the distinct citing OPINIONS (right-column "Cited by"),
+    #     capped with a total for the "all N citing documents" link.
+    from django.db.models import Count
+    CITED_HOW_CAP = 10   # representative passages shown on the left
+    CITED_BY_CAP = 12    # citing documents shown before the "all N" link
+    received = opinion.citations_received
+
+    # .order_by() strips OpinionCitation's Meta.ordering so it can't bleed
+    # into the GROUP BY (the StatuteCitation .distinct()/aggregate gotcha).
+    cluster_sizes = {
+        r["cluster_label"]: r["n"]
+        for r in received.values("cluster_label").annotate(n=Count("id")).order_by()
+    }
+    cited_how = list(
+        received.filter(is_cluster_lead=True)
+        .exclude(context_quote="")
         .select_related("citing_opinion", "citing_opinion__court")
-        .order_by("-citing_opinion__release_date")
+    )
+    for e in cited_how:
+        e.similar_count = max(0, cluster_sizes.get(e.cluster_label, 1) - 1)
+    cited_how.sort(key=lambda e: (
+        -cluster_sizes.get(e.cluster_label, 1),
+        -(e.citing_opinion.release_date.toordinal()
+          if e.citing_opinion and e.citing_opinion.release_date else 0),
+    ))
+    cited_how = cited_how[:CITED_HOW_CAP]
+
+    cited_by_total = received.count()
+    cited_by = list(
+        received.select_related("citing_opinion", "citing_opinion__court")
+        .order_by("-citing_opinion__release_date")[:CITED_BY_CAP]
     )
     cites = list(
         opinion.citations_made
         .select_related("cited_opinion", "cited_opinion__court")
         .order_by("text_offset")
     )
-    _counts = Counter(e.treatment for e in cited_by)
+    _counts = {
+        r["treatment"]: r["n"]
+        for r in received.values("treatment").annotate(n=Count("id")).order_by()
+    }
     _labels = [("OVERRULED", "Overruled"), ("DISTINGUISHED", "Distinguished"),
                ("CRITICIZED", "Criticized"), ("FOLLOWED", "Followed"),
                ("EXPLAINED", "Explained")]
@@ -894,7 +927,9 @@ def opinion_detail(request, case_number):
         # Other decisions filed under this same docket number (e.g. the Court
         # of Appeals opinion when we're showing the Supreme Court's).
         "siblings": siblings,
+        "cited_how": cited_how,
         "cited_by": cited_by,
+        "cited_by_total": cited_by_total,
         "cites": cites,
         "treatment_summary": treatment_summary,
         # Pass the search query explicitly. Templates resolving
@@ -905,6 +940,39 @@ def opinion_detail(request, case_number):
         # Using ``.get("q", "")`` from the view side gives templates
         # a plain string they can default + truthiness-test cleanly.
         "search_q": request.GET.get("q", ""),
+        "active_nav": "opinions",
+    })
+
+
+@cache_control(public=True, max_age=CACHE_SEC_DETAIL)
+def opinion_cited_by(request, case_number):
+    """Full, paginated list of every opinion in our corpus that cites this one
+    -- the target of the "all N citing documents" link on opinion_detail.
+
+    State-scoped like opinion_detail. Most useful on NH (the only state with a
+    reporter-cite graph today); renders an empty list elsewhere.
+    """
+    state = getattr(request, "state", None)
+    oqs = Opinion.objects.select_related("court", "court__state")
+    if state is not None:
+        oqs = oqs.filter(court__state=state)
+    try:
+        opinion = oqs.get(case_number=case_number)
+    except Opinion.DoesNotExist:
+        raise Http404("Opinion not found")
+
+    citing = (
+        opinion.citations_received
+        .select_related("citing_opinion", "citing_opinion__court")
+        .order_by("-citing_opinion__release_date")
+    )
+    paginator = Paginator(citing, HOME_PAGE_SIZE)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
+    return render(request, "opinions/opinion_cited_by.html", {
+        "opinion": opinion,
+        "page_obj": page_obj,
+        "edges": page_obj.object_list,
+        "total_count": paginator.count,
         "active_nav": "opinions",
     })
 
