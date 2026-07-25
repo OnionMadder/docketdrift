@@ -35,3 +35,6 @@ db.sqlite3-journal
 # OS
 Thumbs.db
 .DS_Store
+
+# Research materials (not DocketDrift code)
+research/
