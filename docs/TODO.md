@@ -57,14 +57,36 @@ The working tree is now clean and main is in sync with origin. What happened:
 
 ## Tier 2 — automation (turn finished work autonomous)
 
-All member-panel / logged-on — Onion registers, not scriptable by me.
+All member-panel / logged-on — Onion registers, not scriptable by me. Both
+scripts verified present + working on prod 2026-07-25 (freshness_check ran
+clean, exit 0). NFSN emails a scheduled task's stdout/stderr to the account.
 
-- [ ] **Register `run_mn_weekly.ps1`** as a logged-on Windows Task Scheduler
-  entry (mirror the NH task). Makes MN COA forward-fill autonomous.
-- [ ] **Register NFSN `ai-citations`** scheduled task (weekly AI-usage digest
-  email): `/bin/sh /home/private/docketdrift/scripts/ai_citations.sh 7`.
-- [ ] **Register NFSN `freshness-check`** scheduled task (weekly staleness
-  monitor): `/home/private/docketdrift/scripts/freshness_check.sh`.
+### NFSN scheduled tasks — Manage Site → Scheduled Tasks → Add
+
+Copy-paste fields (Tag / Command / Schedule):
+
+- [ ] **`ai-citations`** — weekly "who's citing us" digest (emails stdout).
+  - Tag: `ai-citations`
+  - Command: `/bin/sh /home/private/docketdrift/scripts/ai_citations.sh 7`
+  - Schedule: weekly (e.g. Monday ~08:00)
+  - Shows which opinions live AI agents (chatgpt-user / claude-user /
+    perplexity-user) fetched to answer a question, vs. training crawlers.
+
+- [ ] **`freshness-check`** — weekly staleness alarm (emails only on failure).
+  - Tag: `freshness-check`
+  - Command: `/bin/sh /home/private/docketdrift/scripts/freshness_check.sh`
+  - Schedule: weekly, **after** the Monday ingests land (e.g. Tuesday 12:00 UTC)
+  - Exits non-zero + emails a loud alert only when a state's newest opinion
+    crosses its threshold (MN/AZ 45d, NH 60d); silent on a healthy week.
+
+Already registered + running (nothing to do): `embed-tick` (~10 min),
+`heartbeat` (~10 min), `cron-ingest` (weekly CL ingest).
+
+### Windows Task Scheduler (residential box, NOT NFSN)
+
+- [ ] **`run_mn_weekly.ps1`** — logged-on Windows Task Scheduler entry mirroring
+  the NH task (`scripts\mn_scraper\run_mn_weekly.ps1`, run-only-when-logged-on).
+  Makes MN COA forward-fill autonomous.
 
 ## Tier 3 — coverage (bigger builds)
 
