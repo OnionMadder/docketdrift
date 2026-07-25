@@ -4,7 +4,21 @@ Survival kit for any Claude session working on this repo. Read once,
 re-read whenever a recurring gotcha bites. The goal of this document is
 to make the next session productive within the first 5 minutes.
 
-## Latest session (2026-07-19) — START HERE
+## Working tree cleaned 2026-07-24 — READ THIS FIRST
+
+The tree is **clean**; main == origin/main. The long-standing parked work is
+no longer in the working tree — it moved to branch
+**`parked/holdings-admin-and-citation-clustering`** (pushed), two commits:
+(1) citation clustering, (2) LLM holdings admin + `extract_holdings`. So any
+older note below about "uncommitted parked work in the working tree", the
+`about.html`/`how_we_differ.html` landmine, or "isolation discipline" for
+those files is **historical** — those files are back at HEAD and the docs
+landmine was reverted (extractive holdings = "no generated text", the strong
+original posture, is correct). Current backlog lives in `docs/TODO.md`.
+Migrations 0026 (holdings) + 0027 (clustering) are on main and applied on
+prod; only the clustering FEATURE code is parked (columns sit empty).
+
+## Latest session (2026-07-19)
 
 **Headline: the NH disposition gap is closed — 0.2% → 78.5%** (46 → 16,255 of
 20,720). It was two problems stacked, and the second one was a data-integrity

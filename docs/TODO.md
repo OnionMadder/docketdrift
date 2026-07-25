@@ -9,27 +9,33 @@ Dispositions MN 97.6% / NH 78.5% / AZ 67.7%. Holdings 39,402. Panel votes
 
 ---
 
-## Tier 0 — clean up the working tree (it's a landmine)
+## Tier 0 — clean up the working tree ✅ DONE 2026-07-24
 
-The repo has carried the same uncommitted pile all session. Two parked
-features are entangled across shared files, and one parked change is unsafe
-to ship. Decide each, then the tree is clean.
+The working tree is now clean and main is in sync with origin. What happened:
 
-- [ ] **Do NOT ship `about.html` / `how_we_differ.html` as-is.** The parked
-  rewrites assert an LLM-generated holdings surface in indexed schema.org
-  JSON-LD — false now that holdings are *extractive*. Either rewrite them for
-  the extractive method or revert. **Highest-risk item on the board.**
-- [ ] **Decide citation clustering (migration 0027).** "How this document has
-  been cited" (Scholar-style). Migration is committed; the pipeline
-  (`cluster_citations`, `embed_citations`), `opinion_cited_by.html`, and the
-  `views.py`/`citations*.py`/`_treatment_panel.html` edits are uncommitted and
-  unrun. Ship it NH-first (cheap Voyage pass) or formally park it. Medium.
-- [ ] **Delete stale files.** `session-brief.md` (superseded by CLAUDE.md +
-  ROADMAP). The old LLM `extract_holdings.py` command + `holding_review*`
-  admin templates — kept only if we ever run an LLM residual pass; otherwise
-  cut. Small.
-- [ ] **Retarget the holdings panel link** — it points at a generic "how we
-  work" page. Repoint once `/how-we-differ/` documents the extractive method.
+- [x] **Landmine neutralized.** Reverted `about.html`, `how_we_differ.html`,
+  `apex.html` to HEAD. The parked rewrites asserted an LLM "summarized
+  holdings" surface (naming Claude Haiku) in indexed schema.org JSON-LD —
+  false for *extractive* holdings. The original "we do not generate text"
+  posture is accurate and stronger, so revert was the fix, not a rewrite.
+- [x] **Both parked features moved to a branch:**
+  `parked/holdings-admin-and-citation-clustering` (pushed). Two commits:
+  citation clustering ("How this document has been cited") and the LLM
+  holdings admin + `extract_holdings` command. Recoverable per-file via
+  cherry-pick. Nothing was deleted.
+- [x] **Stale file deleted:** `session-brief.md`.
+- [x] **Holdings panel link checked — NOT broken.** It targets the
+  `how_we_differ` page generically (no fragment), by design. See below.
+
+### Follow-ups this surfaced (not Tier 0)
+
+- [ ] **Ship or drop citation clustering.** It's parked on the branch above.
+  To ship: confirm 0027 columns on prod (they are), run
+  `extract_citations`→`embed_citations`→`cluster_citations` (small Voyage
+  cost), wire + validate `opinion_cited_by` NH-first. Medium.
+- [ ] **Give `/how-we-differ/` an extractive-holdings section**, then repoint
+  the holdings panel link at it. Content task — the link is correctly generic
+  until then, so this is polish, not a fix.
 
 ## Tier 1 — editorial polish (the honest asterisks on the dashboard)
 
