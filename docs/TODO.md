@@ -71,9 +71,20 @@ All member-panel / logged-on — Onion registers, not scriptable by me.
 - [ ] **MN COA deep backfill** for the thin years (2017–2023). Attended sweep
   with the new scraper — walk the pager in bounded windows, solving the
   occasional CAPTCHA. Forward-fill is already done. Medium, attended.
-- [ ] **Finish the CL `/clusters/` catch-up ingest.** Only 12 MN COA clusters
-  were pulled as a smoke test after the `/search/`→`/clusters/` fix. Work back
-  through MN/AZ/NH in bounded runs (`--since` + `--limit`), watching for 429s.
+- [~] **CL catch-up ingest — reframed 2026-07-25.** A bounded probe showed
+  recent coverage is ALREADY largely current: an AZ COA run over the last ~7
+  weeks was created=4 / updated=36 (~90% already present), because the weekly
+  cron now lists from `/clusters/`. So there is no big RECENT gap to chase.
+  The probe also confirmed the rate-limit trap is real and easy to trigger:
+  ~14s per cluster on ingest, and a burst of cheap count queries put CL into a
+  heavy backoff (a single count query then took >7 min). Because the API token
+  is shared with the weekly cron, hammering it can stall the automated ingest.
+  **Conclusion:** don't do a large historical backfill through the REST API.
+  The rate-limit-free path is CL's BULK exports offline (`load_cl_bulk` /
+  `scripts/cl_bulk_filter.py`) — the same zero-API approach that built the
+  reporter cites + 605K-edge citation graph. Reserve `ingest_court` for the
+  incremental cron. If a specific historical window is known-thin, a *small*
+  `--limit` run with long spacing is fine; blind wide sweeps are not.
 - [ ] **Repair the 14,440 synthetic `CL-<id>` case numbers.** They're
   unreachable by the only identifier a lawyer has (the real docket). Needs a
   deliberate in-place rewrite pass (`update_or_create` would duplicate). Medium.
