@@ -116,6 +116,29 @@ class CrawlerBlockMiddleware:
         return self.get_response(request)
 
 
+# Subdomain -> State resolution runs on EVERY request, but the State table
+# changes only on a deploy (bringing a state online), so the DB lookup is pure
+# per-request overhead. Cache it for the worker's lifetime, keyed on the
+# normalized 2-letter code. Misses (None) are cached too, so unknown
+# subdomains and bot noise don't re-hit the DB each time -- the key space is
+# bounded (the candidate is already validated to two alpha chars, so <=676
+# possible miss keys plus the live states). The cache is process-local and a
+# State change already requires a gunicorn restart, which clears it. Cached
+# instances are only ever READ downstream (request.state.code/name/...), never
+# mutated, so sharing one across gunicorn's threads is safe without a lock.
+_STATE_BY_CODE: "dict[str, object | None]" = {}
+
+
+def _state_for_code(code: str):
+    """DB-backed State lookup by code, memoized for the worker's lifetime."""
+    if code not in _STATE_BY_CODE:
+        try:
+            _STATE_BY_CODE[code] = State.objects.get(code=code)
+        except State.DoesNotExist:
+            _STATE_BY_CODE[code] = None
+    return _STATE_BY_CODE[code]
+
+
 def _resolve_state(host: str | None):
     """Return a State instance (or None) for an incoming host."""
     if not host:
@@ -133,10 +156,7 @@ def _resolve_state(host: str | None):
     candidate = parts[0].upper()
     if len(candidate) != 2 or not candidate.isalpha():
         return None
-    try:
-        return State.objects.get(code=candidate)
-    except State.DoesNotExist:
-        return None
+    return _state_for_code(candidate)
 
 
 class StateRouterMiddleware:
