@@ -29,10 +29,30 @@ The working tree is now clean and main is in sync with origin. What happened:
 
 ### Follow-ups this surfaced (not Tier 0)
 
-- [ ] **Ship or drop citation clustering.** It's parked on the branch above.
-  To ship: confirm 0027 columns on prod (they are), run
-  `extract_citations`→`embed_citations`→`cluster_citations` (small Voyage
-  cost), wire + validate `opinion_cited_by` NH-first. Medium.
+- [x] **Citation clustering — SHIPPED NH-first 2026-07-25** ("How this document
+  has been cited", verbatim citing passages, Scholar-style collapse). Verified
+  rendering on State v. Rouleau. **Caveat / real bottleneck:** it has data on
+  only ~41 NH opinions, because the OpinionCitation graph resolves only the
+  neutral-cite era (2024+) — older cross-cites use "141 N.H. 271" / A.2d
+  formats that don't match a reporter_cite. So the panel is correct but rare.
+  The high-value follow-up isn't the panel, it's **improving citation
+  resolution** (match N.H.-Reports + A.2d cite formats), which would light up
+  BOTH this panel and the already-live cited-by graph.
+- [~] **Holdings review admin — salvaged + de-LLM'd, then REVERTED 2026-07-25.**
+  Brought the review surface onto main (dropped the LLM `extract_holdings`
+  command; reframed all copy from "summarized/Haiku" to verbatim extraction).
+  But validation caught two latent bugs (the parked code had never run): a bad
+  `.only("court__state__id")` (State's PK is `code`) and — the blocker — the
+  `exclude(holding_summary="")` + `order_by(-holding_extracted_at)` queries
+  scan the whole 119K corpus (39K holdings, no supporting index) past the 25s
+  cap, risking a pooled-connection poison. **To ship it needs an index
+  migration on the 2.75GB opinions_opinion table** (e.g. index
+  `holding_extracted_at`, filter on `isnull=False`) — a deliberate big-table
+  migration, so it's reverted to safe for now. The de-LLM'd salvage is
+  recoverable from the reverted commits (7498db0 + 324f9c5). Low urgency:
+  verbatim holdings barely need review (no hallucination to catch).
+- **`extract_holdings` LLM command: dropped** — not on main (lives only on the
+  parked branch as history). The product stays extractive, ML in two places.
 - [ ] **Give `/how-we-differ/` an extractive-holdings section**, then repoint
   the holdings panel link at it. Content task — the link is correctly generic
   until then, so this is polish, not a fix.
