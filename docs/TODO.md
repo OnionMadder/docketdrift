@@ -9,9 +9,9 @@ Dispositions MN 97.6% / NH 78.5% / AZ 67.7%. Holdings 39,402. Panel votes
 
 ---
 
-## ★ Discoverability — why MN/AZ get ~zero AI traffic (found 2026-07-25)
+## ★ Discoverability — MN/AZ AI-grounding fix (SHIPPED 2026-07-25, now monitoring)
 
-**Root cause of the MN=0% AI-grounding puzzle: MN is not in the search index.**
+**Root cause of the MN=0% AI-grounding puzzle: MN wasn't in the search index.**
 Live AI agents ground by web-search-then-fetch, so they can only reach pages
 Google/Bing have indexed. Access-log cross-tab (opinion fetches):
 
@@ -22,24 +22,33 @@ Google/Bing have indexed. Access-log cross-tab (opinion fetches):
 | **Search engines** | **1** | **1,421** | 65 |
 | Humans | 24,307 | 430 | 4,630 |
 
-MN is crawled the most by training bots + humans, but **Google has crawled it
-once.** The site is technically perfect for MN (200s to Googlebot, robots
-allows, sitemap advertised + well-formed with 25K real URLs, homepage 200 no
-redirect) — so it's a **discovery gap, not a bug**.
+MN is crawled the most by training bots + humans, but Google had crawled it
+**once**. The site is technically perfect (200s to Googlebot, robots allows,
+sitemap advertised + well-formed) — a **discovery gap, not a bug**. NB: it
+turned out **NONE** of the docketdrift domains were in Search Console — NH's
+1,421 crawls were purely ORGANIC discovery; MN/AZ just never got that luck.
 
-- [ ] **★ OWNER ACTION (~15 min, highest ROI on the board):** In **Google
-  Search Console**, add + verify `mn.docketdrift.com` and `az.docketdrift.com`
-  as properties and **submit each one's sitemap** (`https://<host>/sitemap.xml`).
-  NH was evidently submitted (1,421 crawls); MN/AZ weren't. Same in **Bing
-  Webmaster Tools**. If MN is already a property, open its Pages/Coverage
-  report for the "Discovered – not indexed" reason. This is the lever that
-  should unlock MN AI-grounding (index → search → AI fetch, the pipeline NH
-  already wins on).
-- [x] **AZ sitemap URLs were uncrawlable — FIXED 2026-07-25.** ~20K AZ COA
-  docket numbers carry spaces ("1 CA-CV 25-0606 PB"); the sitemap emitted them
-  raw (invalid URLs). Now percent-encoded, and canonical/og:url match. Also
-  made robots.txt advertise only the host's own sitemap. A real server-side
-  blocker on the AZ side, now cleared.
+**Both halves of the fix are now DONE:**
+
+- [x] **Server side — AZ sitemap was uncrawlable. FIXED.** ~20K AZ COA docket
+  numbers carry spaces ("1 CA-CV 25-0606 PB"); the sitemap emitted them raw
+  (invalid URLs). Now percent-encoded; canonical + og:url match; robots.txt
+  advertises only the host's own sitemap. Verified: every sitemap URL (incl.
+  the %20-encoded COA ones) resolves 200.
+- [x] **Owner side — Search Console. DONE 2026-07-25.** Added `docketdrift.com`
+  as a **Domain property** (one DNS TXT record at NFSN covers apex + all
+  subdomains + future states), verified, and submitted the mn/nh/az sitemaps.
+
+**Now monitoring (nothing to build — this is a wait):**
+
+- [ ] **~days:** grep the access log for Googlebot hitting mn/az opinion pages
+  (first crawl = submission took). Also watch Search Console Pages report move
+  URLs "Discovered" → "Indexed".
+- [ ] **~weeks:** re-run `ai_citation_profile`. MN/AZ appearing = the whole
+  thread (reporter cites + sitemap fix + Search Console) paid off. Baseline to
+  beat: NH 96% / AZ 4% / MN 0%.
+- [ ] Optional: same submission in **Bing Webmaster Tools** for Bing/Copilot
+  coverage.
 
 ---
 
