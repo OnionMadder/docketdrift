@@ -41,12 +41,12 @@ og:type defaults to 'website'; opinion + judge detail templates flip it
 to 'article'/'profile' accordingly. og:image defaults to the apple-touch
 favicon -- a brand image swap is a v1.1 task.
 {% endcomment %}
-<link rel="canonical" href="{% block canonical_url %}https://{{ request.get_host }}{{ request.path }}{% endblock %}">
+<link rel="canonical" href="{% block canonical_url %}https://{{ request.get_host }}{{ request.path|urlencode }}{% endblock %}">
 <meta property="og:site_name" content="DocketDrift">
 <meta property="og:title" content="{% block og_title %}DocketDrift{% endblock %}">
 <meta property="og:description" content="{% block og_description %}Real opinions from state appellate courts, organized for human review.{% endblock %}">
 <meta property="og:type" content="{% block og_type %}website{% endblock %}">
-<meta property="og:url" content="https://{{ request.get_host }}{{ request.path }}">
+<meta property="og:url" content="https://{{ request.get_host }}{{ request.path|urlencode }}">
 {% comment %}
 X / Twitter, LinkedIn, Slack, Facebook all fall back to the og:* tags when
 a platform-specific tag is absent -- twitter:title -> og:title,

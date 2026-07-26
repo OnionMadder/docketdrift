@@ -1790,10 +1790,6 @@ Disallow: /
 User-agent: *
 Crawl-delay: 5
 Disallow: /admin/
-
-Sitemap: https://mn.docketdrift.com/sitemap.xml
-Sitemap: https://nh.docketdrift.com/sitemap.xml
-Sitemap: https://az.docketdrift.com/sitemap.xml
 """
 
 
@@ -1843,14 +1839,15 @@ def robots_txt(request):
     """Serve /robots.txt as plain text. Site-wide; same content on every
     subdomain (the policy doesn't change per-state).
 
-    Each subdomain's robots.txt also advertises THIS host's sitemap URL
-    explicitly so search engines that find /robots.txt directly on a
-    subdomain still pick up the correct sitemap reference. The apex
-    sitemap is minimal but the per-state sitemaps are listed in the
-    constant ROBOTS_TXT block above so a single subdomain robots.txt
-    surfaces all live states' sitemaps.
+    The Sitemap: line points at THIS host's own sitemap only. Google and
+    Bing ignore a sitemap declared in robots.txt for a different host (each
+    subdomain is a separate site to them), so the old cross-host list
+    (mn/nh/az on every subdomain) was inert clutter -- a subdomain is
+    discovered by submitting ITS sitemap in Search Console or by inbound
+    links, not by another subdomain's robots.txt advertising it.
     """
-    return HttpResponse(ROBOTS_TXT, content_type="text/plain; charset=utf-8")
+    body = f"{ROBOTS_TXT}\nSitemap: https://{request.get_host()}/sitemap.xml\n"
+    return HttpResponse(body, content_type="text/plain; charset=utf-8")
 
 
 # llms.txt -- the "robots.txt for LLMs" emerging convention. Tells AI
@@ -2189,10 +2186,19 @@ def sitemap_opinions(request, chunk: int):
     if not rows:
         raise Http404("Sitemap chunk empty")
 
+    # Percent-encode the docket number as a path segment. AZ Court of Appeals
+    # numbers carry spaces ("1 CA-CV 25-0606 PB"), so a raw <loc> emits an
+    # invalid URL that crawlers can't fetch -- ~20K AZ opinions were
+    # uncrawlable. quote() keeps the unreserved chars (letters, digits, - . _
+    # ~) and turns spaces into %20, matching how the opinion view resolves the
+    # docket. safe="" so a stray "/" in a docket can't split the path.
+    from urllib.parse import quote
+
     lines = _sitemap_xml_header()
     for case_number, release_date in rows:
+        loc = f"{host}/opinion/{quote(case_number, safe='')}/"
         lines.append(f"  <url>")
-        lines.append(f"    <loc>{host}/opinion/{case_number}/</loc>")
+        lines.append(f"    <loc>{loc}</loc>")
         if release_date:
             lines.append(f"    <lastmod>{release_date.isoformat()}</lastmod>")
         lines.append(f"  </url>")
