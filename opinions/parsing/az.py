@@ -107,8 +107,14 @@ DISPOSITION_LINE_RE = re.compile(
 # denies relief", "accept jurisdiction and deny relief", "grant relief". The
 # relief outcome is the disposition -- check DENY before GRANT so "grants
 # review but denies relief" maps to Denied, not Granted.
-RELIEF_DENY_RE = re.compile(r"den(?:y|ies|ied)\s+relief", re.IGNORECASE)
-RELIEF_GRANT_RE = re.compile(r"grant(?:s|ed)?\s+relief", re.IGNORECASE)
+# Anchored to the DECIDING court ("we"/"this court"), within one sentence, so
+# a tail describing the court BELOW -- "the court of appeals granted relief; we
+# vacate and remand" -- isn't read as our disposition. [^.] keeps the subject
+# and the relief verb in the same sentence.
+RELIEF_DENY_RE = re.compile(
+    r"\b(?:we|this\s+court)\b[^.]{0,60}?\bden(?:y|ies|ied)\s+relief", re.IGNORECASE)
+RELIEF_GRANT_RE = re.compile(
+    r"\b(?:we|this\s+court)\b[^.]{0,60}?\bgrant(?:s|ed)?\s+relief", re.IGNORECASE)
 
 # Operative verb, active ("we/this court affirm[s]") or passive ("the judgment
 # is affirmed"). Group 1 = verb stem.
@@ -142,9 +148,11 @@ _IN_PART_RE = re.compile(
 _STEM_WORD = {"affirm": "Affirmed", "revers": "Reversed", "vacat": "Vacated",
               "remand": "Remanded", "dismiss": "Dismissed", "modif": "Modified"}
 # A split disposition with no literal "in part": "otherwise affirm", "affirm in
-# all other respects".
+# all other respects". The verb stems carry a trailing \b so "otherwise
+# affirmative" / "reversible" (ordinary prose, not a disposition) don't match.
 _OTHERWISE_RE = re.compile(
-    r"otherwise\s+(?:affirm|revers|vacat)|in\s+all\s+other\s+respects?",
+    r"otherwise\s+(?:affirm(?:ed|s)?|reverse[ds]?|vacate[ds]?)\b"
+    r"|in\s+all\s+other\s+respects?",
     re.IGNORECASE)
 
 
@@ -179,15 +187,23 @@ def _tail_disposition(tail: str) -> str | None:
         joined = ", ".join(phrase)
         return joined[:1].upper() + joined[1:].lower()  # sentence-case
 
-    low = tail.lower()
-    has_affirm = re.search(r"\baffirm", low)
-    has_undo = re.search(r"\b(revers|vacat)", low)
+    # Base affirm/undo co-occurrence on the ACTUAL operative-verb matches, not
+    # bare "\baffirm"/"\brevers" prefixes -- those fire on ordinary prose
+    # ("affirmative defense", "not reversible") and mislabeled a full Affirmed
+    # as "Affirmed in part".
+    active = list(TAIL_ACTIVE_RE.finditer(tail))
+    passive = list(TAIL_PASSIVE_RE.finditer(tail))
+    op_verbs = {_VERB_PAST[m.group(1).lower()] for m in (active + passive)}
+    has_affirm = "Affirmed" in op_verbs
+    has_undo = bool(op_verbs & {"Reversed", "Vacated"})
     if _OTHERWISE_RE.search(tail) or (has_affirm and has_undo):
         # A split we can't itemize precisely; "Affirmed in part" is directional
         # and honest, and buckets to mixed.
         return "Affirmed in part"
 
-    matches = list(TAIL_ACTIVE_RE.finditer(tail)) or list(TAIL_PASSIVE_RE.finditer(tail))
+    # A single operative verb -- take the LAST (final disposition sentence),
+    # preferring active phrasing over passive.
+    matches = active or passive
     if matches:
         m = matches[-1]
         disp = _VERB_PAST[m.group(1).lower()]

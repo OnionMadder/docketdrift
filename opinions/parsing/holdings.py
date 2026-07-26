@@ -94,12 +94,34 @@ _MAX_HOLDING_CHARS = 700
 _ORPHAN_LEAD = " \t”’\"')]}>.,;:—-"
 
 
-# Share of the shorter sentence's words that must also appear in the longer
-# for the two to count as the same holding restated. 0.75 separates a genuine
-# restatement from two distinct holdings that merely share boilerplate
-# ("We hold that the search was unlawful" vs "We further hold that the error
-# was not harmless" overlap only on the frame).
-_RESTATEMENT_OVERLAP = 0.75
+# Share of the shorter sentence's CONTENT words that must also appear in the
+# longer for the two to count as the same holding restated. Comparing content
+# words (not raw tokens) is what keeps two DISTINCT holdings that merely share
+# the standard appellate frame from colliding: "we hold that the district
+# court did not abuse its discretion in denying the motion" and "... did not
+# err in admitting the evidence" are ~75% identical as raw tokens (all frame)
+# but share ZERO content words. Dropping a genuine second holding loses law --
+# strictly worse than showing a real restatement as two similar sentences (a
+# documented, cosmetic limitation) -- so the frame words are excluded first.
+_RESTATEMENT_OVERLAP = 0.7
+
+# Frame words: articles, pronouns, aux verbs, conjunctions, prepositions, plus
+# the fixed appellate scaffolding ("hold/conclude ... the district court ...").
+# Everything a restatement actually repeats is a CONTENT word outside this set.
+_FRAME_STOPWORDS = frozenset("""
+a an the this that these those it its it's their they we our
+is was are were be been being has have had do did does
+and or but nor so because therefore thus accordingly further also then
+in on of to for by with from at as under upon into within between about
+not no need reach remaining other respects part parts
+hold holds held conclude concludes concluded find finds found determine
+determines determined court courts district superior trial appeals
+there here which who whom whose when where what whether while
+""".split())
+
+
+def _content_words(s: str) -> set[str]:
+    return _words(s) - _FRAME_STOPWORDS
 
 
 def _words(s: str) -> set[str]:
@@ -114,12 +136,17 @@ def _words(s: str) -> set[str]:
 
 
 def _is_restatement(a: str, b: str) -> bool:
-    """True when two holding sentences say substantially the same thing."""
-    wa, wb = _words(a), _words(b)
-    if not wa or not wb:
+    """True when two holding sentences say substantially the same thing.
+
+    Overlap is measured on CONTENT words (frame excluded). If either sentence
+    has no content words after stripping the frame, we can't tell them apart
+    that way -- so we keep both rather than risk dropping a real holding.
+    """
+    ca, cb = _content_words(a), _content_words(b)
+    if not ca or not cb:
         return False
-    shorter = wa if len(wa) <= len(wb) else wb
-    return len(wa & wb) / len(shorter) >= _RESTATEMENT_OVERLAP
+    shorter = ca if len(ca) <= len(cb) else cb
+    return len(ca & cb) / len(shorter) >= _RESTATEMENT_OVERLAP
 
 
 # --- Stray page-number cleanup ------------------------------------------
@@ -192,6 +219,10 @@ def _strip_page_numbers(sentence: str) -> str:
                 or nxt.lower() in _UNITS
                 or nxt.lower() in _TIME_SUFFIX
                 or _looks_plural(nxt)
+                # Partitive/quantity: "denied 3 of the motions", "one of two".
+                # A leaked page number never sits before "of"; a real count
+                # routinely does -- so this preserves a digit the court wrote.
+                or nxt.lower() == "of"
                 or (nxt.lower() in _RANGE_WORDS and after_next.isdigit())
                 or (prev.lower() in _RANGE_WORDS and before_prev.isdigit())
             )
