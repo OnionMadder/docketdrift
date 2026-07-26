@@ -2,13 +2,7 @@
 from django.contrib import admin
 from django.urls import include, path
 
-from opinions.admin_views import (
-    holding_review,
-    holding_review_action,
-    tag_review,
-    tag_review_action,
-    tag_review_bulk,
-)
+from opinions.admin_views import tag_review, tag_review_action, tag_review_bulk
 
 urlpatterns = [
     # Custom admin pages live in front of Django's auto-generated admin
@@ -30,17 +24,6 @@ urlpatterns = [
         "admin/opinions/tag-review/<int:suggestion_id>/<str:action>/",
         tag_review_action,
         name="admin_tag_review_action",
-    ),
-    # Parallel HTMX surface for the verbatim-extracted holdings review.
-    path(
-        "admin/opinions/holding-review/",
-        holding_review,
-        name="admin_holding_review",
-    ),
-    path(
-        "admin/opinions/holding-review/<int:opinion_id>/<str:action>/",
-        holding_review_action,
-        name="admin_holding_review_action",
     ),
     path("admin/", admin.site.urls),
     path("", include("opinions.urls")),
