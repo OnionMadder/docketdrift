@@ -1977,6 +1977,9 @@ button.cta-primary {
   top: 0;
   left: 0;
   bottom: 0;
+  /* Data-driven width: the template sets --pct (a %) from the row's count;
+     the styling rule lives here, not inline. */
+  width: var(--pct, 0%);
   background: var(--neon-cyan);
   opacity: 0.65;
   border-radius: var(--radius-pill);
@@ -2116,6 +2119,17 @@ button.cta-primary {
   height: 3px;
   border-radius: 1px;
   flex-shrink: 0;
+  /* Per-series color: the template sets --swatch-color (from the chart
+     series); the fill/gradient rules live here, not inline. */
+  background: var(--swatch-color, var(--neon-cyan));
+}
+
+/* Dashed series (e.g. the compared-judge overlay): a 50/50 stripe of the
+   series color. Toggled by a class, not an inline background-image. */
+.judge-chart-legend__swatch--dashed {
+  background-image: linear-gradient(
+    90deg, var(--swatch-color, var(--neon-cyan)) 50%, transparent 50%);
+  background-size: 8px 100%;
 }
 
 /* ----- Compare two judges (judge_compare.html) ---------------------- */
@@ -2322,6 +2336,15 @@ button.cta-primary {
   overflow: hidden;
   white-space: nowrap;
   transition: width 0.2s ease;
+  /* Data-driven segment width via the template's --pct custom property. */
+  width: var(--pct, 0%);
+}
+
+/* Small standalone utility: a paragraph nudged down from the block above it
+   (e.g. the "Back to About" link on /how-we-differ/). Replaces an inline
+   margin-top so no styling lives in the template. */
+.mt-block {
+  margin-top: 2rem;
 }
 
 .concordance-bar__seg--agree {

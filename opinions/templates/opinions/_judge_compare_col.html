@@ -71,7 +71,7 @@ photo treatment that wouldn't survive a 2-col squeeze.
               <span class="court-pill court-pill--{{ c.court.level_slug }}" title="{{ c.court.name }}">{{ c.court.short_label }}</span>
             </span>
             <span class="judge-bar-track">
-              <span class="judge-bar-fill" style="width: {% widthratio c.n stats.total_opinions 100 %}%"></span>
+              <span class="judge-bar-fill" style="--pct: {% widthratio c.n stats.total_opinions 100 %}%"></span>
             </span>
             <span class="judge-bar-count">{{ c.n }}</span>
           </li>
@@ -88,7 +88,7 @@ photo treatment that wouldn't survive a 2-col squeeze.
               <span class="case-status disposition-{{ d.disposition_bucket }}">{{ d.disposition_bucket|title }}</span>
             </span>
             <span class="judge-bar-track">
-              <span class="judge-bar-fill judge-bar-fill--{{ d.disposition_bucket }}" style="width: {% widthratio d.n stats.total_opinions 100 %}%"></span>
+              <span class="judge-bar-fill judge-bar-fill--{{ d.disposition_bucket }}" style="--pct: {% widthratio d.n stats.total_opinions 100 %}%"></span>
             </span>
             <span class="judge-bar-count">{{ d.n }}</span>
           </li>

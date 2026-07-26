@@ -172,7 +172,7 @@
         <ul class="judge-chart-legend">
           {% for s in yearly_chart.series %}
             <li>
-              <span class="judge-chart-legend__swatch" style="background:{{ s.color }}{% if s.dash %};background-image:linear-gradient(90deg,{{ s.color }} 50%,transparent 50%);background-size:8px 100%{% endif %}"></span>
+              <span class="judge-chart-legend__swatch{% if s.dash %} judge-chart-legend__swatch--dashed{% endif %}" style="--swatch-color:{{ s.color }}"></span>
               {{ s.label }}
             </li>
           {% endfor %}
@@ -203,21 +203,21 @@
              aria-label="{{ concordance.agree_count }} agree, {{ concordance.partial_count }} concur separately, {{ concordance.disagree_count }} disagree">
           {% if concordance.agree_count %}
             <span class="concordance-bar__seg concordance-bar__seg--agree"
-                  style="width: {% widthratio concordance.agree_count concordance.agreement_denom 100 %}%"
+                  style="--pct: {% widthratio concordance.agree_count concordance.agreement_denom 100 %}%"
                   title="Agreed on {{ concordance.agree_count }} opinion{{ concordance.agree_count|pluralize }}">
               {% if concordance.agree_pct >= 8 %}{{ concordance.agree_count }}{% endif %}
             </span>
           {% endif %}
           {% if concordance.partial_count %}
             <span class="concordance-bar__seg concordance-bar__seg--partial"
-                  style="width: {% widthratio concordance.partial_count concordance.agreement_denom 100 %}%"
+                  style="--pct: {% widthratio concordance.partial_count concordance.agreement_denom 100 %}%"
                   title="Concurred separately on {{ concordance.partial_count }} opinion{{ concordance.partial_count|pluralize }}">
               {% if concordance.partial_pct >= 8 %}{{ concordance.partial_count }}{% endif %}
             </span>
           {% endif %}
           {% if concordance.disagree_count %}
             <span class="concordance-bar__seg concordance-bar__seg--disagree"
-                  style="width: {% widthratio concordance.disagree_count concordance.agreement_denom 100 %}%"
+                  style="--pct: {% widthratio concordance.disagree_count concordance.agreement_denom 100 %}%"
                   title="Disagreed on {{ concordance.disagree_count }} opinion{{ concordance.disagree_count|pluralize }}">
               {% if concordance.disagree_pct >= 8 %}{{ concordance.disagree_count }}{% endif %}
             </span>
