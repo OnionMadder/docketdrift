@@ -4,19 +4,110 @@ Survival kit for any Claude session working on this repo. Read once,
 re-read whenever a recurring gotcha bites. The goal of this document is
 to make the next session productive within the first 5 minutes.
 
-## Working tree cleaned 2026-07-24 — READ THIS FIRST
+## Working tree state 2026-07-25 — READ THIS FIRST
 
-The tree is **clean**; main == origin/main. The long-standing parked work is
-no longer in the working tree — it moved to branch
-**`parked/holdings-admin-and-citation-clustering`** (pushed), two commits:
-(1) citation clustering, (2) LLM holdings admin + `extract_holdings`. So any
-older note below about "uncommitted parked work in the working tree", the
-`about.html`/`how_we_differ.html` landmine, or "isolation discipline" for
-those files is **historical** — those files are back at HEAD and the docs
-landmine was reverted (extractive holdings = "no generated text", the strong
-original posture, is correct). Current backlog lives in `docs/TODO.md`.
-Migrations 0026 (holdings) + 0027 (clustering) are on main and applied on
-prod; only the clustering FEATURE code is parked (columns sit empty).
+The tree is **clean**; main == origin/main. Backlog lives in `docs/TODO.md`
+(the authoritative to-do; keep it current). The old parked branch
+**`parked/holdings-admin-and-citation-clustering`** still exists but is now
+mostly historical:
+
+- **Citation clustering** was CHERRY-PICKED to main + SHIPPED NH-first this
+  session (so the branch's clustering commit is redundant with main). It works
+  but is data-starved — see the 2026-07-24→25 session block below.
+- **Holdings review admin** was cherry-picked, de-LLM'd, then **REVERTED** (it
+  scans the 2.75GB table past the 25s cap → needs an index migration first).
+  Recoverable from reverted commits `7498db0`+`324f9c5`.
+- The **LLM `extract_holdings` command was DROPPED from main** — it lives only
+  on the branch. The product is extractive; ML stays in two places.
+
+The `about.html`/`how_we_differ.html` landmine (LLM "summarized holding" claims
+in indexed JSON-LD) was reverted — extractive holdings = "no generated text",
+the strong original posture, is correct. Migrations 0026 (holdings) + 0027
+(clustering) are on main and applied on prod.
+
+## Latest session (2026-07-24 → 25)
+
+Long session — closed the last big per-state gaps, shipped extractive holdings,
+built + scheduled the MN scraper, and solved the "MN gets zero AI traffic"
+puzzle. Everything below is committed + deployed unless noted.
+
+- **Extractive holdings — LIVE on all three states (39,402).** New
+  `opinions/parsing/holdings.py` + `extract_holdings_text` quote the court's
+  OWN holding sentence VERBATIM (not an LLM summary) — the ~$500 Haiku plan was
+  dropped. Coverage MN 18,507 / NH 7,321 / AZ 13,574; `holding_model` records
+  the extractor. Two bugs were caught by READING THE RENDERED PAGE: a decimal
+  in a citation split the sentence ("rule 24.03" → "rule 24."), and restated
+  holdings joined (fixed with word-set overlap dedup). Panel shows on all
+  states now (gate lifted). **Do not reintroduce "summarized"/"AI" copy** —
+  it's extraction.
+- **AZ parser BUILT — `opinions/parsing/az.py`, registered.** There was NO AZ
+  parser, so `backfill_dispositions --state AZ` was a silent no-op. **AZ
+  dispositions 4.2% → 67.7%** (25,779). Both courts + both COA divisions.
+  Disposition = the ALL-CAPS header line, anchored to a whole line; on a
+  Supreme PR case take the FIRST (merits/superior-court result), not the later
+  COA-below disposition. Tail fallback (0.5) catches the special-action
+  (CA-SA) / PRPC classes that dispose in prose ("grants review but denies
+  relief" → Denied), hardened to read the LAST operative verb + reconstruct
+  "X in part" compounds (a subsidiary "we dismiss ... otherwise affirm" was
+  storing "Dismissed"). Modern coverage 2020s 94% / 2010s 87%; the ~12K
+  no-match remainder is genuinely historic AZ text.
+- **MN COA scraper — built, SCHEDULED, and test-fired.**
+  `scripts/mn_scraper/scrape_mn_coa.py` + `run_mn_weekly.ps1`, mirroring NH.
+  Registered as Windows Task **"DocketDrift MN COA weekly scraper"** (Monday
+  17:00, run-only-when-logged-on). Test-fired live: 3-page pagination works,
+  no CAPTCHA (persistent profile banks clearance), 13 new opinions ingested,
+  10 correctly deduped. MN COA current through 2026-07-21. See the dedicated
+  scraper block further down for the CAPTCHA/pagination mechanics.
+- **Discoverability — the "MN gets zero live-AI traffic" root cause + FIX.**
+  Live AI grounds by web-search-then-fetch, so it only reaches INDEXED pages.
+  Access-log cross-tab showed MN search-engine crawls = 1, NH = 1,421.
+  **NONE of the docketdrift domains were in Google Search Console** — NH's
+  crawls were purely ORGANIC. Two-part fix, both DONE: (a) AZ's sitemap emitted
+  space-carrying dockets raw ("1 CA-CV 25-0606 PB" → invalid URL); now
+  percent-encoded with canonical/og:url matching + host-specific robots
+  Sitemap line (`657aa8a`); (b) owner added `docketdrift.com` as a **Domain
+  property** (one NFSN DNS TXT covers apex + all subdomains) and submitted the
+  mn/nh/az sitemaps. Now MONITORING (days: Googlebot on mn/az; weeks: re-run
+  `ai_citation_profile`). Full status in `docs/TODO.md`.
+- **Citation clustering — SHIPPED NH-first, but data-starved (a caveat that
+  matters).** "How this document has been cited" (verbatim citing passages,
+  Scholar-style collapse) is live on NH. BUT it has data on only ~41 NH
+  opinions: the `OpinionCitation` graph resolves only the neutral-cite era
+  (2024+) — older cross-cites ("141 N.H. 271" / A.2d formats) don't match a
+  `reporter_cite`. **The real high-value citation work is improving RESOLUTION
+  of those older formats**, which would light up both this panel AND the
+  already-live cited-by graph corpus-wide. Embed cost was $0.000 (65 quotes).
+- **Holdings review admin — salvaged + de-LLM'd, then REVERTED.** It's the
+  missing editorial surface, but its `exclude(holding_summary="")` +
+  `order_by(-holding_extracted_at)` scans the whole 119K corpus past the 25s
+  cap (poison-cascade risk). **Needs an index migration on the 2.75GB
+  opinions_opinion table** to ship — deferred. Also caught a latent bug:
+  `.only("court__state__id")` — State's PK is `code`, not `id`.
+- **Small wins:** Twitter/X cards showed the generic title on every page —
+  `twitter:title`/`description` used a Jinja `{{ self.og_title }}` idiom that
+  no-ops in Django; removed them so X falls back to the (working) `og:*`
+  (`3aef…`). State-router middleware now memoizes the subdomain→State lookup
+  per worker (was a DB hit every request). Beta/Flagship relabel: **MN is now
+  the Flagship**, NH+AZ get a green "Live" pill (new `.status-pill--live`) —
+  "beta" undersold three mature corpora.
+
+**Lessons this session (each bit me):**
+1. **When the network to a state is flaky, verify web renders IN-PROCESS** with
+   Django's test `Client`, not curl. The NH intra-rack route dropped response
+   bodies all session (server logged 200, curl timed out at 40s) — I nearly
+   rolled back a working feature over it. `render_check.py` pattern: `Client().
+   get(path, HTTP_HOST="nh.docketdrift.com")`.
+2. **Cherry-pick parked features; never blind file-copy.** `git cherry-pick -n`
+   does a 3-way merge that preserves concurrent main edits (my Beta/Flagship
+   change to `views.py` survived); `git checkout branch -- file` would have
+   clobbered it.
+3. **A parked feature that "looks finished" may be built at a scale/assumption
+   that no longer holds.** Both parked features were: holdings admin was
+   NH-scale (7K), citation clustering assumed a dense graph. Validate against
+   the CURRENT corpus before shipping.
+4. **NFSN `freshness-check` task had a broken command path** (`me/private/...`
+   missing the `/ho`) — silently failed every Monday. Owner fixed it. When a
+   scheduled task "runs" but nothing happens, check the exact command string.
 
 ## Latest session (2026-07-19)
 
