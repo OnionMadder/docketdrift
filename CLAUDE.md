@@ -91,6 +91,20 @@ puzzle. Everything below is committed + deployed unless noted.
   the Flagship**, NH+AZ get a green "Live" pill (new `.status-pill--live`) —
   "beta" undersold three mature corpora.
 
+- **Code review at session end found + fixed THREE data-integrity bugs**, all
+  in the fuzzy fallback/cleanup heuristics (the "last 10%"): (1) `az.py`
+  tail-disposition mislabeled full Affirmeds as "Affirmed in part" (bare
+  `\baffirm` matched "affirmative", `\brevers` matched "reversible") + relief
+  wasn't anchored to the deciding court → **recompute corrected 2,311 / cleared
+  1,462 AZ dispositions; the false "mixed" inflation halved (4,117→2,074)**;
+  (2) `holdings.py` restatement dedup dropped genuinely-distinct holdings that
+  shared the appellate frame (now compares CONTENT words, frame excluded);
+  (3) `holdings.py` page-number strip deleted the "N" in "denied 3 of the
+  motions" (now keeps a digit before partitive "of"). All re-extracted. The
+  core/structural code (scraper, middleware cache, sitemap encoding, header
+  disposition path, sentence boundaries) reviewed CLEAN. **Lesson: the fuzzy
+  fallback paths are where the bugs live — review those hardest.**
+
 **Lessons this session (each bit me):**
 1. **When the network to a state is flaky, verify web renders IN-PROCESS** with
    Django's test `Client`, not curl. The NH intra-rack route dropped response
