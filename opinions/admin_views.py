@@ -334,12 +334,12 @@ def holding_review(request):
         .exclude(holding_summary="")
         .filter(holding_review_status=status)
         .select_related("court", "court__state")
-        .only(
-            "id", "case_number", "title", "court__id", "court__state__id",
-            "court__state__slug", "court__level", "court__name",
-            "holding_summary", "holding_source_paras", "holding_review_status",
-            "holding_model", "holding_extracted_at", "holding_reviewed_by",
-        )
+        # Defer the big TEXT columns (raw_text/html_content, ~50-100KB each --
+        # the "defer on list-style queries" gotcha), but load full court/state
+        # rows so Court.short_label (a @property, not a DB field) resolves
+        # without a per-row query. An explicit .only() was the parked version
+        # and it 500'd: it listed court__state__id, but State's PK is `code`.
+        .defer("raw_text", "html_content")
         .order_by("-holding_extracted_at", "-id")
     )
 
