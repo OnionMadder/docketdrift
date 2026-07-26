@@ -9,6 +9,40 @@ Dispositions MN 97.6% / NH 78.5% / AZ 67.7%. Holdings 39,402. Panel votes
 
 ---
 
+## ★ Discoverability — why MN/AZ get ~zero AI traffic (found 2026-07-25)
+
+**Root cause of the MN=0% AI-grounding puzzle: MN is not in the search index.**
+Live AI agents ground by web-search-then-fetch, so they can only reach pages
+Google/Bing have indexed. Access-log cross-tab (opinion fetches):
+
+| | MN | NH | AZ |
+|---|---|---|---|
+| Live AI | **0** | 102 | 0 |
+| AI training crawlers | 56,674 | 5,787 | 13,795 |
+| **Search engines** | **1** | **1,421** | 65 |
+| Humans | 24,307 | 430 | 4,630 |
+
+MN is crawled the most by training bots + humans, but **Google has crawled it
+once.** The site is technically perfect for MN (200s to Googlebot, robots
+allows, sitemap advertised + well-formed with 25K real URLs, homepage 200 no
+redirect) — so it's a **discovery gap, not a bug**.
+
+- [ ] **★ OWNER ACTION (~15 min, highest ROI on the board):** In **Google
+  Search Console**, add + verify `mn.docketdrift.com` and `az.docketdrift.com`
+  as properties and **submit each one's sitemap** (`https://<host>/sitemap.xml`).
+  NH was evidently submitted (1,421 crawls); MN/AZ weren't. Same in **Bing
+  Webmaster Tools**. If MN is already a property, open its Pages/Coverage
+  report for the "Discovered – not indexed" reason. This is the lever that
+  should unlock MN AI-grounding (index → search → AI fetch, the pipeline NH
+  already wins on).
+- [x] **AZ sitemap URLs were uncrawlable — FIXED 2026-07-25.** ~20K AZ COA
+  docket numbers carry spaces ("1 CA-CV 25-0606 PB"); the sitemap emitted them
+  raw (invalid URLs). Now percent-encoded, and canonical/og:url match. Also
+  made robots.txt advertise only the host's own sitemap. A real server-side
+  blocker on the AZ side, now cleared.
+
+---
+
 ## Tier 0 — clean up the working tree ✅ DONE 2026-07-24
 
 The working tree is now clean and main is in sync with origin. What happened:
