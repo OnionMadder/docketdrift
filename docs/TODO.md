@@ -189,14 +189,27 @@ The working tree is now clean and main is in sync with origin. What happened:
   given some (Scalia, Brennan) bogus MAJORITY_AUTHOR votes — mis-attributed
   authorship — so "never authored" alone was NOT a safe filter; the surname +
   byline test was.
-- [ ] **ROOT BUG STILL OPEN — the cull is one-time; phantoms WILL recur.**
-  `resolve_judges` pulls judge surnames from the opinion TEXT (a cited "Justice
-  Scalia"), not just the panel byline, so the **next `resolve_judges --state AZ`
-  run re-mints all 29**. Fix the extractor before running it again: constrain
-  name capture to the actual panel-byline region (author + "in which ... joined"
-  list), and/or add a federal-justice-surname guard. AZ is the exposed state
-  (COA bylines + citation-heavy); MN's roster shape spared it, NH had a few.
-  Until this is fixed, do NOT re-run resolve_judges for AZ.
+- [x] **ROOT BUG FIXED 2026-07-27 — phantoms will no longer recur.** Two
+  extractor sources, both closed in `resolve_judges.py`:
+  (1) the AZ top-of-opinion byline block matched body descriptions of OTHER
+  courts' opinions ("Justice Scalia authored a dissent, in which Justice Thomas
+  joined") — now anchored to THIS court's own attribution ("...of the Court" /
+  "the Court's opinion"; both real AZ phrasings, incl. McMurdie/Williams'
+  possessive form). Verified: recovers all 9,158 real bylines, author unchanged
+  on every shared match, drops only citation-shaped blocks.
+  (2) the NH-style footer path ("SURNAME, JJ., concurred") is structurally
+  IDENTICAL to a parenthetical SCOTUS-lineup citation — measured across the
+  corpus, NOTHING structural separates them (verb form, position, last-match all
+  fail; real AZ signoffs use the participle "concurring" too). Added
+  `_CROSS_COURT_JUSTICES`, a 55-surname stoplist built by subtracting any SCOTUS
+  surname that collides with a real MN/NH/AZ judge (protects genuine locals: NH's
+  Souter — an actual NH justice before SCOTUS — plus AZ Miller/Stevens, MN
+  Murphy). Applied ONLY to the weak footer path, never the corroborated byline
+  block. Also culled one straggler (AZ "Alito", 2 votes) + added alito.
+  **Residual (accepted):** surnames shared with a REAL local judge (stevens,
+  souter) can't be stoplisted, so a cited Justice Stevens/Souter still inflates
+  Henry S. Stevens / David Hackett Souter — inherent surname ambiguity, small +
+  bounded. `resolve_judges --state AZ` is now safe to re-run once deployed.
 - [x] **Holdings page-number artifacts.** ✅ DONE 2026-07-24. `holdings.py`
   now strips stray PDF page numbers verbatim-safely — the data showed ~half
   the flagged cases were *legitimate* numbers ("subdivision 6", "51 years"),
