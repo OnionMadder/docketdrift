@@ -127,6 +127,38 @@ _DISSENT_FOOTER_RE = re.compile(
     rf"\b(?P<name>{_SURNAME}),\s*J\.,?\s+dissented\b",
 )
 
+# Cross-court justices to STOPLIST out of the footer path.
+#
+# The NH-style footer pattern ("SURNAME, JJ., concurred") is structurally
+# IDENTICAL to a parenthetical citation of another court's lineup -- e.g. an
+# AZ or NH opinion quoting "(Scalia, Thomas, and Gorsuch, JJ., concurring)"
+# from a SCOTUS opinion. Measured across the whole corpus, NOTHING structural
+# separates the two: verb form (real AZ signoffs use the present participle
+# "concurring" too), position, and last-match-in-document all fail. The only
+# reliable discriminator is the identity of the name -- a judge of THIS court
+# vs. a cited out-of-court (US Supreme Court) justice.
+#
+# This set was built mechanically: a comprehensive list of SCOTUS justice
+# surnames, MINUS any that collide with a real judge in the MN/NH/AZ rosters
+# (that subtraction is what keeps genuine locals like NH's Souter -- an actual
+# NH justice before SCOTUS -- and AZ's Miller/Stevens and MN's Murphy). It is
+# applied ONLY to the weak footer path, never to the corroborated top-of-
+# opinion byline block, so a real "Judge Roberts delivered the opinion of the
+# Court" is still captured. If a NEW state is onboarded, RE-VERIFY this list
+# against its roster before trusting it (a real Judge Marshall/Kennedy/etc.
+# elsewhere would need removing here).
+_CROSS_COURT_JUSTICES = frozenset({
+    "alito",
+    "barrett", "black", "blackmun", "bradley", "brandeis", "brennan", "brewer",
+    "breyer", "burton", "butler", "byrnes", "cardozo", "chase", "clark",
+    "douglas", "field", "fortas", "frankfurter", "fuller", "ginsburg",
+    "goldberg", "gorsuch", "gray", "harlan", "holmes", "hughes", "jackson",
+    "kagan", "kavanaugh", "kennedy", "marshall", "mcreynolds", "minton",
+    "oconnor", "pitney", "powell", "reed", "rehnquist", "roberts", "rutledge",
+    "sanford", "scalia", "sotomayor", "stewart", "stone", "story", "sutherland",
+    "taft", "thomas", "vinson", "waite", "warren", "white", "whittaker",
+})
+
 # AZ-style byline lives at the TOP of the opinion, not the bottom. Two
 # distinct conventions, both handled here:
 #
@@ -163,10 +195,22 @@ _AZ_NAME_STRICT = (
     r"(?:\s+[A-ZÀ-ß][A-Za-zÀ-ÿ.'\-]+){0,3}"  # up to 3 additional words
 )
 _AZ_BYLINE_BLOCK_RE = re.compile(
-    # Greedy-but-bounded block: "<role> <name> ... in which ... concurred/joined".
-    # DOTALL because the block typically spans 2-3 lines.
+    # Bounded block: "<role> <name> authored/delivered ... OF THE COURT ...
+    # in which ... concurred/joined". DOTALL because it spans 2-3 lines.
+    #
+    # The "the Court('s)" anchor is load-bearing, not decoration: without it
+    # this block also matched an AZ opinion DESCRIBING another court's
+    # authorship -- "Justice Scalia authored a dissent, in which Justice Thomas
+    # joined" -- and minted the cited SCOTUS justices as AZ panel members (with
+    # bogus MAJORITY_AUTHOR votes). The real AZ byline always attributes THIS
+    # court's own opinion, in one of two phrasings: "delivered the opinion OF
+    # THE COURT, in which ..." OR the possessive "delivered the COURT'S opinion,
+    # in which ..." (the form recent CoA judges McMurdie/Williams use). A body
+    # citation to another court's opinion almost never fills that slot.
     rf"\b{_AZ_ROLE_PREFIX_CI}\s+(?-i:{_AZ_NAME_STRICT})"
-    rf"\s+(?:authored|delivered)[\s\S]{{0,400}}?"
+    rf"\s+(?:authored|delivered)\s+[\s\S]{{0,40}}?"
+    rf"(?:(?:of|for)\s+the\s+court\b|the\s+court['’]s)"
+    rf"[\s\S]{{0,120}}?"
     rf"in\s+which\s+[\s\S]{{0,400}}?\b(?:concurred|joined)\b",
     re.IGNORECASE | re.DOTALL,
 )
@@ -285,16 +329,25 @@ def _extract_generic_byline(raw_text: str) -> GenericByline:
         names_blob = m.group("panel")
         role = m.group("role")
         # The inline Chief Justice (when present) is the signer/author of
-        # the opinion -- record + remember separately from the panel.
-        if chief:
+        # the opinion -- record + remember separately from the panel. Skip it
+        # if it's a stoplisted cross-court justice (a cited "(Roberts, C.J.,
+        # ...)" must not become this opinion's author).
+        if chief and chief.lower() not in _CROSS_COURT_JUSTICES:
             author_last = chief.lower()
         # Split on " and " and "," to enumerate panel surnames. The
         # _SURNAME regex requires uppercase + 3+ letters, so role
         # abbreviations like "C.J." can't sneak through this token split,
         # but defensive: drop any leftover tokens that don't look like a
         # surname after lowercasing (period-containing tokens like "c.j.").
+        # Also drop stoplisted cross-court justices -- a footer signoff is
+        # structurally indistinguishable from a cited SCOTUS lineup, so a
+        # famous non-local justice surname here is a citation, not a panelist.
         names = re.split(r",\s*(?:and\s+)?|\s+and\s+", names_blob)
-        names = [n.strip() for n in names if n.strip() and "." not in n]
+        names = [
+            n.strip() for n in names
+            if n.strip() and "." not in n
+            and n.strip().lower() not in _CROSS_COURT_JUSTICES
+        ]
         # Fallback author detection when no explicit chief prefix was
         # found: a single surname tagged C.J. / P.J. or a single-name J.
         # signoff is the author by convention.
@@ -313,7 +366,7 @@ def _extract_generic_byline(raw_text: str) -> GenericByline:
     seen_dissenters: set[str] = set()
     for m in _DISSENT_FOOTER_RE.finditer(tail):
         ln = (m.group("name") or "").lower()
-        if ln and ln not in seen_dissenters:
+        if ln and ln not in seen_dissenters and ln not in _CROSS_COURT_JUSTICES:
             seen_dissenters.add(ln)
             dissenter_lasts.append(ln)
             raw_matches.append(m.group(0))
