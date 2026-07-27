@@ -73,9 +73,24 @@ re-submit the az sitemap (remove + re-add) to force a fresh fetch.
   now) so it flips to Success + ~38K discovered.
 - [ ] **~1 week:** re-check the access log — MN Googlebot hits should climb
   from 8 as crawl budget ramps. Baseline: NH 7,654 / AZ 256 / MN 8.
-- [ ] **~weeks:** re-run `ai_citation_profile`. MN/AZ appearing = the whole
-  thread (reporter cites + sitemap fix + Search Console) paid off. Baseline to
-  beat: NH 96% / AZ 4% / MN 0%.
+- [ ] **~weeks:** re-run `ai_citation_profile` and compare to the baseline
+  below. MN/AZ climbing = the whole thread (reporter cites + sitemap fix +
+  Search Console) paid off.
+
+  **BASELINE — `ai_citation_profile --days 30` on 2026-07-27** (2 days after
+  submission, so essentially pre-fix; MN not yet indexed):
+  - 123 live-AI fetches (chatgpt-user / claude-user / claude-web /
+    perplexity-user), all 123 resolved to a real opinion (0 unmatched — URL
+    scheme is clean).
+  - By state: **NH 118 (96%) / AZ 5 (4%) / MN 0 (0%)**. MN still zero because
+    it's discovered-but-crawl-queued, not indexed — can't surface here yet.
+  - Substantive finding worth keeping: **AI reaches for foundational/historic
+    law, not just recent** — 17% of fetches were 1930s NH, and the single
+    most-fetched opinion is *Nashua Hospital Ass'n v. Gage* (1932) at 12×.
+    Argument that the pre-1980 corpus + its historic-tier dispositions are
+    disproportionately what AI grounds on, not a completeness nicety.
+  - Disposition mix of what AI fetched: affirmed 41% / other 24% / mixed 16%.
+    66% precedential.
 - [ ] Optional: same submission in **Bing Webmaster Tools** for Bing/Copilot
   coverage.
 
