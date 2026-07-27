@@ -62,11 +62,48 @@ DATED_DATE_RE = re.compile(r"Dated:\s*([A-Za-z\.]+\s+\d{1,2},?\s+\d{4})")
 # "Filed [date]" boundary regular opinions use).
 ORDER_OPINION_HDR_RE = re.compile(r"\bORDER\s+OPINION\b")
 
-# Footer marker that flips is_precedential to False. Regular opinions say
-# "This opinion ... is nonprecedential"; order opinions say "this order opinion
-# is nonprecedential" (per Minn. R. Civ. App. P. 136.01, subd. 1(c)).
+# "SPECIAL TERM ORDER"s are a second order-opinion layout with a caption-FIRST
+# structure: parties right under "IN COURT OF APPEALS", then this header, THEN
+# the case number -- the reverse of a regular opinion (case number, caption,
+# "Filed"). Match either order-header phrasing to bound that caption block.
+# No trailing \b: a footnote superscript often fuses to the header ("ORDER1"),
+# and \b between "R" and "1" would fail to match.
+ORDER_HDR_RE = re.compile(
+    r"\b(?:SPECIAL\s+TERM\s+ORDER|ORDER\s+OPINION)", re.IGNORECASE)
+
+# Party-role words trailing each side of an order caption ("<Name>, Respondent,
+# vs. <Name>, Appellant.") -- stripped to leave just the party names.
+_CAPTION_ROLE_RE = re.compile(
+    r",\s*(?:Respondents?|Appellants?|Petitioners?|Relators?|"
+    r"Cross-Appellants?|Cross-Respondents?|Plaintiffs?|Defendants?)\b\.?",
+    re.IGNORECASE)
+
+
+def _order_caption_name(caption: str) -> str:
+    """Turn an order-opinion caption block into a clean case name.
+
+    The block reads "<Party1>, Respondent, vs. <Party2>, Appellant." with the
+    parties split across lines. Join it, split on vs./v., strip the trailing
+    role words, and rejoin as "Party1 v. Party2". Captions with no "vs." (e.g.
+    "In re the Marriage of ...") keep their text, roles removed.
+    """
+    flat = " ".join(caption.split())
+    sides = re.split(r"\bvs?\.\s*", flat, maxsplit=1)
+    if len(sides) == 2:
+        left = _CAPTION_ROLE_RE.sub("", sides[0]).strip(" ,.")
+        right = _CAPTION_ROLE_RE.sub("", sides[1]).strip(" ,.")
+        if left and right:
+            return f"{left} v. {right}"
+    return _CAPTION_ROLE_RE.sub("", flat).strip(" ,.")
+
+
+# Footer marker that flips is_precedential to False. Regular opinions say "This
+# opinion ... is nonprecedential"; order opinions say "this order opinion is
+# nonprecedential" OR just "this order is nonprecedential" (per Minn. R. Civ.
+# App. P. 136.01, subd. 1(c)).
 NONPRECEDENTIAL_RE = re.compile(
-    r"This\s+(?:order\s+)?opinion\s+(?:will\s+be\s+unpublished\s+and\s+)?is\s+nonprecedential",
+    r"This\s+(?:order(?:\s+opinion)?|opinion)\s+"
+    r"(?:will\s+be\s+unpublished\s+and\s+)?is\s+nonprecedential",
     re.IGNORECASE,
 )
 
@@ -213,6 +250,20 @@ class MinnesotaParser(StateParser):
                 if 4 <= len(candidate) <= 400:
                     result.case_name = candidate
                     result.confidence["case_name"] = conf
+
+        # Fallback for the "SPECIAL TERM ORDER" caption-FIRST layout: the case#
+        # anchoring above finds nothing because the caption sits ABOVE the case
+        # number (between "IN COURT OF APPEALS" and the order header). Pull it
+        # from that region and normalize the parties to "X v. Y".
+        if not result.case_name:
+            court_hdr = COURT_LEVEL_RE.search(raw_text)
+            order_hdr = ORDER_HDR_RE.search(raw_text)
+            if court_hdr and order_hdr and court_hdr.end() < order_hdr.start():
+                name = _order_caption_name(
+                    raw_text[court_hdr.end():order_hdr.start()])
+                if 4 <= len(name) <= 400:
+                    result.case_name = name
+                    result.confidence["case_name"] = 0.6
 
         # --- Disposition ---------------------------------------------------
         # Highest confidence when the disposition sits immediately after
