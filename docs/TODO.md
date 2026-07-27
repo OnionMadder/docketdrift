@@ -210,6 +210,14 @@ The working tree is now clean and main is in sync with origin. What happened:
   souter) can't be stoplisted, so a cited Justice Stevens/Souter still inflates
   Henry S. Stevens / David Hackett Souter — inherent surname ambiguity, small +
   bounded. `resolve_judges --state AZ` is now safe to re-run once deployed.
+  **VERIFIED at scale 2026-07-27:** re-ran `resolve_judges --state AZ
+  --create-missing` over the full corpus (7 cull-safe chunks, `--max-runtime 35
+  --id-batch 6000`) → **zero judges with a stoplisted surname minted**; AZ now
+  271 judges / 29,742 panel votes, top surname-only rows all real (Lopez,
+  Struckmeyer, Vásquez, Gordon, Prade, ...). Driver needed a retry-on-2013
+  wrapper (shared DB drops the raw_text fetch connection intermittently, even
+  off-window). Minor pre-existing cleanup still open: PDF-hyphenation dupes
+  (Struckmeyer/Struck-meyer 139+29, Holohan/Holo-han) to merge in admin.
 - [x] **Holdings page-number artifacts.** ✅ DONE 2026-07-24. `holdings.py`
   now strips stray PDF page numbers verbatim-safely — the data showed ~half
   the flagged cases were *legitimate* numbers ("subdivision 6", "51 years"),
