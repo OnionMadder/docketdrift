@@ -146,11 +146,37 @@ The working tree is now clean and main is in sync with origin. What happened:
 
 ## Tier 1 — editorial polish (the honest asterisks on the dashboard)
 
-- [ ] **Review the 280 forged AZ judges.** `resolve_judges --create-missing`
-  minted 280 UNKNOWN-status AZ judges from bylines (surname-only like "Becke",
-  full-name dupes, some non-judge noise). Votes are structurally correct, but
-  the roster needs a review/merge/cull pass in admin before AZ judge pages are
-  clean — same human step MN/NH had. Onion (admin work).
+- [~] **AZ judge roster cleanup — PREP PASS DONE 2026-07-25; ~30 admin rows
+  left for Onion.** `resolve_judges --create-missing` minted 280 UNKNOWN AZ
+  judges from bylines. It was NOT "forged garbage" — 162 were real judges named
+  by surname only ("Mcmurdie"), 125 had full names, 38 were zero-vote roster
+  orphans, plus a class of PDF hyphenation dupes ("Struck-meyer"). The
+  automated prep (data-only, no code; all high-confidence, status left UNKNOWN
+  so the human confirm still counts):
+  - **30 names completed** to full form — each verified against a byline in an
+    opinion that judge AUTHORED, or a single unambiguous zero-vote-roster
+    surname match. Covers all the heavily-voted judges (McMurdie 1229, Williams
+    711, Lopez 280, Gordon 136, ...). Technique: scan a judge's own opinions'
+    bylines for "Judge <First ... Surname> delivered/authored"; also match
+    surname-only rows to the roster's full-name rows (suffix-stripped for
+    "... Jr").
+  - **6 orphan roster rows deleted** (zero-vote dupes consumed by a completion);
+    **8 hyphenation artifacts fixed** (Struck-meyer merged into Struckmeyer with
+    votes reassigned; 7 de-hyphenated in place). 287 → 280 rows.
+  - **LEFT for the admin sit-down** (`/admin/opinions/judge/`, AZ + UNKNOWN):
+    confirm the 30 completed (names are right, just flip to reviewed); complete
+    the ~3-4 mid-vote surname-only still missing a name (Struckmeyer 168, Prade
+    126, Staring 74) + a long low-vote/historical tail; cull the ~32 zero-vote
+    orphans.
+- [ ] **QUEUED (run when CL rate limit recovers): CL crack at the 131 remaining
+  surname-only AZ names.** Their full names aren't in any byline/roster we hold,
+  but they're in CourtListener's people DB. Approach: for each AZ surname-only
+  Judge, query CL `/people/?court=<az court cl-id>&name_last=<surname>`, take a
+  single confident match, propose full name (DRY-RUN first — surname alone is
+  ambiguous, so require court + a single hit). Do NOT run while CL is in
+  backoff (I triggered one 2026-07-25; a single count query took >7 min) and
+  do NOT auto-apply unattended — dry-run, eyeball, then apply. Would likely
+  clear most of the 131, leaving Onion almost nothing to type.
 - [x] **Holdings page-number artifacts.** ✅ DONE 2026-07-24. `holdings.py`
   now strips stray PDF page numbers verbatim-safely — the data showed ~half
   the flagged cases were *legitimate* numbers ("subdivision 6", "51 years"),

@@ -402,11 +402,19 @@ ingested → live end-to-end on first use; MN COA newest 2026-07-06 → 2026-07-
    sweep then ran in ~10 min / 12 chunks.
    **Gotcha for the driver:** NFSN's CPU cull sits at ~40s, so a chunk must
    self-exit under that; `--max-runtime 35 --id-batch 6000` is a safe combo.
-   **FOLLOWUP (editorial):** `--create-missing` forged **280 UNKNOWN-status
-   AZ judges** from bylines (surname-only like "Becke", plus duplicates of
-   full-name rows and some non-judge noise). Votes are structurally correct
-   but that roster needs a review/merge/cull pass in admin before the AZ judge
-   pages are clean — same human step MN/NH had.
+   **FOLLOWUP (editorial) — PREP PASS DONE 2026-07-25.** `--create-missing`
+   minted 280 UNKNOWN AZ judges from bylines (162 surname-only like "Becke",
+   125 full-name, 38 zero-vote roster orphans, + PDF hyphenation dupes like
+   "Struck-meyer"). Automated prep (data-only): **30 names completed** to full
+   form (each verified against a byline in an opinion that judge AUTHORED, or a
+   single unambiguous roster surname match — technique reusable), 6 orphan rows
+   deleted, 8 hyphenation artifacts fixed (287→280 rows). Status left UNKNOWN
+   so the human confirm still counts. **Left for Onion in admin:** confirm the
+   30, complete ~3-4 mid-vote surname-only, cull ~32 zero-vote orphans. The
+   131 remaining surname-only whose full name isn't in any byline/roster we
+   hold are **QUEUED for a CL people-DB crack when CL's rate limit recovers**
+   (don't run during a backoff; dry-run + eyeball, never auto-apply). Full plan
+   in `docs/TODO.md` Tier 1.
 2. **NH's remaining 4,465 no-match** are genuine one-off 19th-c. prose
    ("There must be a decree in favor of the plaintiffs..."). Diminishing
    returns; only worth another pass if a frequency scan shows a new cluster.
