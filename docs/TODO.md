@@ -178,17 +178,25 @@ The working tree is now clean and main is in sync with origin. What happened:
   them as AZ "judges" with panel votes because it grabbed cited-justice
   surnames out of the opinion TEXT, not just the panel byline. So the tail
   cleanup is **CULL, not complete**.
-- [ ] **NEW BUG (from the CL crack): resolve_judges creates citation
-  false-positive judges.** Cited SCOTUS/other-court justices (Scalia 16 votes,
-  Brennan/Kennedy/White/Thomas ~12-14 each, likely Marshall/Powell/Rehnquist/…
-  too) became AZ Judge rows with bogus panel votes. Two things to do: (a) CULL
-  them — a real AZ judge AUTHORED >=1 AZ opinion (author-role vote), a citation
-  false-positive never did, so "surname-only + zero author-role votes + matches
-  a known federal-justice surname" is a safe cull signal (or check CL positions
-  = no AZ court); (b) investigate WHY the byline/panel extractor grabs
-  body-cited names, and whether MN/NH panel votes are similarly polluted. This
-  reframes the AZ judge tail: not 131 names to type, but ~dozens of false
-  judges to remove + a handful of real ones to complete.
+- [x] **Phantom-judge CULL DONE 2026-07-27.** Removed **29 citation
+  false-positive judges** + their bogus panel votes — every one a SCOTUS
+  justice surname (Scalia, Brennan, Rehnquist, Ginsburg, Sotomayor, Gorsuch,
+  Kennedy, White, Thomas, Harlan, Marshall, Powell, ...). AZ 280→256, NH 69→64.
+  **MN was clean (0)** — its roster was built with full names, so the extractor
+  never orphaned cited surnames there. Cull signal used: surname matches a
+  SCOTUS justice AND (distinctive name OR no full-name "Judge <First> Surname"
+  author byline in any of the judge's opinions). NB the extractor had even
+  given some (Scalia, Brennan) bogus MAJORITY_AUTHOR votes — mis-attributed
+  authorship — so "never authored" alone was NOT a safe filter; the surname +
+  byline test was.
+- [ ] **ROOT BUG STILL OPEN — the cull is one-time; phantoms WILL recur.**
+  `resolve_judges` pulls judge surnames from the opinion TEXT (a cited "Justice
+  Scalia"), not just the panel byline, so the **next `resolve_judges --state AZ`
+  run re-mints all 29**. Fix the extractor before running it again: constrain
+  name capture to the actual panel-byline region (author + "in which ... joined"
+  list), and/or add a federal-justice-surname guard. AZ is the exposed state
+  (COA bylines + citation-heavy); MN's roster shape spared it, NH had a few.
+  Until this is fixed, do NOT re-run resolve_judges for AZ.
 - [x] **Holdings page-number artifacts.** ✅ DONE 2026-07-24. `holdings.py`
   now strips stray PDF page numbers verbatim-safely — the data showed ~half
   the flagged cases were *legitimate* numbers ("subdivision 6", "51 years"),
