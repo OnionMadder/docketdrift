@@ -58,6 +58,22 @@ puzzle. Everything below is committed + deployed unless noted.
   no CAPTCHA (persistent profile banks clearance), 13 new opinions ingested,
   10 correctly deduped. MN COA current through 2026-07-21. See the dedicated
   scraper block further down for the CAPTCHA/pagination mechanics.
+- **MN parser now handles BOTH order-opinion layouts** (`parsing/mn.py`). The
+  scraper pulls a class the CL feed never did: **"SPECIAL TERM ORDER"** opinions
+  (`a26xxxx`-style — motions, HRO/ERPO appeals, procedural dispositions). These
+  are **caption-FIRST** (parties right under "IN COURT OF APPEALS", then the
+  order header, THEN the case number) — the reverse of a regular opinion and of
+  the older "ORDER OPINION" format the parser knew (`ab27442`). They were
+  ingesting with an **empty case name** (blank CASE cell on the MN landing) and
+  a **wrong precedential=True** flag. Fix: a case-name fallback that reads the
+  caption from between the court header and the order header and normalizes
+  "<P1>, Respondent, vs. <P2>, Appellant." → "P1 v. P2" (also the "In re ..."
+  no-vs. shape); plus broadened the nonprecedential matcher to accept "SPECIAL
+  TERM ORDER" + "this order is nonprecedential", dropping a trailing `\b` that
+  failed on the fused footnote marker ("ORDER1"). Regular opinions unchanged;
+  re-parsed the 7 affected rows. **Any new order opinion the weekly scraper
+  pulls now names + classifies correctly** — don't reintroduce the case#-anchored
+  caption assumption.
 - **Discoverability — the "MN gets zero live-AI traffic" root cause + FIX.**
   Live AI grounds by web-search-then-fetch, so it only reaches INDEXED pages.
   Access-log cross-tab showed MN search-engine crawls = 1, NH = 1,421.
