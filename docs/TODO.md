@@ -168,15 +168,27 @@ The working tree is now clean and main is in sync with origin. What happened:
     the ~3-4 mid-vote surname-only still missing a name (Struckmeyer 168, Prade
     126, Staring 74) + a long low-vote/historical tail; cull the ~32 zero-vote
     orphans.
-- [ ] **QUEUED (run when CL rate limit recovers): CL crack at the 131 remaining
-  surname-only AZ names.** Their full names aren't in any byline/roster we hold,
-  but they're in CourtListener's people DB. Approach: for each AZ surname-only
-  Judge, query CL `/people/?court=<az court cl-id>&name_last=<surname>`, take a
-  single confident match, propose full name (DRY-RUN first — surname alone is
-  ambiguous, so require court + a single hit). Do NOT run while CL is in
-  backoff (I triggered one 2026-07-25; a single count query took >7 min) and
-  do NOT auto-apply unattended — dry-run, eyeball, then apply. Would likely
-  clear most of the 131, leaving Onion almost nothing to type.
+- [~] **CL crack RAN 2026-07-27 (CL recovered) — and found a bigger bug.** A
+  bounded dry-run (17 highest-vote surname-only judges, CL `/people/?name_last=`)
+  completed 2 more real AZ Justices (`Struckmeyer` → **Fred C. Struckmeyer
+  Jr.**, `Holohan` → **William A. Holohan**) — but the low-vote tail is
+  **citation false-positives, not incomplete names**: CL matched `Scalia` →
+  *Antonin Scalia*, and the ambiguous hits were `Brennan / Kennedy / Harlan /
+  White / Thomas` — all **US Supreme Court** justices. `resolve_judges` minted
+  them as AZ "judges" with panel votes because it grabbed cited-justice
+  surnames out of the opinion TEXT, not just the panel byline. So the tail
+  cleanup is **CULL, not complete**.
+- [ ] **NEW BUG (from the CL crack): resolve_judges creates citation
+  false-positive judges.** Cited SCOTUS/other-court justices (Scalia 16 votes,
+  Brennan/Kennedy/White/Thomas ~12-14 each, likely Marshall/Powell/Rehnquist/…
+  too) became AZ Judge rows with bogus panel votes. Two things to do: (a) CULL
+  them — a real AZ judge AUTHORED >=1 AZ opinion (author-role vote), a citation
+  false-positive never did, so "surname-only + zero author-role votes + matches
+  a known federal-justice surname" is a safe cull signal (or check CL positions
+  = no AZ court); (b) investigate WHY the byline/panel extractor grabs
+  body-cited names, and whether MN/NH panel votes are similarly polluted. This
+  reframes the AZ judge tail: not 131 names to type, but ~dozens of false
+  judges to remove + a handful of real ones to complete.
 - [x] **Holdings page-number artifacts.** ✅ DONE 2026-07-24. `holdings.py`
   now strips stray PDF page numbers verbatim-safely — the data showed ~half
   the flagged cases were *legitimate* numbers ("subdivision 6", "51 years"),
