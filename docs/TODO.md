@@ -39,11 +39,40 @@ turned out **NONE** of the docketdrift domains were in Search Console — NH's
   as a **Domain property** (one DNS TXT record at NFSN covers apex + all
   subdomains + future states), verified, and submitted the mn/nh/az sitemaps.
 
-**Now monitoring (nothing to build — this is a wait):**
+**First-crawl checkpoint (2026-07-27, ~2 days after submission) — SUBMISSION WORKED:**
 
-- [ ] **~days:** grep the access log for Googlebot hitting mn/az opinion pages
-  (first crawl = submission took). Also watch Search Console Pages report move
-  URLs "Discovered" → "Indexed".
+Googlebot went 1 → **10,659 hits**. It fetched every sitemap incl. MN's deep
+`sitemap-opinions-3.xml` (MN is the only state with a chunk 3), so MN's URLs
+ARE discovered. Search Console Sitemaps confirms: **mn = Success, 44,383 pages
+discovered; nh = Success, 112**. Googlebot opinion-page hits by state (resolved
+via DB, not just format): **NH 7,654 / AZ 256 / MN 8.**
+
+- NH dominates (Google already had organic authority there).
+- **AZ is now crawled** (256, was ~65 total) — the %20 sitemap fix paid off.
+- **MN = "Discovered, crawl-queued," not missed** — Google has the 44,383 URLs
+  but hasn't allocated crawl budget to the cold 60K subdomain yet. Normal
+  cold-start ramp; expect MN hits to climb over days–weeks.
+
+**AZ sitemap showed "Couldn't fetch" in Search Console — STALE, not a real
+bug.** External HTTPS fetch of `az.docketdrift.com/sitemap.xml` returns 200 +
+valid sitemapindex; AZ opinion pages crawl fine (cert/DNS/content all good).
+The tell: az's "Last read" was blank (Google's one fetch attempt on submission
+day failed and it hadn't retried). **Cause: submitting during a heavy deploy
+day** — 6–8 gunicorn restarts on 2026-07-25, and NFSN's front proxy serves a
+stale 503 for a few minutes after each `signal-daemon gunicorn TERM`. Google's
+az fetch landed in one of those windows; mn/nh got read at good moments. Fix:
+re-submit the az sitemap (remove + re-add) to force a fresh fetch.
+
+  **LESSON: never submit / re-submit sitemaps (or ping Google) right after a
+  deploy.** Give gunicorn + the NFSN proxy several minutes to settle first, or
+  the fetch can hit a stale-503 window and log a false "Couldn't fetch."
+
+**Still monitoring (nothing to build — this is a wait):**
+
+- [ ] Owner: **re-submit the az sitemap** in Search Console (it fetches clean
+  now) so it flips to Success + ~38K discovered.
+- [ ] **~1 week:** re-check the access log — MN Googlebot hits should climb
+  from 8 as crawl budget ramps. Baseline: NH 7,654 / AZ 256 / MN 8.
 - [ ] **~weeks:** re-run `ai_citation_profile`. MN/AZ appearing = the whole
   thread (reporter cites + sitemap fix + Search Console) paid off. Baseline to
   beat: NH 96% / AZ 4% / MN 0%.
