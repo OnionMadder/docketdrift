@@ -260,8 +260,13 @@ The working tree is now clean and main is in sync with origin. What happened:
   the fix also recovered **432 AZ votes** from suffix-splits the first pass
   missed (Lopez→John R. Lopez IV, Gordon→Frank X. Gordon jr, Struckmeyer's three
   rows, Brammer, Patterson). **Remaining NH enrichment (optional, needs a
-  source):** Hantz Marconi's first name (Anna Barbara — verify via CL before
-  applying, don't fabricate); the mid-1900s 0-vote historical roster rows
+  source):** Hantz Marconi's first name — **CL verification FAILED 2026-07-27:
+  she is NOT in CourtListener's people DB** (search `q=Hantz`/`q=Marconi` and
+  filter `name_last=Hantz`/`Marconi` all returned 0; CL's people index is
+  FJC/federal-heavy and doesn't carry this NH *state* justice — Souter is in it
+  only because he reached SCOTUS). Left as the verified `Hantz Marconi`; a first
+  name would need an authoritative non-CL source (NH Judicial Branch roster) and
+  must NOT be fabricated. The mid-1900s 0-vote historical roster rows
   (Blandin/Lampron/Kenison/…) are real justices with no in-corpus opinions,
   left as-is.
 - [x] **Holdings page-number artifacts.** ✅ DONE 2026-07-24. `holdings.py`
