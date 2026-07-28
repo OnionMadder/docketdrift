@@ -216,8 +216,24 @@ The working tree is now clean and main is in sync with origin. What happened:
   271 judges / 29,742 panel votes, top surname-only rows all real (Lopez,
   Struckmeyer, Vásquez, Gordon, Prade, ...). Driver needed a retry-on-2013
   wrapper (shared DB drops the raw_text fetch connection intermittently, even
-  off-window). Minor pre-existing cleanup still open: PDF-hyphenation dupes
-  (Struckmeyer/Struck-meyer 139+29, Holohan/Holo-han) to merge in admin.
+  off-window).
+- [x] **PDF-hyphenation judge dupes MERGED 2026-07-27.** New idempotent command
+  `merge_hyphenated_judges` (dry-run by default, `--apply` to commit): a
+  hyphenated row is merged into its clean twin ONLY when de-hyphenating the
+  surname matches another judge in the same state, so a genuine hyphenated name
+  (`Muriel Jeannette Smith-Florez` — correctly left alone) is never touched.
+  Votes reassigned with (opinion, judge)-collision dedup keeping the stronger
+  vote type. Merged **8 AZ rows** (Struck-meyer, Holo-han, Decon-cini,
+  Dono-frio, Eu-bank, Ge-sell, Mc-farland, Win-des) → AZ 271→263 judges, 59
+  votes moved. Reusable for MN/NH.
+- [ ] **Residual surname-only/full-name judge dupes (AZ, separate class).** The
+  hyphenation merge surfaced that several judges ALSO have a bare surname-only
+  row shadowing their full-name row: `Deconcini`(481)/`Evo Anton DeConcini`,
+  `Donofrio`(377)/`Francis J. Donofrio`, `Eubank`(381)/`William E. Eubank`,
+  `Mcfarland`(359)/`Ernest W. McFarland`, `Windes`(376)/`Dudley W. Windes`, plus
+  a straight exact-dup `William A. Holohan`(375 vs 266). Same judge, not a hyphen
+  artifact — needs a name-superset dedup pass (or admin merge). Low risk (clearly
+  the same person) but deliberately out of scope for the hyphenation command.
 - [x] **Holdings page-number artifacts.** ✅ DONE 2026-07-24. `holdings.py`
   now strips stray PDF page numbers verbatim-safely — the data showed ~half
   the flagged cases were *legitimate* numbers ("subdivision 6", "51 years"),
