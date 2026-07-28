@@ -226,14 +226,23 @@ The working tree is now clean and main is in sync with origin. What happened:
   vote type. Merged **8 AZ rows** (Struck-meyer, Holo-han, Decon-cini,
   Dono-frio, Eu-bank, Ge-sell, Mc-farland, Win-des) → AZ 271→263 judges, 59
   votes moved. Reusable for MN/NH.
-- [ ] **Residual surname-only/full-name judge dupes (AZ, separate class).** The
-  hyphenation merge surfaced that several judges ALSO have a bare surname-only
-  row shadowing their full-name row: `Deconcini`(481)/`Evo Anton DeConcini`,
-  `Donofrio`(377)/`Francis J. Donofrio`, `Eubank`(381)/`William E. Eubank`,
-  `Mcfarland`(359)/`Ernest W. McFarland`, `Windes`(376)/`Dudley W. Windes`, plus
-  a straight exact-dup `William A. Holohan`(375 vs 266). Same judge, not a hyphen
-  artifact — needs a name-superset dedup pass (or admin merge). Low risk (clearly
-  the same person) but deliberately out of scope for the hyphenation command.
+- [x] **Residual same-judge dupes MERGED 2026-07-27.** New command
+  `merge_duplicate_judges` (dry-run default, `--apply`) handles two classes per
+  surname group, ONLY when the surname has a single unambiguous full name in the
+  state: exact-name twins and bare-surname shadows both fold into the canonical
+  full-name row. Cleaned **9 rows** — AZ 6 (Deconcini/Donofrio/Eubank/Mcfarland/
+  Windes shadows + a duplicate William A. Holohan), MN 2 (duplicate Natalie
+  Hudson + Renee Worke roster-vs-vote rows), NH 1 (a `Hantz\nmarconi` newline
+  artifact). AZ 263→257, MN 124→122, NH 64→63. **Key safety fix:** merges carry
+  editorial metadata FORWARD (bio/portrait/roster status/appointment/CL-id) and
+  pick the metadata-rich row as survivor, so a seated bio row is never deleted
+  in favor of a bare vote stub — Hudson's 2808-char bio + seated status kept,
+  the 32 votes moved onto it. Shared merge machinery lives in
+  `opinions/judge_merge.py` (used by both merge commands). Conflicting-first-name
+  surname groups (genuinely different judges) are reported + skipped, never
+  guessed. **Note:** NH `Hantz marconi` (id=281) still has the known lowercase-m
+  casing bug + no bio — a separate data-quality fix (should be Anna Barbara
+  Hantz Marconi, a seated justice).
 - [x] **Holdings page-number artifacts.** ✅ DONE 2026-07-24. `holdings.py`
   now strips stray PDF page numbers verbatim-safely — the data showed ~half
   the flagged cases were *legitimate* numbers ("subdivision 6", "51 years"),

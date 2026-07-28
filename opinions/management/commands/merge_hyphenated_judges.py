@@ -21,28 +21,10 @@ Dry-run by DEFAULT (it deletes rows); pass --apply to execute.
 """
 
 from django.core.management.base import BaseCommand
-from django.db import connection, transaction
+from django.db import connection
 
+from opinions.judge_merge import merge_judge, surname as _surname
 from opinions.models import Judge, PanelVote, State
-
-# Vote-type strength: on an (opinion, judge) collision after reassignment we
-# keep the higher-ranked type. Authoring any opinion outranks merely joining;
-# within a tier majority > concurrence > dissent; non-participation lowest.
-_RANK = {
-    PanelVote.Vote.MAJORITY_AUTHOR: 7,
-    PanelVote.Vote.CONCURRENCE_AUTHOR: 6,
-    PanelVote.Vote.DISSENT_AUTHOR: 5,
-    PanelVote.Vote.MAJORITY_JOIN: 4,
-    PanelVote.Vote.CONCURRENCE_JOIN: 3,
-    PanelVote.Vote.DISSENT_JOIN: 2,
-    PanelVote.Vote.RECUSED: 1,
-    PanelVote.Vote.NOT_PARTICIPATING: 0,
-}
-
-
-def _surname(full_name: str) -> str:
-    parts = full_name.strip().split()
-    return parts[-1] if parts else ""
 
 
 class Command(BaseCommand):
@@ -126,7 +108,7 @@ class Command(BaseCommand):
                 vc = {c.pk: PanelVote.objects.filter(judge=c).count() for c in pool}
                 survivor = max(pool, key=lambda c: (vc[c.pk], -c.pk))
 
-                moved, deduped = self._merge(loser, survivor, apply)
+                moved, deduped = merge_judge(loser, survivor, apply)
                 total_pairs += 1
                 total_moved += moved
                 total_deduped += deduped
@@ -149,46 +131,3 @@ class Command(BaseCommand):
             f"{total_deduped} deduped, {total_skipped} skipped (ambiguous)."
             + ("" if apply else "  Re-run with --apply to commit.")
         ))
-
-    def _merge(self, loser: Judge, survivor: Judge, apply: bool) -> tuple[int, int]:
-        """Move loser's PanelVotes onto survivor, then delete loser.
-
-        Returns (votes_reassigned, votes_deduped). When not applying, computes
-        the same counts against current data without writing.
-        """
-        loser_votes = list(
-            PanelVote.objects.filter(judge=loser).values("id", "opinion_id", "vote_type")
-        )
-        survivor_by_opinion = {
-            pv.opinion_id: pv
-            for pv in PanelVote.objects.filter(judge=survivor).only(
-                "id", "opinion_id", "vote_type"
-            )
-        }
-
-        moved = deduped = 0
-        if not apply:
-            for lv in loser_votes:
-                if lv["opinion_id"] in survivor_by_opinion:
-                    deduped += 1
-                else:
-                    moved += 1
-            return moved, deduped
-
-        with transaction.atomic():
-            for lv in loser_votes:
-                existing = survivor_by_opinion.get(lv["opinion_id"])
-                if existing is None:
-                    PanelVote.objects.filter(pk=lv["id"]).update(judge=survivor)
-                    moved += 1
-                else:
-                    # Collision: keep the stronger vote type, drop the loser row.
-                    if _RANK.get(lv["vote_type"], -1) > _RANK.get(existing.vote_type, -1):
-                        existing.vote_type = lv["vote_type"]
-                        existing.save(update_fields=["vote_type"])
-                    PanelVote.objects.filter(pk=lv["id"]).delete()
-                    deduped += 1
-            # PROTECT on PanelVote.judge is now satisfied (loser has no votes).
-            loser.delete()
-
-        return moved, deduped
