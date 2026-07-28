@@ -29,9 +29,21 @@ VOTE_RANK = {
 }
 
 
+# Generational suffixes that trail a surname; skipped when finding the surname
+# token so "John T. Broderick Jr" and "Broderick" group together.
+_NAME_SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "2", "3", "4", "2nd", "3rd", "4th"}
+
+
 def surname(full_name: str) -> str:
-    """Last whitespace-delimited token of a name ('' for a blank name)."""
+    """Surname token of a name, skipping a trailing generational suffix.
+
+    'John T. Broderick Jr' -> 'Broderick', 'Charles G. Douglas 3' -> 'Douglas',
+    '' for a blank name. Taking the raw last token would return the suffix and
+    split a judge's full-name row from their bare-surname vote row.
+    """
     parts = full_name.strip().split()
+    while parts and parts[-1].strip(".,").lower() in _NAME_SUFFIXES:
+        parts = parts[:-1]
     return parts[-1] if parts else ""
 
 

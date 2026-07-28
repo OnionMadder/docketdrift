@@ -240,9 +240,30 @@ The working tree is now clean and main is in sync with origin. What happened:
   the 32 votes moved onto it. Shared merge machinery lives in
   `opinions/judge_merge.py` (used by both merge commands). Conflicting-first-name
   surname groups (genuinely different judges) are reported + skipped, never
-  guessed. **Note:** NH `Hantz marconi` (id=281) still has the known lowercase-m
-  casing bug + no bio — a separate data-quality fix (should be Anna Barbara
-  Hantz Marconi, a seated justice).
+  guessed.
+- [x] **NH roster deep-clean 2026-07-27 (63→37 judges).** Fixing Hantz Marconi
+  turned into a full NH roster audit that found four artifact classes, all now
+  resolved: (1) **name/casing** — `Hantz marconi`→`Hantz Marconi`, role set
+  ASSOCIATE_JUSTICE (she's a FORMER justice, correctly not on the 5-seat current
+  roster: MacDonald/Gould/Will/Countway/Donovan); (2) **OCR corruptions** of
+  prolific justices merged back by byline confirmation — `Hlcks/Iiicks/Iilcks`→
+  Hicks, `Üalianis/Dallanis/Balianis/Daliants/Daljanis/Dallajntis/Dauianis`→
+  Dalianis, `Dtjggan`→Duggan, `Brook`→Brock (recovered ~65 votes); (3)
+  **citation/non-judge false-positives** deleted — `Tjoflat`(11th Cir),
+  `Ripple`(7th Cir), `Geske`(WI), `Connor`(=O'Connor SCOTUS), `Gudas`(=NH clerk
+  Timothy Gudas), `Affirmed`(disposition word), plus the `Clerk\n…`/`And …`
+  footer-block artifacts; (4) **suffix-split dupes** — `Broderick`(1021v)→
+  `John T. Broderick jr`, Horton/Thayer likewise. The suffix split exposed a
+  `surname()` bug (it took the trailing "jr"/"3" as the surname) — FIXED in
+  `opinions/judge_merge.py` to skip generational suffixes, and `_norm` now
+  drops periods/commas so "Jr" == "Jr.". Re-running merge_duplicate_judges with
+  the fix also recovered **432 AZ votes** from suffix-splits the first pass
+  missed (Lopez→John R. Lopez IV, Gordon→Frank X. Gordon jr, Struckmeyer's three
+  rows, Brammer, Patterson). **Remaining NH enrichment (optional, needs a
+  source):** Hantz Marconi's first name (Anna Barbara — verify via CL before
+  applying, don't fabricate); the mid-1900s 0-vote historical roster rows
+  (Blandin/Lampron/Kenison/…) are real justices with no in-corpus opinions,
+  left as-is.
 - [x] **Holdings page-number artifacts.** ✅ DONE 2026-07-24. `holdings.py`
   now strips stray PDF page numbers verbatim-safely — the data showed ~half
   the flagged cases were *legitimate* numbers ("subdivision 6", "51 years"),

@@ -38,7 +38,11 @@ from opinions.models import Judge, PanelVote, State
 
 
 def _norm(full_name: str) -> str:
-    return " ".join(full_name.strip().split()).lower()
+    # Lowercase, collapse whitespace, and drop periods/commas so "Fred C.
+    # Struckmeyer Jr." and "Fred C Struckmeyer Jr" count as one name.
+    return (
+        " ".join(full_name.strip().split()).lower().replace(".", "").replace(",", "")
+    )
 
 
 class Command(BaseCommand):
