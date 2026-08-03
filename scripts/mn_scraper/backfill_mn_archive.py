@@ -116,8 +116,11 @@ async (url) => {
 
 # OPa210414-112221.pdf  -> case a210414, date 11/22/21
 # OPA231400-07152026.pdf-> case A231400, date 07/15/2026 (4-digit year form)
+# The trailing [^/]* matters: real filenames carry suffixes, e.g.
+# `OPa190959-040620%20Revised.pdf`. Without it those parse as None, get no
+# date, and drag the whole window into "cannot verify" and get skipped.
 FNAME_RE = re.compile(
-    r"OP([A-Za-z]?\d+)-(\d{2})(\d{2})(\d{2}(?:\d{2})?)\.pdf$", re.IGNORECASE)
+    r"OP([A-Za-z]?\d+)-(\d{2})(\d{2})(\d{4}|\d{2})[^/]*\.pdf$", re.IGNORECASE)
 # Older scheme, still served for COAspectorders: a231903.pdf (no date).
 BARE_RE = re.compile(r"/([A-Za-z]\d{6,})\.pdf$", re.IGNORECASE)
 
@@ -179,15 +182,22 @@ def build_url(strategy, start, end):
         # The filename encodes the filing date: OP<case>-<mmddyy>.pdf. MN files
         # opinions on Mondays, so one query per Monday is ~30-40 results -- well
         # inside the ~10-page pager, and trivially verifiable against the window.
-        stamp = start.strftime("%m%d%y")
+        # TWO stamp forms, and both are required. COA files are
+        # OP<case>-<mmddyy>.pdf (6-digit) but Supreme files are
+        # OP<case>-<mmddyyyy>.pdf (4-digit year). The index tokenizes the URL,
+        # so a 6-digit stamp NEVER matches an 8-digit filename -- querying only
+        # the short form silently returns zero Supreme opinions, which is
+        # exactly how the first 2020 sweep came back 885 ctapun / 0 supct.
+        stamps = {start.strftime("%m%d%y"), start.strftime("%m%d%Y")}
+        stamp_q = " OR ".join("url:%s" % s for s in sorted(stamps))
         if strategy == "filedate_bare":
-            q = "url:%s" % stamp
+            q = "(%s)" % stamp_q
         else:
             years = {start.year, end.year}
             dirs = " OR ".join(
                 "url:/archive/%s/%d" % (c, y) for y in sorted(years)
                 for c in ALL_CATS)
-            q = "(%s) url:%s" % (dirs, stamp)
+            q = "(%s) (%s)" % (dirs, stamp_q)
         return SEARCH + "?" + urlencode(dict(base, query=q,
                                              **{"start-date": "", "end-date": ""}))
     if strategy == "yearurl":
@@ -401,9 +411,14 @@ def main():
     ap.add_argument("--window-days", type=int, default=14,
                     help="Backward step for non-filedate strategies (default 14). "
                          "Ignored by filedate, which steps one day at a time.")
-    ap.add_argument("--weekdays", default="0",
-                    help="filedate only: weekdays to query, Mon=0 (default '0'). "
-                         "Use '0,1,2' to catch holiday-shifted releases.")
+    ap.add_argument("--weekdays", default="0,2",
+                    help="filedate only: weekdays to query, Mon=0 (default "
+                         "'0,2'). THE COURTS USE DIFFERENT DAYS: the Court of "
+                         "Appeals files Mondays, the Supreme Court files "
+                         "WEDNESDAYS. A Monday-only sweep silently returns "
+                         "zero Supreme opinions -- that is how the first 2020 "
+                         "pass came back 885 ctapun / 0 supct. Tue/Thu/Fri were "
+                         "probed and are empty.")
     ap.add_argument("--max-pages", type=int, default=10,
                     help="Pager depth per window (site exposes ~10).")
     ap.add_argument("--pace", type=float, default=8.0,
