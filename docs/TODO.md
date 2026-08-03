@@ -341,8 +341,30 @@ Already registered + running (nothing to do): `embed-tick` (~10 min),
   total vs the ~1,400/yr historical norm, and case-number density across
   `A<yy>-####`. A year landing at ~400 means silent under-collection, not a
   quiet docket.
+  **BLOCKER FOR THE THIN YEARS ONLY (2017–2019, 2023) — found 2026-08-03.**
+  Those years already hold rows whose `case_number` is a malformed stem:
+  `a230380`, `a250826`, `a221655` — lowercase, unhyphenated. **The defect is
+  CourtListener's, inherited on ingest**: CL's own MN docket numbers are stored
+  that way (`dockets.csv` shows `A211648`, `a241471`, `a250033`). Our PDF
+  parser produces the CORRECT `A23-0380`, and `ingest_pdfs` dedups on an EXACT
+  `(court, case_number)` match — so backfilling into those years would create a
+  SECOND row per opinion instead of skipping. 2023 is 115/115 malformed; 2025
+  is 180/238. **2020–2022 are safe** (empty, nothing to collide with), which is
+  why the sweep started there.
+  Fix before touching the thin years: an in-place normalization pass rewriting
+  `a230380` → `A23-0380` (same class of repair as the 14,428 synthetic
+  `CL-<id>` numbers, and worth doing in the same pass — both make pages
+  unreachable by the identifier a lawyer would actually paste).
+  **Also known and NOT fixable here:** MN Supreme lands at ~53% because the
+  law library's opinions archive does not carry Supreme *orders* — attorney
+  discipline, Lawyers Professional Responsibility, administrative dockets like
+  `ADM10-8032`. CL had those. The backfill recovers Supreme opinions, not
+  Supreme orders; say so rather than implying the year is complete.
   **Still true and still worth doing:** report to FLP (draft ready at
-  `docs/flp_issue_1115_comment.md`, NOT sent — Onion's call).
+  `docs/flp_issue_1115_comment.md`, NOT sent — Onion's call). Note the
+  calibration also found **17 appeals opinions in 2016 Q1 that we don't have at
+  all**, in a quarter CL considers complete — so this pipeline finds records CL
+  missed outside the 2020–2022 hole too.
   **The gap is CourtListener's, not ours.** CL's bulk export, our DB, and CL's
   live API all show MN 2020–2022 = **zero, both courts** (control: minnctapp
   2016 = 1,231). CL's dockets are empty for those years too. **No CL path fixes
