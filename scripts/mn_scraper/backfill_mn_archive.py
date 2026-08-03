@@ -97,6 +97,11 @@ ANY_ARCHIVE_SEL = "a[href*='law-library-stat/archive/']"
 
 URL_FILTER = " OR ".join("url:/archive/%s" % c for c in ALL_CATS)
 
+# Which weekdays the courts actually file on. COA = Monday, Supreme =
+# Wednesday (verified against the index; Tue/Thu/Fri probed and empty).
+# Mutated from --weekdays at startup so build_url and iter_windows agree.
+FILING_WEEKDAYS = {0, 2}
+
 # In-page same-origin fetch. Playwright's request API is fingerprinted and
 # blocked; a fetch() from the passing page context is not. (The NH lesson.)
 FETCH_JS = """
@@ -188,7 +193,20 @@ def build_url(strategy, start, end):
         # so a 6-digit stamp NEVER matches an 8-digit filename -- querying only
         # the short form silently returns zero Supreme opinions, which is
         # exactly how the first 2020 sweep came back 885 ctapun / 0 supct.
-        stamps = {start.strftime("%m%d%y"), start.strftime("%m%d%Y")}
+        # OR together every filing day in [start, end]. Batching days into one
+        # query cuts the number of navigations -- and each navigation is a roll
+        # of the CAPTCHA dice that a human has to clear. Pagination is 10/page
+        # regardless, so batching only saves the per-query initial load, but
+        # that is still ~30% of the loads across a year.
+        stamps = set()
+        d = start
+        while d <= end:
+            if d.weekday() in FILING_WEEKDAYS:
+                stamps.add(d.strftime("%m%d%y"))
+                stamps.add(d.strftime("%m%d%Y"))
+            d += datetime.timedelta(days=1)
+        if not stamps:
+            stamps = {start.strftime("%m%d%y"), start.strftime("%m%d%Y")}
         stamp_q = " OR ".join("url:%s" % s for s in sorted(stamps))
         if strategy == "filedate_bare":
             q = "(%s)" % stamp_q
@@ -334,6 +352,14 @@ def collect_window(page, strategy, start, end, pace, max_pages):
         for r in fresh:
             seen.add(r[0])
         rows.extend(fresh)
+    else:
+        # Fell off the end of the pager while still finding NEW opinions --
+        # this window is truncated, not complete. Silent truncation is the one
+        # way batching could quietly lose records, so say so loudly and let the
+        # caller re-run the range with a smaller --batch-days.
+        return rows, ("TRUNCATED: still finding new opinions at the page %d "
+                      "ceiling; re-run this range with a smaller --batch-days"
+                      % max_pages)
     return rows, "ok"
 
 
@@ -385,12 +411,18 @@ def iter_windows(args, since, until):
     `--weekdays 0,1,2` to catch a Tuesday/Wednesday release.
     """
     if args.strategy in ("filedate", "filedate_bare"):
-        wanted = {int(x) for x in args.weekdays.split(",") if x.strip() != ""}
-        day = until
-        while day >= since:
-            if day.weekday() in wanted:
-                yield day, day
-            day -= datetime.timedelta(days=1)
+        # Batch `--batch-days` calendar days into one query (their filing-day
+        # stamps get OR'd together). Fewer queries = fewer CAPTCHA rolls for
+        # the human. Keep batches modest: every extra filing day adds ~25
+        # results, and >100 in one window hits the pager ceiling.
+        step = max(1, args.batch_days)
+        end = until
+        while end >= since:
+            start = max(since, end - datetime.timedelta(days=step - 1))
+            if any((start + datetime.timedelta(days=i)).weekday() in FILING_WEEKDAYS
+                   for i in range((end - start).days + 1)):
+                yield start, end
+            end = start - datetime.timedelta(days=1)
         return
     cur_end = until
     while cur_end >= since:
@@ -411,6 +443,13 @@ def main():
     ap.add_argument("--window-days", type=int, default=14,
                     help="Backward step for non-filedate strategies (default 14). "
                          "Ignored by filedate, which steps one day at a time.")
+    ap.add_argument("--batch-days", type=int, default=7,
+                    help="filedate only: calendar days per query (default 7 = "
+                         "one Mon+Wed pair). Each query is a CAPTCHA roll for "
+                         "the human, so batching cuts interruptions; but each "
+                         "filing day adds ~25 results and >100 in a window "
+                         "hits the pager ceiling, which is reported as "
+                         "TRUNCATED rather than silently accepted.")
     ap.add_argument("--weekdays", default="0,2",
                     help="filedate only: weekdays to query, Mon=0 (default "
                          "'0,2'). THE COURTS USE DIFFERENT DAYS: the Court of "
@@ -438,6 +477,9 @@ def main():
 
     if not args.probe and not (args.strategy and args.since and args.until):
         ap.error("either --probe, or --strategy with --since and --until")
+
+    global FILING_WEEKDAYS
+    FILING_WEEKDAYS = {int(x) for x in args.weekdays.split(",") if x.strip()}
 
     os.makedirs(args.out, exist_ok=True)
     os.makedirs(PROFILE_DIR, exist_ok=True)
