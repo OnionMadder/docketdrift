@@ -4,10 +4,25 @@ Survival kit for any Claude session working on this repo. Read once,
 re-read whenever a recurring gotcha bites. The goal of this document is
 to make the next session productive within the first 5 minutes.
 
-## Working tree state 2026-07-25 — READ THIS FIRST
+## Working tree state 2026-08-02 — READ THIS FIRST
 
 The tree is **clean**; main == origin/main. Backlog lives in `docs/TODO.md`
-(the authoritative to-do; keep it current). The old parked branch
+(the authoritative to-do; keep it current). **`docs/TODO.md` outranks the
+"Open work, ranked" section far down this file** — that section is a frozen
+2026-06-12 snapshot kept for its rationale, and several of its "open" items
+have shipped. Trust TODO.md on priority; trust this file on gotchas.
+
+**THE ONE THING BLOCKING A PUBLIC LAUNCH: Minnesota 2017–2023 is incomplete
+and 2020–2022 is EMPTY.** The flagship state has a three-year hole, caused by
+the `/search/` vs `/clusters/` ingest defect (documented below). The defect is
+fixed; the backfill is not done. Measured 2026-08-02: MN by year 2016=1,415 →
+2017=438 → 2018=208 → 2019=176 → **2020/2021/2022 = 0** → 2023=115 → 2024=550.
+Do the backfill from CL **bulk exports offline** (`load_cl_bulk` /
+`scripts/cl_bulk_filter.py`), NOT the REST API — see the CL rate-limit note in
+TODO.md Tier 3. Until then the public copy discloses the gap (see the
+2026-08-02 session block).
+
+The old parked branch
 **`parked/holdings-admin-and-citation-clustering`** still exists but is now
 mostly historical:
 
@@ -25,7 +40,123 @@ in indexed JSON-LD) was reverted — extractive holdings = "no generated text",
 the strong original posture, is correct. Migrations 0026 (holdings) + 0027
 (clustering) are on main and applied on prod.
 
-## Latest session (2026-07-24 → 25)
+## Latest session (2026-08-02) — pre-launch audit + truth-in-copy pass
+
+Asked "is CLAUDE.md up to date, and is the site ready to show CourtListener?"
+Audited prod end-to-end, then fixed what the audit found in the public copy.
+**No data or parser changes this session** — copy, docs, and repo hygiene only.
+
+- **Site health: GOOD.** Every public page 200s on all three subdomains (home,
+  /opinions/, opinion detail, cited-by, judge, current-judges, tags, about,
+  how-we-differ, privacy, support, robots, llms.txt, sitemaps, apex). No 500s.
+  All three states current: MN 2026-07-27, NH 2026-07-31, AZ 2026-07-30.
+- **Search latency is fine ALONE and terrible under CONCURRENCY.** Uncontended:
+  MN 2–3s, NH 1–5s, AZ 1–2s. But with just **two** concurrent search sessions,
+  one query hit **183s** (reproduced on both AZ and MN), and sibling
+  connections died with errno **188** and **1969** — the documented poison
+  cascade. One gunicorn worker × 8 threads. **This is the #1 operational risk
+  for any launch moment** (HN/CL traffic = many simultaneous common-term
+  searches). Not fixed this session; nothing safe to do quickly.
+- **THREE public claims were false or overstated. All corrected:**
+  1. **The eyecite claim was the worst one.** `how_we_differ.html` said
+     "Citation extraction (non-NH states) **uses** eyecite," `about.html`
+     credited it, and `apex.html` listed it in indexed `isBasedOn` JSON-LD.
+     **Nothing imports `parsing/citations_eyecite.py`** — `requirements.txt`
+     itself says "PREPARATION INFRA ONLY." MN/AZ edges come from CL's bulk
+     citation-map. Claiming to use Free Law Project's own tool, to Free Law
+     Project, was the single worst look on the site. Copy now describes the
+     real provenance and explicitly says eyecite is vendored but not wired.
+  2. **"Every opinion is currently being reviewed and tagged by a human
+     editor"** — actual: 2,116 tags applied, 50,287 pending. Now states plainly
+     that most records have not been read by an editor, and leans on the
+     per-record status indicator as the honest answer.
+  3. **"Uploaded same-day on Minnesota's Monday/Wednesday release schedules"** —
+     the MN scraper is weekly, and the next sentence already said "weekly."
+     Now: weekly, "current to within a week."
+  Also fixed: AZ's "Supreme Court byline format pending a follow-up parser
+  pass" (shipped long ago; AZ has 29K+ panel votes) and the "Three states as of
+  June 2026" stamp.
+- **MN gap now DISCLOSED, not hidden.** New "Known coverage gaps" section on
+  `/about/` naming 2017–2023 incomplete + 2020–2022 empty, repeated in the
+  status list and the FAQ JSON-LD. **Do not remove this until the backfill
+  actually runs** — the About page previously said "full appellate corpus …
+  1851 to current," which reads as completeness. Disclosing a gap is a
+  strength in front of FLP; being caught with one is not.
+- **Holdings are now DOCUMENTED on `/how-we-differ/`** (`#holdings`, "The one
+  panel that looks generated, and isn't"). This closes the gap the panel's own
+  template comment flagged: the opinion-page link was deliberately generic
+  ("How we work") because that page had no holdings section. It now deep-links
+  to `#holdings` and reads "How we find the holding." The section describes the
+  EXTRACTIVE method only (verbatim quote, no-render-when-absent, the
+  deliberately-unrun LLM pass) — **it is NOT the parked LLM rewrite**, which
+  must still never ship.
+- **LICENSE + README added.** The About page had claimed "open source …
+  forkable" while the repo had neither file (no license = all rights reserved,
+  which is not open source). License is **AGPL-3.0 — Onion's call, chosen to
+  match CourtListener's own license**; canonical text pulled from SPDX
+  (gnu.org was unreachable from both here and NFSN). README documents the
+  corpus, the no-generation posture, query privacy, FLP attribution, the known
+  gaps, and local setup.
+
+**Audit findings NOT fixed (deliberate — they need real work, not copy):**
+1. **MN 2017–2023 backfill.** The launch blocker. See the header block.
+2. **Concurrency/search capacity.** See above.
+3. **14,428 synthetic `CL-<id>` docket numbers** — a CL engineer recognizes
+   their own cluster IDs on sight, and those pages aren't reachable by the
+   identifier a lawyer would paste. Needs the in-place rewrite pass
+   (`update_or_create` would duplicate).
+
+## Prior session (2026-07-27) — judge-data integrity
+
+Started as "complete the surname-only AZ judges via CL's people DB," turned
+into finding that a chunk of the judge roster was never real. Full detail in
+`docs/TODO.md` Tier 1; the essentials:
+
+- **`resolve_judges` was minting CITED judges as panelists.** The CL crack
+  exposed it: it matched "Scalia" → Antonin Scalia, and Brennan/Kennedy/White/
+  Thomas are all SCOTUS. Two independent leak paths, both closed:
+  1. The AZ top-of-opinion byline block matched *descriptions of other courts'*
+     authorship ("Justice Scalia authored a dissent, in which Justice Thomas
+     joined"). Now anchored to this court's own attribution ("… of the Court" /
+     "the Court's opinion"). Recovers all real bylines (+312 McMurdie/Williams),
+     drops citation blocks.
+  2. The NH-style footer path ("SURNAME, JJ., concurred") is **structurally
+     identical** to a cited SCOTUS lineup "(Scalia, Thomas, JJ., concurring)" —
+     verb form, position, and last-match ALL fail to separate them (measured,
+     not assumed). The only reliable signal is the name, so
+     **`_CROSS_COURT_JUSTICES`**: 55 SCOTUS surnames *minus* any colliding with
+     a real MN/NH/AZ judge (that subtraction protects NH's Souter, AZ's
+     Miller/Stevens, MN's Murphy). Applied ONLY to the weak footer path, never
+     the corroborated byline block. Residual = surnames shared with a real
+     local judge; inherent ambiguity, documented, bounded.
+- **29 phantom judges culled**, then a full AZ `--create-missing` sweep minted
+  **zero** stoplisted-surname judges — the fix verified at scale, not in theory.
+- **Two new merge commands, both dry-run-by-default (`--apply` to commit),**
+  sharing `opinions/judge_merge.py`:
+  `merge_hyphenated_judges` (PDF line-break artifacts: "Struck-meyer" →
+  "Struckmeyer", only when de-hyphenating matches an existing same-state
+  surname, so genuine "Smith-Florez" is untouched) and `merge_duplicate_judges`
+  (exact-name dupes + bare-surname rows shadowing their full-name row, only
+  when the surname has ONE unambiguous full name in that state). Conflicting
+  first names are **reported and skipped, never fused**. Merges carry editorial
+  metadata FORWARD and pick the metadata-rich row as survivor, so a seated bio
+  row is never deleted in favor of a vote-only stub.
+- **`surname()` took the last whitespace token — which is the SUFFIX** for
+  "John T. Broderick Jr", splitting a judge's full-name row from their bare
+  surname row so the merge never grouped them. Now skips Jr/Sr/II/III/IV/2/3/4,
+  and `_norm` drops periods/commas so "Jr" == "Jr.". Recovered 432 AZ votes.
+- **NH roster deep-clean: 63 → 36 judges** (OCR-corrupted name variants merged
+  by byline confirmation; circuit-judge and clerk false-positives deleted;
+  "Hantz marconi" casing fixed). NH's judge count dropping by 40% is the
+  *correct* number — the old one counted artifacts.
+
+**Lesson worth keeping:** the phantom judges had been visible in the data for
+weeks as "weak coverage" (single-name judges, low vote counts) and were read as
+a *coverage* problem. They were a *correctness* problem pointing the other way —
+not missing data, invented data. When a data quality metric looks bad, check
+whether the bad rows are real before building machinery to complete them.
+
+## Prior session (2026-07-24 → 25)
 
 Long session — closed the last big per-state gaps, shipped extractive holdings,
 built + scheduled the MN scraper, and solved the "MN gets zero AI traffic"
@@ -642,15 +773,30 @@ identity decoupled; semantic/keyword alerts refused-by-design, not stored).
 
 ## Where things stand right now
 
-(Numbers as of session-end 2026-06-23.)
+(Numbers pulled live from prod 2026-08-02. **Re-measure before quoting these
+anywhere public** — a query is cheap and stale numbers on a public page are
+the exact class of problem the 2026-08-02 audit was cleaning up.)
 
-Three states live, all on subdomains of `docketdrift.com`:
+Three states live, all on subdomains of `docketdrift.com`. MN is the
+**Flagship**; NH + AZ carry a green **Live** pill. Nothing is labeled "beta"
+any more — that undersold three mature corpora.
 
-| State | Subdomain | Opinions | Embedded | Judges | Panel votes | Statute cites | Date range |
+| State | Subdomain | Opinions | Embedded | Dispositions | Reporter cites | Judges | Newest |
 |---|---|---|---|---|---|---|---|
-| MN (flagship) | `mn.docketdrift.com` | 60,377 | 100% | 124 | 9,914 | 124,858 | 1851 to current |
-| NH (beta) | `nh.docketdrift.com` | 20,717 | **100%** | 69 | 17,161 | 79,384 | Through 2026-06-11 |
-| AZ (beta) | `az.docketdrift.com` | 38,065 | **100%** | 139 | 142 | 117,045 | Through 2026-06-05 |
+| MN (flagship) | `mn.docketdrift.com` | 60,457 | 100% | 97.6% | 92.9% | 122 | 2026-07-27 |
+| NH (live) | `nh.docketdrift.com` | 20,723 | 100% | 78.5% | 90.2% | 36 | 2026-07-31 |
+| AZ (live) | `az.docketdrift.com` | 38,132 | 100% | 63.9% | 75.0% | 119 | 2026-07-30 |
+
+Corpus-wide: 119,312 opinions · 56,165 panel votes · 605,424 citation edges ·
+39,446 extracted holdings · 2,116 tags applied / 50,287 pending review.
+
+Two caveats those numbers hide, both load-bearing:
+- **MN's date range reads "1851–present" but 2020–2022 is EMPTY** (see the
+  header block). The range is honest; continuity is not implied and must not
+  be implied in public copy.
+- **AZ judges 139 → 119 and NH 69 → 36 are CORRECTIONS, not losses.** The old
+  counts included citation false-positives and OCR/hyphenation duplicate rows.
+  Same for AZ panel votes 142 → 29K+, which was a ReDoS bug, not a gap.
 
 (Opinion counts as of 2026-06-27: 119,159 total, all embedded. The 2026-06-27
 VECTOR-INDEX retry deleted 12 zero-`raw_text` metadata stubs — MN ids 2618,
@@ -710,7 +856,8 @@ NH Supreme justice cards populated + NH opinions current to 2026-06-11 (both via
 the residential-Playwright `scripts/nh_scraper/`); `/current-judges/` browses
 prior judges by decade (`?era=<decade>`/`all`, active spans derived from panel
 votes); opinion PDFs serve via the `opinion_pdf` FileResponse view (NFSN doesn't
-web-serve `/media/`); GA4 analytics added site-wide. The 2026-06-16
+web-serve `/media/`); analytics added site-wide (GA4 at the time — **since
+REMOVED in favor of goatcounter-only**; see "Data is sacred"). The 2026-06-16
 landing/apex 500 outage was the `_state_landing_stats` date_range Min/Max
 scanning the corpus under `court_id__in` — fixed to an indexed
 `ORDER BY release_date LIMIT 1` (see the gotcha section).
@@ -1436,7 +1583,17 @@ ssh docketdrift 'ps -axww | grep -E "embed_tick|manage.py embed_opinions" | grep
 | `extract_statutes [--state <CODE>] [--force]` | Pull statute citations. Now multi-state via the `opinions/parsing/statutes.py` dispatcher (MN: `Minn. Stat.`, NH: `RSA`, AZ: `A.R.S.`). | per state (optional) | yes |
 | `extract_citations [--state <CODE>]` | Build the `OpinionCitation` graph: parse opinion bodies for cites to other opinions, resolve against `reporter_cite`, classify treatment (`parsing/citations*.py` + `parsing/treatment.py`). **NH-only** (neutral cites); MN/AZ await a reporter-cite backfill. Batched + retry-reconnect. | per state (optional) | yes (rebuilds each opinion's edges) |
 | `backfill_reporter_cite [--state <CODE>]` | Populate `Opinion.reporter_cite` from the state parser (NH neutral cites). Idempotent (fills empty only); batched + retry-reconnect. | per state (optional) | yes |
-| `resolve_judges --state <CODE> [--create-missing] [--since YYYY-MM-DD]` | Match byline+panel to existing Judge rows; `--create-missing` mints new ones. Hybrid: state parser fills what it knows, generic byline extractor fills the rest. | per state | yes |
+| `resolve_judges --state <CODE> [--create-missing] [--since] [--max-runtime N] [--min-id N] [--id-batch N]` | Match byline+panel to existing Judge rows; `--create-missing` mints new ones. Hybrid: state parser fills what it knows, generic byline extractor fills the rest. Carries `_CROSS_COURT_JUSTICES` (SCOTUS-surname stoplist) on the weak footer path only — see the 2026-07-27 block. **NFSN chunking:** `--max-runtime 35 --id-batch 6000` self-exits under the ~40s CPU cull. | per state | yes |
+| `merge_hyphenated_judges [--apply]` | Fold PDF line-break artifact judge rows ("Struck-meyer" → "Struckmeyer") into their clean twin, only when de-hyphenating matches an existing same-state surname. **Dry-run by default.** | per state | yes |
+| `merge_duplicate_judges [--apply]` | Fold exact-name duplicate rows + bare-surname rows shadowing their full-name row, per surname group, only when the surname has one unambiguous full name in that state. Conflicting first names reported + skipped. Metadata-rich row wins. **Dry-run by default.** | per state | yes |
+| `extract_holdings_text [--state <CODE>]` | Populate `holding_summary` by quoting the court's OWN holding sentence VERBATIM (`parsing/holdings.py`). NOT an LLM; `holding_model` records the extractor. | per state (optional) | yes |
+| `load_reporter_cites --csv <path>` | Fill `Opinion.reporter_cite` from CL's bulk citations export, matched on `courtlistener_id` (= CL cluster_id). Fills EMPTY only, so parser-derived NH cites survive. Zero API calls. | global | yes |
+| `load_citation_edges --csv <path>` | Build the `OpinionCitation` graph from CL's bulk citation-map export (keyed on CL *opinion* ids → cluster_id → our Opinion). Internal edges only. No treatment/context (bulk data carries neither). Zero API calls. | global | yes |
+| `cluster_citations [--state <CODE>]` | Group the verbatim citing passages behind "How this document has been cited" (Scholar-style collapse). **Data-starved outside the NH neutral-cite era** — see the 2026-07-24→25 block. | per state (optional) | yes |
+| `embed_citations` | Voyage embeddings of citation context quotes, for the clustering above. | global | yes |
+| `precompute_explore_tags` | Warm the explore-tags context-processor cache. | global | yes |
+| `ai_citation_profile [--days N]` | Read-only report joining access-log opinion fetches to DB metadata: what KIND of law live AI agents ground on. Privacy-clean (the log is query-stripped). | global | n/a |
+| `corpus_insights` | Read-only report: disposition mix, caseload trend, most-cited, hot statutes. Publishable content. | global | n/a |
 | `scrape_judges <state> [--dry-run]` | Scrape current-roster bios. Supports `mn` (mncourts.gov sitemap) + `az` (azcourts.gov single page). NH is Akamai-blocked → scraped off-platform by `scripts/nh_scraper/` (residential Playwright) instead. AZ-COA still TODO (#41). | per state | yes |
 | `localize_judge_photos [--dry-run]` | Repoint every judge's `photo_url` to a SELF-HOSTED `/static/opinions/judges/` portrait (no hotlinks to court sites that could go down) + apply scraped NH bios, from the committed `opinions/data/judge_localization.json` manifest. Run after `collectstatic` + restart. Portraits are downloaded locally by `scripts/fetch_judge_photos.py`. | global | yes |
 | `reconcile_az_judges [--dry-run]` | One-shot merge of duplicate AZ Judge rows from the first scrape_judges run | AZ-specific | yes (no-op after merge) |
@@ -1524,6 +1681,14 @@ third-party content are left verbatim. Note "forwards" as a *verb*
 adverb "forwards" → "forward".
 
 ## Open work, ranked
+
+> **SUPERSEDED — read `docs/TODO.md` instead.** This section is a frozen
+> 2026-06-12 snapshot, kept because its *rationale* (why an item mattered, what
+> the failure mode was) is still useful. Its priorities are not current, and
+> several items listed here as open have shipped: the state-router middleware
+> cache (#16), the MN COA scraper (#19), the freshness-check task (#20), NH
+> dispositions, the AZ parser, and holdings are all DONE. Do not pick work off
+> this list without checking TODO.md first.
 
 State of play at session-end 2026-06-12. Items struck through were
 closed in the 2026-06-09 → 2026-06-12 session.

@@ -32,7 +32,7 @@
       "name": "Where does DocketDrift get its data?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Two sources. (1) CourtListener (Free Law Project) supplies the historical backfill and standing source for ongoing ingestion. (2) Direct uploads from official court releases capture new opinions same-day on each state's release schedule, ahead of CourtListener's ingestion lag. State subdomains refresh weekly via a scheduled ingest job."
+        "text": "Two sources. (1) CourtListener (Free Law Project) supplies the historical backfill and a standing source for ongoing ingestion. (2) Direct ingestion from official court releases, for states whose courts publish opinions CourtListener does not carry promptly. Both paths run weekly on a scheduled job."
       }
     },
     {
@@ -40,7 +40,7 @@
       "name": "How is each opinion reviewed?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Every opinion is parsed automatically for structured fields (case number, disposition, author, panel, statute citations) and then reviewed by a human editor. Each record carries a status indicator: processed (machine-parsed, awaiting review), flagged (queued for re-review), or human-reviewed. Both signals stay public so a reader can see at a glance which records have been read by a human."
+        "text": "Every opinion is parsed automatically for structured fields (case number, disposition, author, panel, statute citations). Human editorial review is a separate, ongoing pass over a corpus of more than 119,000 opinions, and most records have not yet been read by an editor. Each record carries a status indicator: processed (machine-parsed, awaiting review), flagged (queued for re-review), or human-reviewed. Both signals stay public so a reader can see at a glance exactly which records have been read by a human and which have not."
       }
     },
     {
@@ -56,7 +56,7 @@
       "name": "Which states are live on DocketDrift?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Three states as of June 2026. Minnesota: full appellate corpus, 60,000+ opinions from 1851 to current, with judge dossiers, statute citation graph, semantic search, and tag-suggestion review pipeline. New Hampshire: 20,000+ NH Supreme Court opinions with byline-extracted judicial panel graph. Arizona: 38,000+ Arizona Supreme Court and Court of Appeals opinions. New states are added one at a time."
+        "text": "Three. Minnesota: 60,000+ appellate opinions from 1851 to current, with judge dossiers, statute citation graph, semantic search, and tag-suggestion review pipeline; coverage of 2017-2023 is known to be incomplete and is being backfilled. New Hampshire: 20,000+ NH Supreme Court opinions with byline-extracted judicial panel graph. Arizona: 38,000+ Arizona Supreme Court and Court of Appeals opinions. New states are added one at a time."
       }
     },
     {
@@ -64,7 +64,7 @@
       "name": "Is DocketDrift open source?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Yes. DocketDrift is open source on GitHub at github.com/OnionMadder/docketdrift. The parser rules, ingestion logic, and infrastructure are all readable, auditable, and forkable."
+        "text": "Yes, under the GNU Affero General Public License v3.0 -- the same license CourtListener uses. The source is at github.com/OnionMadder/docketdrift. The parser rules, ingestion logic, and infrastructure are all readable, auditable, and forkable."
       }
     }
   ]
@@ -110,12 +110,16 @@
 
   <h2>Data sources</h2>
   <ul>
-    <li><strong>CourtListener</strong> (Free Law Project) &mdash; historical backfill and the standing source for ongoing ingestion. CourtListener typically lags real-time by a few weeks; for Minnesota that backfill reaches the founding-era 1851 opinions of the territorial supreme court forward.</li>
-    <li><strong>Direct upload</strong> &mdash; new opinions are uploaded same-day on Minnesota's Monday/Wednesday release schedules, ahead of CourtListener's ingestion. State subdomains refresh weekly via the scheduled ingest job.</li>
+    <li><strong>CourtListener</strong> (Free Law Project) &mdash; historical backfill and a standing source for ongoing ingestion. CourtListener typically lags real-time by a few weeks; for Minnesota that backfill reaches the founding-era 1851 opinions of the territorial supreme court forward.</li>
+    <li><strong>Direct ingestion from the courts</strong> &mdash; some courts publish opinions that don't reach CourtListener promptly, particularly nonprecedential and order opinions. For those we read the court's own release archive directly. Both paths run weekly on a scheduled job, so each state is typically current to within a week.</li>
   </ul>
 
+  <h3>Known coverage gaps</h3>
+  <p>Coverage is not uniform, and we'd rather say so than let a silence read as completeness. Minnesota's 2017&ndash;2023 range is <strong>incomplete</strong> &mdash; an ingestion defect meant only a fraction of each year's opinions were retrieved, and 2020&ndash;2022 is currently empty. The historical corpus (1851&ndash;2016) and everything from 2024 forward are unaffected. A backfill is in progress. If you're relying on a Minnesota search in that window, check the official source as well.</p>
+
   <h2>Editorial review</h2>
-  <p>Every opinion in the corpus is currently being reviewed and tagged by a human editor. Until that pass is complete, individual records carry a status indicator showing whether the opinion is <em>processed</em> (machine-parsed, awaiting review), <em>flagged</em> (queued for re-review), or <em>human-reviewed</em>. The intent is that machine extraction does the bulk-work part (case number, disposition, panel composition, statute citations) while the editorial pass curates the doctrinal tags, catches parser misses, and flags edge cases. Both signals stay public; you can see at a glance which records have been read by a human.</p>
+  <p>Machine extraction does the bulk-work part &mdash; case number, disposition, panel composition, statute citations. A separate human editorial pass curates the doctrinal tags, catches parser misses, and flags edge cases. That pass is ongoing across a corpus of more than 119,000 opinions, and <strong>most records have not yet been read by an editor</strong>; the tag-review queue currently holds tens of thousands of pending suggestions.</p>
+  <p>Rather than hide that, we publish it per record. Every opinion carries a status indicator showing whether it is <em>processed</em> (machine-parsed, awaiting review), <em>flagged</em> (queued for re-review), or <em>human-reviewed</em>, and every auto-applied tag is marked as such. You can see at a glance which records have been read by a human and which have not &mdash; including when the answer is "not yet."</p>
 
   <h2>Status</h2>
   <p>
@@ -124,14 +128,14 @@
     <span class="status-pill status-pill--live">Live &middot; Arizona</span>
   </p>
   <ul>
-    <li><strong>Minnesota</strong> &mdash; full appellate corpus loaded: <strong>60,000+ opinions</strong> spanning <strong>1851 to current</strong>, refreshed weekly as new opinions are released. Judge dossiers, outcome categorization, statute citation graph, semantic search, and tag-suggestion review pipeline are all live. Editorial review of the corpus is in progress.</li>
-    <li><strong>New Hampshire</strong> &mdash; full NH Supreme Court corpus loaded: <strong>20,000+ opinions</strong>. Byline-extracted judicial panel graph populated. Semantic search and tag-suggestion pipelines running. Editorial review in progress.</li>
-    <li><strong>Arizona</strong> &mdash; full Arizona Supreme Court + Court of Appeals corpus loaded: <strong>38,000+ opinions</strong>. Byline extraction live for the Court of Appeals; Supreme Court byline format pending a follow-up parser pass. Editorial review in progress.</li>
+    <li><strong>Minnesota</strong> &mdash; <strong>60,000+ opinions</strong> spanning <strong>1851 to current</strong>, refreshed weekly as new opinions are released. Judge dossiers, outcome categorization, statute citation graph, semantic search, and tag-suggestion review pipeline are all live. <strong>2017&ndash;2023 coverage is incomplete</strong> (see Known coverage gaps above); backfill in progress.</li>
+    <li><strong>New Hampshire</strong> &mdash; full NH Supreme Court corpus loaded: <strong>20,000+ opinions</strong>. Byline-extracted judicial panel graph populated. Semantic search, citation graph, and tag-suggestion pipelines running. Opinions are read directly from the court's own releases, so NH is typically current within days.</li>
+    <li><strong>Arizona</strong> &mdash; full Arizona Supreme Court + Court of Appeals corpus loaded: <strong>38,000+ opinions</strong>. Byline extraction live for both the Supreme Court and the Court of Appeals; disposition parsing covers modern opinions at roughly 90% and thins out on pre-1980 text.</li>
   </ul>
   <p>Don't see your state? <a href="{% url 'opinions:request_state' %}">Request it &rarr;</a></p>
 
   <h2>Open source</h2>
-  <p>DocketDrift is open source on GitHub at <a href="https://github.com/OnionMadder/docketdrift" target="_blank" rel="noopener">OnionMadder/docketdrift</a>. The parser rules, ingestion logic, and infrastructure are all readable, auditable, and forkable. It also stands on open-source foundations &mdash; eyecite (Free Law Project), Voyage AI embeddings, Django, MariaDB, and HTMX: <a href="{% url 'opinions:how_we_differ' %}#built-with">the full credits are here &rarr;</a></p>
+  <p>DocketDrift is open source on GitHub at <a href="https://github.com/OnionMadder/docketdrift" target="_blank" rel="noopener">OnionMadder/docketdrift</a>, under the <strong>GNU Affero General Public License v3.0</strong> &mdash; the same license <a href="https://www.courtlistener.com/" target="_blank" rel="noopener">CourtListener</a> uses. The parser rules, ingestion logic, and infrastructure are all readable, auditable, and forkable. It also stands on open work by others &mdash; Free Law Project's CourtListener data, Voyage AI embeddings, Django, MariaDB, and HTMX: <a href="{% url 'opinions:how_we_differ' %}#built-with">the full credits are here &rarr;</a></p>
 
   <h2>Contact</h2>
   <p>Notice an error in an opinion record, a judge bio, or a search result? Send a note to <a href="mailto:hello@docketdrift.com">hello@docketdrift.com</a>.</p>

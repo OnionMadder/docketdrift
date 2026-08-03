@@ -207,13 +207,14 @@
         generated. Not yet human-reviewed.
       {% endif %}
       {% comment %}
-      Generic link on purpose. /how-we-differ/ has no holdings section yet --
-      its parked rewrite describes the LLM version we did NOT ship, and
-      pointing "How we find the holding" at a page that never explains it
-      would be a broken promise. Retarget once that page documents the
-      extractive method.
+      Retargeted 2026-08-02: /how-we-differ/ now carries a holdings section
+      ("The one panel that looks generated, and isn't") documenting the
+      EXTRACTIVE method -- verbatim quotation, no-render-when-absent, the
+      deliberately-unrun LLM pass. Keep this deep link pointed at #holdings;
+      if that section is ever reworded to describe a generative populator,
+      fix the populator claim, not this link.
       {% endcomment %}
-      <a href="{% url 'opinions:how_we_differ' %}">How we work</a>.
+      <a href="{% url 'opinions:how_we_differ' %}#holdings">How we find the holding</a>.
     </p>
   </section>
 
