@@ -50,7 +50,14 @@ COURT_LEVEL_RE = re.compile(
 )
 
 # Filing date line: ``Filed June 1, 2026`` or ``Filed Jan. 14, 2026``.
-FILED_DATE_RE = re.compile(r"Filed\s+([A-Za-z\.]+\s+\d{1,2},?\s+\d{4})")
+# The colon is REQUIRED to be optional: the Court of Appeals writes
+# "Filed <date>", but the Supreme Court writes "Filed:  <date>" (colon, two
+# spaces). Without `:?` every Supreme PDF fails with "parser found no
+# release_date" -- 234 of 240 did, on the first Supreme PDF ingest ever
+# attempted. It went unnoticed because Supreme opinions had only ever arrived
+# pre-parsed from CourtListener's bulk CSV; this parser was written against
+# COA documents.
+FILED_DATE_RE = re.compile(r"Filed:?\s+([A-Za-z\.]+\s+\d{1,2},?\s+\d{4})")
 
 # Order opinions ("ORDER OPINION") don't carry a "Filed [date]" line -- they
 # date themselves at the foot: ``Dated: January 6, 2026 BY THE COURT``. Used as
