@@ -315,7 +315,34 @@ Already registered + running (nothing to do): `embed-tick` (~10 min),
 
 ## Tier 3 — coverage (bigger builds)
 
-- [ ] **MN 2017–2023 backfill — THE LAUNCH BLOCKER. Re-diagnosed 2026-08-03.**
+- [~] **MN 2017–2023 backfill — PIPELINE WORKS, SWEEP NOT RUN (2026-08-03).**
+  Proof of concept is **live in prod**: MN 2021 went 0 → 29 opinions, all
+  parsed (28 nonprec / 1 prec; 25 Affirmed / 3 Reversed-and-remanded / 1
+  Reversed), `/opinion/A20-0623/` renders 200.
+  **The working recipe** (`scripts/mn_scraper/backfill_mn_archive.py`):
+  the search's `start-date`/`end-date` params are silently ignored, but the
+  filename carries the filing date (`OP<case>-<mmddyy>.pdf`) and Vivisimo
+  indexes it, so **`--strategy filedate` queries one Monday at a time** and
+  every result verifiably lands on that date (10/10 and 29/29 and 7/7 on the
+  three days tested). MN files on Mondays, so a year is ~52 queries.
+  ```
+  python scripts/mn_scraper/backfill_mn_archive.py --strategy filedate \
+      --since 2021-01-01 --until 2021-12-31 --no-download --manifest mn2021.tsv
+  # then curl the manifest URLs from NFSN (PDFs are NOT walled there) and
+  # ingest_pdfs --state MN --court appeals   (and --court supreme)
+  ```
+  Listing-only + server-side download is the fast shape: ~25s of browser time
+  per Monday instead of ~2min. Budget roughly 2.5–4h of attended browser time
+  for 2017–2023, chunked by year.
+  **THE OPEN RISK — completeness.** The window check proves every result is
+  *in* the requested day; it CANNOT prove we got *all* of that day. One tested
+  Monday returned 29, the next only 7 (confirmed against a second query shape,
+  so it's the index's own answer, not our filter). After each year, verify:
+  total vs the ~1,400/yr historical norm, and case-number density across
+  `A<yy>-####`. A year landing at ~400 means silent under-collection, not a
+  quiet docket.
+  **Still true and still worth doing:** report to FLP (draft ready at
+  `docs/flp_issue_1115_comment.md`, NOT sent — Onion's call).
   **The gap is CourtListener's, not ours.** CL's bulk export, our DB, and CL's
   live API all show MN 2020–2022 = **zero, both courts** (control: minnctapp
   2016 = 1,231). CL's dockets are empty for those years too. **No CL path fixes

@@ -175,6 +175,21 @@ def build_url(strategy, start, end):
                                       end.isoformat())
         return SEARCH + "?" + urlencode(dict(base, query=q,
                                              **{"start-date": "", "end-date": ""}))
+    if strategy in ("filedate", "filedate_bare"):
+        # The filename encodes the filing date: OP<case>-<mmddyy>.pdf. MN files
+        # opinions on Mondays, so one query per Monday is ~30-40 results -- well
+        # inside the ~10-page pager, and trivially verifiable against the window.
+        stamp = start.strftime("%m%d%y")
+        if strategy == "filedate_bare":
+            q = "url:%s" % stamp
+        else:
+            years = {start.year, end.year}
+            dirs = " OR ".join(
+                "url:/archive/%s/%d" % (c, y) for y in sorted(years)
+                for c in ALL_CATS)
+            q = "(%s) url:%s" % (dirs, stamp)
+        return SEARCH + "?" + urlencode(dict(base, query=q,
+                                             **{"start-date": "", "end-date": ""}))
     if strategy == "yearurl":
         # Ask by the year segment that appears in the PDF path itself.
         q = "(url:/archive/ctapun/%d OR url:/archive/ctappub/%d OR " \
@@ -184,7 +199,8 @@ def build_url(strategy, start, end):
     raise ValueError("unknown strategy %r" % strategy)
 
 
-STRATEGIES = ("dateops", "daterange", "yearurl", "getform")
+STRATEGIES = ("filedate", "filedate_bare", "dateops", "daterange", "yearurl",
+              "getform")
 
 
 def looks_like_captcha(page):
@@ -348,6 +364,31 @@ def download(page, rows, outdir, pace):
 rows_url_map = {}
 
 
+def iter_windows(args, since, until):
+    """Yield (start, end) windows, newest first.
+
+    For the filedate strategies a "window" is a SINGLE DAY, because the query
+    keys on the `mmddyy` stamp in the filename. MN files appellate opinions on
+    Mondays (verified across every sample we've seen), so walking Mondays costs
+    ~52 queries a year instead of 365. `--weekdays` widens that when a holiday
+    shifts a release -- sweep Mondays first, then re-run the thin weeks with
+    `--weekdays 0,1,2` to catch a Tuesday/Wednesday release.
+    """
+    if args.strategy in ("filedate", "filedate_bare"):
+        wanted = {int(x) for x in args.weekdays.split(",") if x.strip() != ""}
+        day = until
+        while day >= since:
+            if day.weekday() in wanted:
+                yield day, day
+            day -= datetime.timedelta(days=1)
+        return
+    cur_end = until
+    while cur_end >= since:
+        cur_start = max(since, cur_end - datetime.timedelta(days=args.window_days - 1))
+        yield cur_start, cur_end
+        cur_end = cur_start - datetime.timedelta(days=1)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--probe", action="store_true",
@@ -358,7 +399,11 @@ def main():
     ap.add_argument("--since", help="ISO date, inclusive lower bound.")
     ap.add_argument("--until", help="ISO date, inclusive upper bound.")
     ap.add_argument("--window-days", type=int, default=14,
-                    help="Size of each backward step (default 14).")
+                    help="Backward step for non-filedate strategies (default 14). "
+                         "Ignored by filedate, which steps one day at a time.")
+    ap.add_argument("--weekdays", default="0",
+                    help="filedate only: weekdays to query, Mon=0 (default '0'). "
+                         "Use '0,1,2' to catch holiday-shifted releases.")
     ap.add_argument("--max-pages", type=int, default=10,
                     help="Pager depth per window (site exposes ~10).")
     ap.add_argument("--pace", type=float, default=8.0,
@@ -367,7 +412,13 @@ def main():
     ap.add_argument("--out", default=os.path.join(tempfile.gettempdir(),
                                                   "mn_backfill_pdf"))
     ap.add_argument("--no-download", action="store_true",
-                    help="List only; don't fetch PDFs.")
+                    help="List only; don't fetch PDFs. Pair with --manifest.")
+    ap.add_argument("--manifest",
+                    help="Append '<case> <category> <iso_date> <url>' per "
+                         "opinion. PDFs are NOT bot-walled, so the fast shape "
+                         "is: browser collects URLs (--no-download --manifest), "
+                         "then NFSN curls them in bulk. Browser time drops from "
+                         "~2min to ~25s per Monday.")
     args = ap.parse_args()
 
     if not args.probe and not (args.strategy and args.since and args.until):
@@ -386,12 +437,16 @@ def main():
                 stale.close()
 
         if args.probe:
-            # A month we know has real opinions (verified PDFs exist).
-            start = datetime.date(2021, 11, 1)
-            end = datetime.date(2021, 11, 30)
+            # Default: a Monday we KNOW has real opinions (OPa210414-112221.pdf
+            # was verified live). --since/--until override it.
+            start = (datetime.date.fromisoformat(args.since) if args.since
+                     else datetime.date(2021, 11, 22))
+            end = (datetime.date.fromisoformat(args.until) if args.until
+                   else start)
+            only = [args.strategy] if args.strategy else list(STRATEGIES)
             print("Probing strategies against %s..%s" % (start, end))
             print("(one navigation each, %.0fs apart)\n" % args.pace)
-            for s in STRATEGIES:
+            for s in only:
                 print("=== %s" % s)
                 if not load(page, build_url(s, start, end), args.pace):
                     print("    no results rendered\n")
@@ -407,30 +462,41 @@ def main():
         since = datetime.date.fromisoformat(args.since)
         until = datetime.date.fromisoformat(args.until)
         total = failed_windows = 0
-        cur_end = until
-        while cur_end >= since:
-            cur_start = max(since, cur_end - datetime.timedelta(days=args.window_days - 1))
-            print("\n--- window %s .. %s" % (cur_start, cur_end))
+        skipped_windows = []
+
+        for cur_start, cur_end in iter_windows(args, since, until):
+            label = (str(cur_start) if cur_start == cur_end
+                     else "%s .. %s" % (cur_start, cur_end))
+            print("\n--- %s" % label)
             rows, note = collect_window(page, args.strategy, cur_start, cur_end,
                                         args.pace, args.max_pages)
             if note != "ok":
                 print("    SKIPPED: %s" % note)
                 failed_windows += 1
-            else:
-                print("    %d opinions" % len(rows))
-                if not args.no_download:
-                    got, skipped, bad = download(page, rows, args.out, args.pace)
-                    print("    downloaded %d, already had %d, failed %d"
-                          % (got, skipped, bad))
-                total += len(rows)
-            cur_end = cur_start - datetime.timedelta(days=1)
+                skipped_windows.append((label, note))
+                continue
+            print("    %d opinions" % len(rows))
+            if args.manifest:
+                with open(args.manifest, "a", encoding="utf8") as mf:
+                    for case, iso, cat in rows:
+                        url = rows_url_map.get(case)
+                        if case and url:
+                            mf.write("%s\t%s\t%s\t%s\n"
+                                     % (case, cat, iso or "", url))
+            if not args.no_download:
+                got, had, bad = download(page, rows, args.out, args.pace)
+                print("    downloaded %d, already had %d, failed %d"
+                      % (got, had, bad))
+            total += len(rows)
 
         print("\n%d opinions across the sweep; %d windows skipped."
               % (total, failed_windows))
+        for label, note in skipped_windows:
+            print("  SKIPPED %s -- %s" % (label, note))
         if failed_windows:
-            print("Skipped windows are NOT a partial success -- re-run them; "
-                  "a skipped window means the date filter stopped being "
-                  "honored, not that the window was empty.")
+            print("Skipped windows are NOT a partial success -- re-run them. A "
+                  "skipped window means the date filter stopped being honored "
+                  "(or the page never rendered), NOT that the window was empty.")
         print("PDFs in %s (appeals/ and supreme/ subdirs)." % args.out)
         ctx.close()
 
