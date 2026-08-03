@@ -38,3 +38,4 @@ Thumbs.db
 
 # Research materials (not DocketDrift code)
 research/
+.cache/
