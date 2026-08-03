@@ -315,9 +315,23 @@ Already registered + running (nothing to do): `embed-tick` (~10 min),
 
 ## Tier 3 — coverage (bigger builds)
 
-- [ ] **MN COA deep backfill** for the thin years (2017–2023). Attended sweep
-  with the new scraper — walk the pager in bounded windows, solving the
-  occasional CAPTCHA. Forward-fill is already done. Medium, attended.
+- [ ] **MN 2017–2023 backfill — THE LAUNCH BLOCKER. Re-diagnosed 2026-08-03.**
+  **The gap is CourtListener's, not ours.** CL's bulk export, our DB, and CL's
+  live API all show MN 2020–2022 = **zero, both courts** (control: minnctapp
+  2016 = 1,231). CL's dockets are empty for those years too. **No CL path fixes
+  this — don't re-run loaders.** Worth reporting to Free Law Project as a real
+  bug (their MN juriscraper looks to have broken around the 2020 mn.gov
+  redesign and been backfilled only from 2023).
+  The opinions are freely available from mn.gov (verified: 2021 PDFs 200 OK,
+  and our MN parser reads them correctly with no changes). **Only enumeration
+  is bot-walled.** Needs a *date-windowed* search scraper — the existing
+  `scrape_mn_coa.py` has `--since` but no upper bound and stops at pager page
+  10, so it cannot reach history; and it must be extended to cover `supct`
+  (MN Supreme is missing for those years too). The GET search URL works and
+  bypasses the flaky JS form, but `start-date`/`end-date` are ignored, so the
+  window has to go in the Vivisimo `query` (`date:>…`) — syntax unverified, and
+  the wall CAPTCHAs on the second rapid navigation, so probe it *slowly*.
+  ~9,000–10,000 opinions. Big, attended (a human clears CAPTCHAs).
 - [~] **CL catch-up ingest — reframed 2026-07-25.** A bounded probe showed
   recent coverage is ALREADY largely current: an AZ COA run over the last ~7
   weeks was created=4 / updated=36 (~90% already present), because the weekly

@@ -13,14 +13,64 @@ The tree is **clean**; main == origin/main. Backlog lives in `docs/TODO.md`
 have shipped. Trust TODO.md on priority; trust this file on gotchas.
 
 **THE ONE THING BLOCKING A PUBLIC LAUNCH: Minnesota 2017–2023 is incomplete
-and 2020–2022 is EMPTY.** The flagship state has a three-year hole, caused by
-the `/search/` vs `/clusters/` ingest defect (documented below). The defect is
-fixed; the backfill is not done. Measured 2026-08-02: MN by year 2016=1,415 →
-2017=438 → 2018=208 → 2019=176 → **2020/2021/2022 = 0** → 2023=115 → 2024=550.
-Do the backfill from CL **bulk exports offline** (`load_cl_bulk` /
-`scripts/cl_bulk_filter.py`), NOT the REST API — see the CL rate-limit note in
-TODO.md Tier 3. Until then the public copy discloses the gap (see the
-2026-08-02 session block).
+and 2020–2022 is EMPTY.**
+
+**THE CAUSE IS UPSTREAM, NOT US — corrected 2026-08-03. Do not re-derive this
+the hard way.** Earlier notes (including this block, as first written) blamed
+the `/search/` vs `/clusters/` ingest defect. **That is wrong.** Measured three
+independent ways on 2026-08-03:
+
+1. **CL's bulk export (2026-03-31) has the same hole.** Filtering
+   `mn-subset/opinion-clusters.csv` by year: 2016=1,451 → 2017=458 → 2018=213
+   (**all Published, zero Unpublished**) → 2019=185 → **2020/2021/2022 = 0** →
+   2023=115 → 2024=556.
+2. **Prod matches the bulk export almost 1:1** for every year — so we loaded
+   essentially everything CL had. Nothing was dropped on our side.
+3. **CL's LIVE API still returns zero.** `/clusters/?docket__court=minnctapp`
+   for 2021 → **count=0**; `minn` (Supreme) 2021 → **count=0**; control query
+   `minnctapp` 2016 → **count=1,231**. The query shape is fine; the data isn't
+   there.
+
+**Both courts are affected**, including MN Supreme *published* opinions — which
+the `/search/` defect could never explain (that defect cost us nonprecedential
+opinions only). This is a CourtListener coverage hole for Minnesota, most
+likely a juriscraper that broke around the 2020 mn.gov redesign and was
+backfilled only from 2023 forward.
+
+**Consequences — read before planning any work here:**
+- **No CL path fixes this.** Not `load_cl_bulk`, not `ingest_court`, not a
+  newer bulk snapshot. Don't burn hours re-running loaders; the rows do not
+  exist upstream. (Worth telling Free Law Project — it is a real, specific,
+  reproducible bug report and a better first contact than anything else we
+  have.)
+- **The opinions themselves are fine and freely available.** Verified live:
+  `mn.gov/law-library-stat/archive/ctapun/2021/OPa210414-112221.pdf` → HTTP 200
+  application/pdf, and our MN parser reads it correctly (A21-0414, 2021-11-22,
+  Affirmed, author + panel + 4 statutes, precedential=False). The PDF host has
+  **no bot wall**.
+- **Only the LISTING is walled.** Enumeration is the entire remaining problem:
+  the year directory (`/archive/ctapun/2021/`) returns a Radware 302, the old
+  `a<NNNNNN>.pdf` URL scheme is dead (404), and the live scheme
+  `OP<case>-<mmddyy>.pdf` requires the filing date, so URLs can't be guessed
+  from a case number alone. (Filing dates are always **Mondays** — a useful
+  constraint, but 1,800 cases × 52 Mondays is still far too many probes.)
+- **The existing scraper cannot do this job.** `scrape_mn_coa.py` walks the
+  newest-first archive list and stops at pager page 10 (~100 opinions); it has
+  `--since` but no upper bound, so it cannot reach a historical window. The
+  backfill needs a **date-windowed search** build — see the 2026-08-03 block.
+
+Measured prod, MN by year and court (2026-08-03):
+
+| year | COA | Supreme |   | year | COA | Supreme |
+|---|---|---|---|---|---|---|
+| 2016 | 1,223 | 192 | | 2021 | **0** | **0** |
+| 2017 | 313 | 125 | | 2022 | **0** | **0** |
+| 2018 | 80 | 128 | | 2023 | 97 | 18 |
+| 2019 | 74 | 102 | | 2024 | 463 | 87 |
+| 2020 | **0** | **0** | | 2025 | 148 | 90 |
+
+Until the backfill runs, the public copy discloses the gap **and now names the
+upstream cause correctly** (`/about/`). Do not remove that disclosure.
 
 The old parked branch
 **`parked/holdings-admin-and-citation-clustering`** still exists but is now
@@ -40,7 +90,57 @@ in indexed JSON-LD) was reverted — extractive holdings = "no generated text",
 the strong original posture, is correct. Migrations 0026 (holdings) + 0027
 (clustering) are on main and applied on prod.
 
-## Latest session (2026-08-02) — pre-launch audit + truth-in-copy pass
+## Latest session (2026-08-03) — MN gap diagnosed; it is CourtListener's, not ours
+
+Went in to run the MN backfill. **The backfill did not run, because the premise
+was wrong** — the gap is upstream (full evidence in the header block above).
+What this session actually established, so nobody re-derives it:
+
+- **Three independent measurements agree**: CL's bulk export, our prod DB, and
+  CL's live API all show MN 2020–2022 = zero, both courts. Control query
+  (minnctapp 2016 = 1,231) proves the method. **CL's dockets.csv is empty for
+  those years too** (`A20-*` absent entirely, `A21-*` = 15, `A22-*` = 120) — so
+  there is no CL-side path at all, not even docket metadata to build URLs from.
+- **The opinions are fine and free.** mn.gov serves them unwalled: verified
+  three real 2021 PDFs at HTTP 200 `application/pdf`, and the MN parser reads
+  them correctly with no changes (A21-0414 → 2021-11-22, Affirmed, author,
+  2-judge panel, 4 statutes, precedential=False). **The ingest half of this job
+  is already solved** — it's `ingest_pdfs --state MN --court appeals`.
+- **The whole remaining problem is ENUMERATION**, and it is bot-walled:
+  - Year directory (`/archive/ctapun/2021/`) → Radware 302, not an index.
+  - Old `a<NNNNNN>.pdf` scheme → 404 for opinions (though it IS still used for
+    `COAspectorders`, seen live in search results).
+  - Live scheme `OP<case>-<mmddyy>.pdf` needs the filing date, so URLs can't be
+    derived from a case number. Filing dates are always **Mondays** (verified
+    across samples) — a real constraint, but 1,800 cases × 52 Mondays × 3
+    categories is far too many probes to be acceptable.
+  - `mncourts.gov` media paths → 403.
+- **Probed the search UI directly (headed Chrome, persistent profile).** Two
+  facts, both load-bearing for the build:
+  1. **The GET form works.** `mn.gov/law-library/search/?query=<vivisimo>&…&v:sources=mn-law-library-opinions`
+     renders real archive result anchors, so the flaky JS form can be bypassed
+     by navigating straight to a constructed URL.
+  2. **`start-date` / `end-date` are IGNORED.** A November-2021 window returned
+     newest-first results. So date bounding has to go inside the Vivisimo
+     `query` (`date:>… date:<…`) — **that syntax is still unverified.**
+- **The bot wall bites on the SECOND automated navigation.** The probe's first
+  load was clean; the next one drew a CAPTCHA. Rapid programmatic loads are
+  exactly what trips it (as `scrape_mn_coa.py`'s comments already warned).
+  **Do not iterate on query syntax with a tight probe loop** — each failed
+  guess costs a CAPTCHA and degrades the profile's standing. Space loads out,
+  and expect to solve challenges by hand.
+
+**The build this needs (NOT written yet):** a date-windowed variant of
+`scrape_mn_coa.py`. `--since` alone can't reach history, and the pager stops at
+page 10 (~100 results), so the walk must be *windowed*: for each ~1–2 week
+window in 2017–2023, navigate a constructed search URL bounded to that window,
+page 1→N, collect `archive/(ctappub|ctapun|COAspectorders|supct)` hrefs, then
+download server-side (PDFs aren't walled) and `ingest_pdfs`. **It must also
+cover `supct`** — the existing scraper deliberately skips Supreme, but MN
+Supreme is missing for those years too. Rough size: ~9,000–10,000 opinions,
+~52 windows/year × ~4 pages. **Attended**: a logged-on human clears CAPTCHAs.
+
+## Prior session (2026-08-02) — pre-launch audit + truth-in-copy pass
 
 Asked "is CLAUDE.md up to date, and is the site ready to show CourtListener?"
 Audited prod end-to-end, then fixed what the audit found in the public copy.
