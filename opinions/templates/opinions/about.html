@@ -56,7 +56,7 @@
       "name": "Which states are live on DocketDrift?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Three. Minnesota: 60,000+ appellate opinions from 1851 to current, with judge dossiers, statute citation graph, semantic search, and tag-suggestion review pipeline; coverage of 2017-2023 is incomplete and 2020-2022 is currently empty, because our upstream source has no Minnesota opinions on file for those years -- a direct pipeline to the Minnesota State Law Library is being built to close it. New Hampshire: 20,000+ NH Supreme Court opinions with byline-extracted judicial panel graph. Arizona: 38,000+ Arizona Supreme Court and Court of Appeals opinions. New states are added one at a time."
+        "text": "Three. Minnesota: 63,000+ appellate opinions from 1851 to current, with judge dossiers, statute citation graph, semantic search, and tag-suggestion review pipeline. Coverage of 2017-2023 is affected because our upstream source, CourtListener, holds no Minnesota opinions for 2020-2022 and little for the surrounding years; 2020-2022 have since been rebuilt by reading the Minnesota State Law Library archive directly (about 3,100 opinions), though those years remain short on Supreme Court orders and carry no reporter citations. 2017-2019 and 2023 are still thin. New Hampshire: 20,000+ NH Supreme Court opinions with byline-extracted judicial panel graph. Arizona: 38,000+ Arizona Supreme Court and Court of Appeals opinions. New states are added one at a time."
       }
     },
     {
@@ -115,8 +115,15 @@
   </ul>
 
   <h3>Known coverage gaps</h3>
-  <p>Coverage is not uniform, and we'd rather say so than let a silence read as completeness. Minnesota's 2017&ndash;2023 range is <strong>incomplete</strong>, and <strong>2020&ndash;2022 is currently empty</strong>.</p>
-  <p>This is a gap in the upstream source rather than in our processing. CourtListener, which supplies our historical Minnesota data, has no Minnesota appellate opinions on file for 2020, 2021, or 2022 &mdash; for either the Court of Appeals or the Supreme Court &mdash; and materially reduced coverage for 2017&ndash;2019 and 2023. The opinions themselves were published normally and remain available from the Minnesota State Law Library; we are building a direct pipeline to that archive to close the gap. The historical corpus (1851&ndash;2016) and everything from 2024 forward are unaffected.</p>
+  <p>Coverage is not uniform, and we'd rather say so than let a silence read as completeness. Minnesota's <strong>2017&ndash;2023</strong> range is affected.</p>
+  <p>The cause is upstream rather than in our processing. CourtListener, which supplies our historical Minnesota data, has no Minnesota appellate opinions on file for 2020, 2021 or 2022 &mdash; for either the Court of Appeals or the Supreme Court &mdash; and materially reduced coverage for 2017&ndash;2019 and 2023. The opinions themselves were published normally and remain available from the Minnesota State Law Library.</p>
+  <p><strong>2020&ndash;2022 have now been rebuilt</strong> by reading that archive directly: about 3,100 opinions that were previously absent. Those years are <em>substantially</em> covered, but not complete, and the shortfalls are specific:</p>
+  <ul>
+    <li>Roughly <strong>four in five</strong> Court of Appeals opinions for those years, measured against a control period.</li>
+    <li>About <strong>half</strong> of Supreme Court filings. The archive publishes Supreme <em>opinions</em> but not Supreme <em>orders</em> &mdash; attorney discipline, administrative rule dockets, and similar &mdash; so those are absent.</li>
+    <li>No <strong>reporter citations</strong> and no <strong>cited-by links</strong> for these opinions. Both are built from CourtListener's bulk data, which by definition has nothing for the years CourtListener is missing. So a 2021 case is readable and searchable, but you can't reach it by pasting its N.W.2d cite.</li>
+  </ul>
+  <p><strong>2017&ndash;2019 and 2023 remain thin</strong> and have not been rebuilt yet.</p>
   <p>If your research depends on Minnesota authority filed between 2017 and 2023, treat this site as incomplete for that window and check the <a href="https://mn.gov/law-library/search/opinions-archive.jsp" target="_blank" rel="noopener">State Law Library archive</a> as well.</p>
 
   <h2>Editorial review</h2>
@@ -130,7 +137,7 @@
     <span class="status-pill status-pill--live">Live &middot; Arizona</span>
   </p>
   <ul>
-    <li><strong>Minnesota</strong> &mdash; <strong>60,000+ opinions</strong> spanning <strong>1851 to current</strong>, refreshed weekly as new opinions are released. Judge dossiers, outcome categorization, statute citation graph, semantic search, and tag-suggestion review pipeline are all live. <strong>2017&ndash;2023 coverage is incomplete</strong> (see Known coverage gaps above); backfill in progress.</li>
+    <li><strong>Minnesota</strong> &mdash; <strong>63,000+ opinions</strong> spanning <strong>1851 to current</strong>, refreshed weekly as new opinions are released. Judge dossiers, outcome categorization, statute citation graph, semantic search, and tag-suggestion review pipeline are all live. <strong>2020&ndash;2022 were rebuilt from the State Law Library archive; 2017&ndash;2019 and 2023 are still thin</strong> (see Known coverage gaps above).</li>
     <li><strong>New Hampshire</strong> &mdash; full NH Supreme Court corpus loaded: <strong>20,000+ opinions</strong>. Byline-extracted judicial panel graph populated. Semantic search, citation graph, and tag-suggestion pipelines running. Opinions are read directly from the court's own releases, so NH is typically current within days.</li>
     <li><strong>Arizona</strong> &mdash; full Arizona Supreme Court + Court of Appeals corpus loaded: <strong>38,000+ opinions</strong>. Byline extraction live for both the Supreme Court and the Court of Appeals; disposition parsing covers modern opinions at roughly 90% and thins out on pre-1980 text.</li>
   </ul>
