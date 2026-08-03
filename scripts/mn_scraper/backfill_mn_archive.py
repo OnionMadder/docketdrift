@@ -100,7 +100,7 @@ URL_FILTER = " OR ".join("url:/archive/%s" % c for c in ALL_CATS)
 # Which weekdays the courts actually file on. COA = Monday, Supreme =
 # Wednesday (verified against the index; Tue/Thu/Fri probed and empty).
 # Mutated from --weekdays at startup so build_url and iter_windows agree.
-FILING_WEEKDAYS = {0, 2}
+FILING_WEEKDAYS = {0, 1, 2, 3, 4}
 
 # In-page same-origin fetch. Playwright's request API is fingerprinted and
 # blocked; a fetch() from the passing page context is not. (The NH lesson.)
@@ -450,14 +450,17 @@ def main():
                          "filing day adds ~25 results and >100 in a window "
                          "hits the pager ceiling, which is reported as "
                          "TRUNCATED rather than silently accepted.")
-    ap.add_argument("--weekdays", default="0,2",
-                    help="filedate only: weekdays to query, Mon=0 (default "
-                         "'0,2'). THE COURTS USE DIFFERENT DAYS: the Court of "
-                         "Appeals files Mondays, the Supreme Court files "
-                         "WEDNESDAYS. A Monday-only sweep silently returns "
-                         "zero Supreme opinions -- that is how the first 2020 "
-                         "pass came back 885 ctapun / 0 supct. Tue/Thu/Fri were "
-                         "probed and are empty.")
+    ap.add_argument("--weekdays", default="0,1,2,3,4",
+                    help="filedate only: weekdays to query, Mon=0 (default all "
+                         "weekdays). THE COURTS USE DIFFERENT DAYS -- measured "
+                         "against 2015-2016 ground truth in our own DB: COA "
+                         "files Mon 88.9%% / Tue 11.0%%, Supreme files Wed "
+                         "88.8%% with ~11%% scattered Mon/Tue/Thu/Fri. A "
+                         "Mon-only sweep returns ZERO Supreme opinions; a "
+                         "Mon+Wed sweep silently drops COA's Tuesdays (~11%%). "
+                         "Because --batch-days groups a whole week into ONE "
+                         "query, adding weekdays costs no extra navigations, "
+                         "so sweeping all five is strictly better.")
     ap.add_argument("--max-pages", type=int, default=10,
                     help="Pager depth per window (site exposes ~10).")
     ap.add_argument("--pace", type=float, default=8.0,
