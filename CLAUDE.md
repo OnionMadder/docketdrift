@@ -12,10 +12,17 @@ The tree is **clean**; main == origin/main. Backlog lives in `docs/TODO.md`
 2026-06-12 snapshot kept for its rationale, and several of its "open" items
 have shipped. Trust TODO.md on priority; trust this file on gotchas.
 
-**THE ONE THING BLOCKING A PUBLIC LAUNCH: Minnesota 2017–2023 is incomplete
-and 2020–2022 is EMPTY.**
+**MN 2020–2022 IS FIXED (2026-08-03): 0 → 3,102 opinions.** 2020=1,040,
+2021=1,092, 2022=970, read directly from the mn.gov State Law Library archive.
+MN corpus 60,457 → **63,559**. Derived layers ran: 18,254 statute-cite rows,
+1,958 holdings, 4,315 panel votes. **2017–2019 and 2023 are STILL THIN** — see
+the backfill recipe + the case-number blocker in the 2026-08-03 block below.
+Residual, disclosed on `/about/`: COA ~83%, Supreme ~53% (the archive carries
+no Supreme *orders*), and these opinions have **no reporter cites and no
+citation-graph edges** (both derive from CL bulk data, which has nothing for
+years CL lacks).
 
-**THE CAUSE IS UPSTREAM, NOT US — corrected 2026-08-03. Do not re-derive this
+**THE CAUSE WAS UPSTREAM, NOT US — corrected 2026-08-03. Do not re-derive this
 the hard way.** Earlier notes (including this block, as first written) blamed
 the `/search/` vs `/clusters/` ingest defect. **That is wrong.** Measured three
 independent ways on 2026-08-03:
@@ -130,15 +137,61 @@ What this session actually established, so nobody re-derives it:
   guess costs a CAPTCHA and degrades the profile's standing. Space loads out,
   and expect to solve challenges by hand.
 
-**The build this needs (NOT written yet):** a date-windowed variant of
-`scrape_mn_coa.py`. `--since` alone can't reach history, and the pager stops at
-page 10 (~100 results), so the walk must be *windowed*: for each ~1–2 week
-window in 2017–2023, navigate a constructed search URL bounded to that window,
-page 1→N, collect `archive/(ctappub|ctapun|COAspectorders|supct)` hrefs, then
-download server-side (PDFs aren't walled) and `ingest_pdfs`. **It must also
-cover `supct`** — the existing scraper deliberately skips Supreme, but MN
-Supreme is missing for those years too. Rough size: ~9,000–10,000 opinions,
-~52 windows/year × ~4 pages. **Attended**: a logged-on human clears CAPTCHAs.
+**THE BUILD — DONE. `scripts/mn_scraper/backfill_mn_archive.py`.** Recipe that
+works, verified end to end on 3,102 opinions:
+
+```
+# 1. residential browser collects URLs (attended; a human clears CAPTCHAs)
+python scripts/mn_scraper/backfill_mn_archive.py --strategy filedate \
+    --since 2021-01-01 --until 2021-12-31 --no-download --manifest mn2021.tsv
+# 2. NFSN downloads the PDFs (they are NOT walled from a datacenter IP)
+python scripts/mn_scraper/fetch_manifest.py --manifest mn2021.tsv --out /tmp/mn
+# 3. ingest each court separately (chunk ~300/batch: no --max-runtime, and
+#    3,000 PDF parses blow past the cull)
+python manage.py ingest_pdfs --dir /tmp/mn/appeals --state MN --court appeals
+python manage.py ingest_pdfs --dir /tmp/mn/supreme --state MN --court supreme
+# 4. derived passes: extract_statutes, extract_holdings_text, resolve_judges
+#    (--max-runtime 35, loop on the printed --min-id). suggest_tags must WAIT
+#    for the overnight embed -- new rows carry a placeholder vector.
+```
+
+**The five things that made it work — every one was found by measurement, not
+reasoning, and each would have silently corrupted the result:**
+
+1. **`start-date`/`end-date` on the search URL are IGNORED.** A November-2021
+   window returns newest-first results. The `filedate` strategy instead keys on
+   the `mmddyy` stamp *inside the filename* (`url:112221`), which the index
+   tokenizes. **Never trust a window** — the script parses each result's date
+   from its filename and REFUSES a window whose results fall outside it.
+2. **The two courts file on DIFFERENT DAYS.** COA files Mon (88.9%) / Tue
+   (11.0%); Supreme files **Wed** (88.8%). The first sweep was Monday-only and
+   returned **885 ctapun / 0 supct** while reporting success. Default is now
+   all five weekdays — and because `--batch-days` groups a week into ONE query,
+   extra weekdays cost no navigations.
+3. **CALIBRATE AGAINST A KNOWN-GOOD PERIOD.** Running the scraper over 2016 Q1
+   (which CL has complete) and diffing against our own DB is what exposed #2.
+   Do this before trusting any future sweep. It also surfaced **17 appeals
+   opinions we don't have at all** in a quarter CL considers complete.
+4. **Normalize case numbers before comparing anything.** Legacy rows carry
+   `NO. ` prefixes and unpadded sequences (`A15-178`) vs filename-derived
+   `A15-0178`. Raw comparison overstated the gap by ~half.
+5. **Reconcile the manifest against the DB afterward.** Batch summaries only
+   give counts; reconciliation NAMES the missing. 5 of 3,108 failed: 2 scanned
+   image-only PDFs, 2 with PDF text-extraction damage (`F\niled`,
+   `De cember`), 1 whose companion-case number confused the parser. Left
+   unfixed on purpose — loosening the date regex to tolerate broken words is
+   the fuzzy-fallback change that historically produces WRONG dates.
+
+**TWO LATENT PARSER BUGS this exposed — both because no MN Supreme PDF had
+ever been parsed** (Supreme opinions always arrived pre-parsed from CL bulk
+CSV, so `parsing/mn.py` was written and tested against COA documents only):
+`FILED_DATE_RE` required whitespace after "Filed" but Supreme writes
+"Filed:&nbsp;&nbsp;<date>" → **234 of 240 errored**; and the caption extractor
+took the first block after the docket number, which on a Supreme opinion is the
+PANEL → every page would have been titled "Court of Appeals Chutich, J.
+Concurring in part…". **Lesson: a code path that has never executed is not
+working, it is untested** — the COA path had 60K opinions of validation behind
+it and looked identical from outside.
 
 ## Prior session (2026-08-02) — pre-launch audit + truth-in-copy pass
 
