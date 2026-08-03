@@ -93,6 +93,24 @@ _JUDGE_BLOCK_RE = re.compile(
 )
 
 
+_ROLE_ONLY_RE = re.compile(
+    r"^\s*(?:appellants?|respondents?|petitioners?|relators?|"
+    r"cross-appellants?|cross-respondents?|appellants?/cross-respondents?|"
+    r"respondents?/cross-appellants?|et\s+al\.?)\s*[,.]?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_role_label(par: str) -> bool:
+    """True for a caption fragment that is only a party ROLE, no name.
+
+    Captions wrap as `Ryan Larson,` / `Appellant,` across separate blocks, so
+    a block can be all role and no party -- titling the opinion
+    "Respondent/Cross-Appellant,". Those are never the case name.
+    """
+    return bool(_ROLE_ONLY_RE.match(" ".join(par.split())))
+
+
 def _looks_like_judge_block(par: str) -> bool:
     """True when a caption-candidate paragraph is really the panel block.
 
@@ -276,7 +294,8 @@ class MinnesotaParser(StateParser):
                     # own panel ("Court of Appeals Chutich, J. Concurring..."),
                     # so skip blocks that are clearly judge lines.
                     caption_ps = [p for p in paragraphs
-                                  if not _looks_like_judge_block(p)] or paragraphs
+                                  if not _looks_like_judge_block(p)
+                                  and not _looks_like_role_label(p)] or paragraphs
                     candidate = " ".join(caption_ps[0].split()) if caption_ps else ""
                     conf = 0.7
                 else:
