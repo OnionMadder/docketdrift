@@ -86,6 +86,24 @@ _CAPTION_ROLE_RE = re.compile(
     re.IGNORECASE)
 
 
+_JUDGE_BLOCK_RE = re.compile(
+    r"(,\s*(?:C\.)?J\.|Concurring|Dissenting|Took no part|"
+    r"^\s*Court of Appeals\b|Office of Appellate Courts)",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _looks_like_judge_block(par: str) -> bool:
+    """True when a caption-candidate paragraph is really the panel block.
+
+    Supreme Court opinions print the authoring justice and any separate
+    writings between the docket number and the party caption, so the first
+    paragraph after the docket number is the panel, not the case name.
+    Party captions do carry commas, but not ", J." / ", C.J." tokens.
+    """
+    return bool(_JUDGE_BLOCK_RE.search(par))
+
+
 def _order_caption_name(caption: str) -> str:
     """Turn an order-opinion caption block into a clean case name.
 
@@ -246,7 +264,20 @@ class MinnesotaParser(StateParser):
                 if m_filed:
                     # Regular: the caption is the first paragraph block (it
                     # wraps across lines but stops at a blank line).
-                    candidate = " ".join(paragraphs[0].split()) if paragraphs else ""
+                    #
+                    # EXCEPT on Supreme Court opinions, where the panel block
+                    # sits between the docket number and the caption:
+                    #     A17-0221
+                    #     Court of Appeals   McKeig, J.
+                    #       Concurring in part and dissenting in part,
+                    #      Anderson, J., Gildea, C.J., Hudson, J.
+                    #     Joel Jennissen, et al.,
+                    # Taking paragraphs[0] there titles the opinion with its
+                    # own panel ("Court of Appeals Chutich, J. Concurring..."),
+                    # so skip blocks that are clearly judge lines.
+                    caption_ps = [p for p in paragraphs
+                                  if not _looks_like_judge_block(p)] or paragraphs
+                    candidate = " ".join(caption_ps[0].split()) if caption_ps else ""
                     conf = 0.7
                 else:
                     # Order opinion: the caption is split across blank lines
