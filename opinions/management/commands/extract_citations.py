@@ -30,7 +30,8 @@ import time
 from django.core.management.base import BaseCommand
 from django.db import connection
 
-from opinions.models import Court, Opinion, OpinionCitation, State
+from opinions.models import (Court, Opinion, OpinionCitation, ParallelCite,
+                             State)
 from opinions.parsing.citations import extract_citations
 from opinions.parsing.treatment import classify_treatment
 
@@ -92,6 +93,18 @@ class Command(BaseCommand):
                 .exclude(reporter_cite="")
                 .values_list("reporter_cite", "id")
             )
+            # ...plus every PARALLEL cite. reporter_cite holds one canonical
+            # form per opinion, but courts cite the same case several ways --
+            # Arizona by official "221 Ariz. 236" far more often than by the
+            # Pacific "202 P.3d 1150" we happened to store, Minnesota by
+            # "123 Minn. 456" alongside N.W.2d. Without these, the most common
+            # citation format in an AZ opinion resolves to nothing.
+            # setdefault: never let a parallel cite displace a canonical one.
+            for cite, oid in ParallelCite.objects.filter(
+                    opinion__court_id__in=court_ids).values_list("cite", "opinion_id"):
+                if cite:
+                    cite_map.setdefault(cite.strip(), oid)
+
             # ...plus canonical DOCKET -> opinion_id. A docket is the only key
             # that reaches an opinion with no reporter cite -- every
             # unpublished opinion, and the whole MN 2020-2022 backfill, which

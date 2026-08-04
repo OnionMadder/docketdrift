@@ -13,11 +13,12 @@ opinion we actually hold -- an unresolvable cite is noise, not an edge:
 
 Three deliberate scope decisions:
 
-1. **Minnesota's own official reporter is EXCLUDED**, despite being the second
-   most common format by hits. ``Opinion.reporter_cite`` holds the regional
-   N.W. cite, not the official ``123 Minn. 456``, so only 3% resolve. Emitting
-   them would add ~2,500 unresolvable references per 900 opinions. If parallel
-   official cites are ever loaded, this becomes a one-line addition.
+1. **Minnesota's official reporter is now IN scope** (changed 2026-08-04).
+   It was excluded at 3% resolvable, because ``Opinion.reporter_cite`` held
+   only the regional N.W. cite. Loading parallel cites from CourtListener's
+   bulk export took ``123 Minn. 456`` from **3% -> 94%**, so the reason for
+   excluding it no longer holds. It was the second most common format by hits
+   all along, so the earlier sweep was missing a whole class of real edges.
 
 2. **Docket citations ARE extracted** -- something the NH extractor has no
    equivalent for. Minnesota opinions cite unpublished decisions by docket
@@ -44,6 +45,13 @@ NW2D = re.compile(r"\b(?P<vol>\d{1,4})\s+N\.\s?W\.\s?2d\s+(?P<page>\d{1,4})\b")
 # volume 131, page 2, and silently resolves to the wrong case.
 NW1 = re.compile(
     r"\b(?P<vol>\d{1,4})\s+N\.\s?W\.\s+(?!2d\b)(?P<page>\d{1,4})\b")
+
+# Minnesota's OFFICIAL reporter: "123 Minn. 456". Excluded from v1 because it
+# resolved at 3% -- reporter_cite held only the regional N.W. cite. After the
+# parallel-cite load (2026-08-04) it resolves at 94%, so it is in scope. Guard
+# against "Minn. App." / "Minn. Stat." by requiring a page number immediately
+# after "Minn.", which a statute cite ("Minn. Stat. 609.185") never has.
+MINN_OFFICIAL = re.compile(r"\b(?P<vol>\d{1,3})\s+Minn\.\s+(?P<page>\d{1,4})\b")
 
 # Docket: "A19-1234", also "A19-234" in older text (padded on normalize).
 DOCKET = re.compile(r"\bA(?P<yy>\d{2})-(?P<seq>\d{3,4})\b")
@@ -156,6 +164,9 @@ def extract(text: str, self_cite: str = "") -> list[ExtractedCitation]:
     for m in NW1.finditer(text):
         found.append((m.start(), m.end(),
                       "%s N.W. %s" % (m.group("vol"), m.group("page"))))
+    for m in MINN_OFFICIAL.finditer(text):
+        found.append((m.start(), m.end(),
+                      "%s Minn. %s" % (m.group("vol"), m.group("page"))))
     for m in DOCKET.finditer(text):
         # A bare docket number is NOT a citation. Every MN opinion prints its
         # own in the caption, and a CONSOLIDATED appeal prints its companions'
