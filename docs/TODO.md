@@ -290,19 +290,23 @@ clean, exit 0). NFSN emails a scheduled task's stdout/stderr to the account.
 
 Copy-paste fields (Tag / Command / Schedule):
 
-- [x] **`ai-citations`** — DONE (Onion registered it; confirmed 2026-08-03).
-- [x] **`freshness-check`** — DONE (registered; the 2026-07-24 command-path fix
-  was made against the live task).
+- [x] **`aicitations`** + **`freshnesscheck`** — Onion fixed both in the member
+  panel 2026-08-04. Script verified working the same day:
+  `freshness_check.sh` exits 0 and prints all three states fresh.
 
-Already registered + running (nothing to do): `embed-tick` (~10 min),
-`heartbeat` (~10 min), `cron-ingest` (weekly CL ingest), plus the two above.
+Registered + running: `embedtick`, `heartbeat`, `precomptags`, the five
+`ingest*` CL jobs, plus the two above.
 
-- [ ] **Onion: DELETE the stray `aicitations` task** (no hyphen) — I created it
-  on 2026-08-03 by running `nfsn set-cron aicitations` with no command,
-  expecting the CLI to reject an incomplete call; it returned `success=true`
-  and created the task instead. Its command is junk (`echo test`/empty) and
-  NFSN emails task output, so it will generate noise. Manage Site → Scheduled
-  Tasks → delete.
+**The real 2026-08-04 finding — the alarm had NEVER fired.** The panel showed
+`freshnesscheck` running `me/private/docketdrift/scripts/freshness_check.sh`,
+still missing the leading `/ho`, months after that fix was recorded as done in
+CLAUDE.md. "Last Run" was populated the whole time, because **a task that fails
+instantly still records a Last Run** — so the panel looked healthy while the
+staleness safety net for every per-state scraper was dead. Do not read
+Last Run as evidence a task works; run its script by hand.
+
+**Both scripts are mode `-rw-rw-r--`, NOT executable**, so any task command
+must start with `/bin/sh`. Path alone is not enough.
 
 **Two CLI gotchas worth keeping** (`nfsn` on prod, not just the member panel):
 1. `nfsn set-cron` / `add-cron` **do NOT validate argument count** — a call
