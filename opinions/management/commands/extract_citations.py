@@ -186,10 +186,25 @@ class Command(BaseCommand):
                                 source=OpinionCitation.Source.EXTRACTED,
                             ).delete()
                             bulk = []
+                            # One edge per RESOLVED TARGET, not per cite
+                            # string. Courts routinely give both cites for one
+                            # case in a single reference -- "State v. Doe, 221
+                            # Ariz. 236, 202 P.3d 1150" -- which are two
+                            # different keys pointing at the same opinion. Now
+                            # that parallel cites resolve, counting those
+                            # separately would double every Arizona edge and
+                            # show the same case twice in "cited by".
+                            # Unresolved references keep their own rows: they
+                            # are genuinely distinct external authorities.
+                            seen_targets: set[int] = set()
                             for c in cites:
                                 target = cite_map.get(c.reporter_cite)
                                 if target == op.id:
                                     continue  # never an edge to self
+                                if target is not None:
+                                    if target in seen_targets:
+                                        continue
+                                    seen_targets.add(target)
                                 bulk.append(OpinionCitation(
                                     citing_opinion_id=op.id,
                                     cited_opinion_id=target,
