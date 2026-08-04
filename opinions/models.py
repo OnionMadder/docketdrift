@@ -924,6 +924,56 @@ class OpinionCitation(models.Model):
         return f"{self.citing_opinion_id} -> {target} ({self.treatment})"
 
 
+class ParallelCite(models.Model):
+    """Every reporter citation an opinion is known by -- not just the best one.
+
+    ``Opinion.reporter_cite`` holds ONE canonical cite, which is what the
+    opinion header displays. But a published opinion is routinely citable
+    several ways: Arizona cases carry both a Pacific cite (``202 P.3d 1150``)
+    and an official one (``221 Ariz. 236``); Minnesota carries N.W.2d plus
+    ``123 Minn. 456``. ``load_reporter_cites`` kept whichever CourtListener
+    listed first, so for Arizona we kept Pacific almost every time.
+
+    That single choice is why the Arizona citation graph could not be built:
+    measured on 700 AZ opinions, the official ``123 Ariz.`` form is the MOST
+    common way AZ opinions cite each other (present in 87% of them) and
+    resolved at **0%**, because only 151 of our 27,201 AZ cites were official.
+    This table holds all of them so a citation in either form resolves to the
+    same opinion.
+
+    A separate table rather than more columns on Opinion: that table is 2.75GB,
+    and adding an indexed column to it is the operation that ran 9+ hours
+    unkillably during the VECTOR INDEX attempt. This one is small, indexed on
+    ``cite`` for resolution lookups, and cheap to rebuild.
+    """
+
+    opinion = models.ForeignKey(
+        "Opinion", on_delete=models.CASCADE, related_name="parallel_cites",
+    )
+    cite = models.CharField(
+        max_length=64,
+        db_index=True,
+        help_text="Full citation as '<volume> <reporter> <page>', e.g. '221 Ariz. 236'.",
+    )
+    reporter = models.CharField(
+        max_length=32,
+        blank=True,
+        default="",
+        help_text="Reporter abbreviation alone, e.g. 'Ariz.', 'P.3d', 'N.W.2d'.",
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["opinion", "cite"], name="uniq_parallel_cite_per_opinion",
+            )
+        ]
+        indexes = [models.Index(fields=["cite"], name="parallelcite_cite_idx")]
+
+    def __str__(self):
+        return f"{self.opinion_id}: {self.cite}"
+
+
 class Tag(models.Model):
     """Editorial tag applied to opinions.
 
