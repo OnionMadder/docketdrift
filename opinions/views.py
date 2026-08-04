@@ -25,6 +25,7 @@ from django.views.decorators.cache import cache_control, cache_page
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.vary import vary_on_headers
 
+from opinions.case_numbers import canonical_case_number
 from opinions.models import Court, Judge, Opinion, State, StatuteCitation, Tag
 
 
@@ -767,6 +768,28 @@ def opinion_list(request):
 _COURT_RANK = {Court.Level.SUPREME: 0, Court.Level.APPEALS: 1}
 
 
+def _match_opinions(qs, case_number):
+    """Resolve a docket number to rows, tolerating pre-normalization spellings.
+
+    `normalize_case_numbers` rewrote stored values to canonical form
+    ('a230380' -> 'A23-0380', 'No. A15-1566' -> 'A15-1566'). Any link minted
+    before that -- an indexed page, a bookmark, an AI-grounded citation --
+    still carries the old spelling, so an exact match alone would 404 pages
+    that used to work. Canonicalize the REQUEST the same way and retry.
+
+    Cheap: the fallback is one extra indexed equality lookup, and only when
+    the first miss happens. Do not replace this with a normalizing scan over
+    case_number -- that can't use the index.
+    """
+    matches = list(qs.filter(case_number=case_number))
+    if matches:
+        return matches
+    canonical = canonical_case_number(case_number)
+    if canonical and canonical != case_number:
+        return list(qs.filter(case_number=canonical))
+    return []
+
+
 def _pick_opinion(matches, want_court=""):
     """Choose which opinion a shared case_number resolves to."""
     want = (want_court or "").strip().lower()
@@ -794,7 +817,7 @@ def opinion_pdf(request, case_number):
     qs = Opinion.objects.defer("raw_text", "html_content").select_related("court")
     if state is not None:
         qs = qs.filter(court__state=state)
-    matches = list(qs.filter(case_number=case_number))
+    matches = _match_opinions(qs, case_number)
     if not matches:
         raise Http404("Opinion not found")
     opinion = _pick_opinion(matches, request.GET.get("court"))
@@ -816,7 +839,7 @@ def opinion_detail(request, case_number):
     )
     if state is not None:
         qs = qs.filter(court__state=state)
-    matches = list(qs.filter(case_number=case_number))
+    matches = _match_opinions(qs, case_number)
     if not matches:
         raise Http404("Opinion not found")
     opinion = _pick_opinion(matches, request.GET.get("court"))
