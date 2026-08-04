@@ -101,6 +101,7 @@ def sentence_window(text: str, start: int, end: int,
 
 _REGISTRY: dict[str, str] = {
     "NH": "opinions.parsing.citations_nh",
+    "MN": "opinions.parsing.citations_mn",
 }
 
 _cache: dict[str, object] = {}
