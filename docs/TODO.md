@@ -352,6 +352,16 @@ must start with `/bin/sh`. Path alone is not enough.
   total vs the ~1,400/yr historical norm, and case-number density across
   `A<yy>-####`. A year landing at ~400 means silent under-collection, not a
   quiet docket.
+  **BLOCKER CLEARED 2026-08-04** — `normalize_case_numbers --apply` renamed
+  **41,318** dockets across all three states; filename stems are now 0
+  remaining (was 942 in MN). Verified after: all four spellings of a docket
+  resolve (canonical / stem / `No. ` / unpadded), a bogus docket still 404s,
+  and the citation graph still resolves at 91% in MN and NH. What remains
+  malformed is the collision set, deliberately untouched (MN 788 / AZ 674 /
+  NH 71 `NO. ` prefixes, 57 unpadded) plus the 14,436 `cl-<id>` rows, which
+  need CourtListener's API rather than string work. The original writeup of
+  the blocker follows.
+
   **BLOCKER FOR THE THIN YEARS ONLY (2017–2019, 2023) — found 2026-08-03.**
   Those years already hold rows whose `case_number` is a malformed stem:
   `a230380`, `a250826`, `a221655` — lowercase, unhyphenated. **The defect is
