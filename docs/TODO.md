@@ -290,28 +290,35 @@ clean, exit 0). NFSN emails a scheduled task's stdout/stderr to the account.
 
 Copy-paste fields (Tag / Command / Schedule):
 
-- [ ] **`ai-citations`** — weekly "who's citing us" digest (emails stdout).
-  - Tag: `ai-citations`
-  - Command: `/bin/sh /home/private/docketdrift/scripts/ai_citations.sh 7`
-  - Schedule: weekly (e.g. Monday ~08:00)
-  - Shows which opinions live AI agents (chatgpt-user / claude-user /
-    perplexity-user) fetched to answer a question, vs. training crawlers.
-
-- [ ] **`freshness-check`** — weekly staleness alarm (emails only on failure).
-  - Tag: `freshness-check`
-  - Command: `/bin/sh /home/private/docketdrift/scripts/freshness_check.sh`
-  - Schedule: weekly, **after** the Monday ingests land (e.g. Tuesday 12:00 UTC)
-  - Exits non-zero + emails a loud alert only when a state's newest opinion
-    crosses its threshold (MN/AZ 45d, NH 60d); silent on a healthy week.
+- [x] **`ai-citations`** — DONE (Onion registered it; confirmed 2026-08-03).
+- [x] **`freshness-check`** — DONE (registered; the 2026-07-24 command-path fix
+  was made against the live task).
 
 Already registered + running (nothing to do): `embed-tick` (~10 min),
-`heartbeat` (~10 min), `cron-ingest` (weekly CL ingest).
+`heartbeat` (~10 min), `cron-ingest` (weekly CL ingest), plus the two above.
+
+- [ ] **Onion: DELETE the stray `aicitations` task** (no hyphen) — I created it
+  on 2026-08-03 by running `nfsn set-cron aicitations` with no command,
+  expecting the CLI to reject an incomplete call; it returned `success=true`
+  and created the task instead. Its command is junk (`echo test`/empty) and
+  NFSN emails task output, so it will generate noise. Manage Site → Scheduled
+  Tasks → delete.
+
+**Two CLI gotchas worth keeping** (`nfsn` on prod, not just the member panel):
+1. `nfsn set-cron` / `add-cron` **do NOT validate argument count** — a call
+   with a missing command silently succeeds and creates a task. There is **no
+   `delete-cron` verb**, so a mistake can only be undone in the member panel.
+   Never probe these verbs to discover their signature.
+2. `test-cron` rejects any tag containing a hyphen ("Tag must be alphanumeric"),
+   so it **cannot see** the real tasks — `embed-tick`, `cron-ingest`,
+   `ai-citations`, `freshness-check` all fail the existence check while running
+   fine. A failed `test-cron` is NOT evidence a task is missing.
 
 ### Windows Task Scheduler (residential box, NOT NFSN)
 
-- [ ] **`run_mn_weekly.ps1`** — logged-on Windows Task Scheduler entry mirroring
-  the NH task (`scripts\mn_scraper\run_mn_weekly.ps1`, run-only-when-logged-on).
-  Makes MN COA forward-fill autonomous.
+- [x] **`run_mn_weekly.ps1`** — DONE. Verified registered 2026-08-03:
+  `\DocketDrift MN COA weekly scraper` (Interactive only), alongside
+  `\DocketDrift NH weekly scraper`. MN COA forward-fill is autonomous.
 
 ## Tier 3 — coverage (bigger builds)
 
