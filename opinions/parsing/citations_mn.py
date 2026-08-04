@@ -48,6 +48,16 @@ NW1 = re.compile(
 # Docket: "A19-1234", also "A19-234" in older text (padded on normalize).
 DOCKET = re.compile(r"\bA(?P<yy>\d{2})-(?P<seq>\d{3,4})\b")
 
+# What must FOLLOW a docket for it to count as a citation rather than a
+# caption entry: an optional pinpoint/parallel run, then a Minnesota court
+# parenthetical -- "(Minn. App. Mar. 2, 2020)", "(Minn. 2019)",
+# "(Minn. App. filed Mar. 2, 2020)". Anchored with .match() at the docket's
+# end so it can only look forward a bounded distance.
+_DOCKET_CITE_TAIL = re.compile(
+    r"[^()\n]{0,80}?\(\s*Minn\.(?:\s*(?:Ct\.\s*)?App\.)?[^)]{0,60}\)",
+    re.I,
+)
+
 CONTEXT_PAD = 180
 _MIN_QUOTE_CHARS = 24
 _SENT_BACK = 400
@@ -123,7 +133,21 @@ def extract(text: str, self_cite: str = "") -> list[ExtractedCitation]:
     """
     if not text:
         return []
-    self_keys = {p.strip() for p in re.split(r"[|]", self_cite or "") if p.strip()}
+    # Canonicalize the self keys rather than trusting how they're stored.
+    # ~15K rows still carry a malformed docket ('a230373', 'NO. A15-1285',
+    # 'A15-178'); uppercasing 'a230373' yields 'A230373', which never matches
+    # the canonical 'A23-0373' this extractor emits -- so the opinion cites
+    # ITSELF via its own caption. Measured, not hypothetical.
+    self_keys = set()
+    for part in re.split(r"[|]", self_cite or ""):
+        p = part.strip()
+        if not p:
+            continue
+        self_keys.add(p)
+        bare = p.upper().replace("NO.", "").replace(" ", "")
+        m = re.match(r"^A(\d{2})-?(\d{1,4})$", bare)
+        if m:
+            self_keys.add(normalize_docket(m.group(1), m.group(2)))
 
     found: list[tuple[int, int, str]] = []
     for m in NW2D.finditer(text):
@@ -133,6 +157,16 @@ def extract(text: str, self_cite: str = "") -> list[ExtractedCitation]:
         found.append((m.start(), m.end(),
                       "%s N.W. %s" % (m.group("vol"), m.group("page"))))
     for m in DOCKET.finditer(text):
+        # A bare docket number is NOT a citation. Every MN opinion prints its
+        # own in the caption, and a CONSOLIDATED appeal prints its companions'
+        # there too ("A23-0373, A23-0621") -- extracting those invents edges
+        # between documents that are one proceeding, not a citing pair.
+        # A real citation to an unpublished case carries a court-and-date
+        # parenthetical: "State v. Doe, No. A19-1234 (Minn. App. Mar. 2, 2020)".
+        # Require it. Costs some recall, buys precision -- the right trade for
+        # a record that is supposed to be verifiable.
+        if not _DOCKET_CITE_TAIL.match(text, m.end()):
+            continue
         found.append((m.start(), m.end(),
                       normalize_docket(m.group("yy"), m.group("seq"))))
 
