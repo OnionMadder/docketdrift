@@ -97,7 +97,76 @@ in indexed JSON-LD) was reverted — extractive holdings = "no generated text",
 the strong original posture, is correct. Migrations 0026 (holdings) + 0027
 (clustering) are on main and applied on prod.
 
-## Latest session (2026-08-03) — MN gap diagnosed; it is CourtListener's, not ours
+## Latest session (2026-08-04) — MN citation extractor; AZ blocked on parallel cites
+
+**MN now has a text-extracted citation graph: 353,992 edges**, alongside (not
+replacing) CourtListener's 605,353 bulk edges. 272,158 carry a context quote.
+**All 3,102 backfilled 2020–2022 opinions have graphs** (37,298 edges) — the
+one layer they could never inherit from CL.
+
+**Treatment classification finally produces signal.** Corpus-wide it had
+produced ZERO non-default values in every state; now: 1,211 Distinguished, 341
+Followed, 222 Explained, 219 Criticized, **165 Overruled**. "Has this been
+overruled" is the question a lawyer most needs answered, and until today the
+site answered it never.
+
+- **`opinions/parsing/citations_mn.py`** — scope chosen by measuring
+  resolvability, not frequency, on a 900-opinion sample: N.W.2d 94%, N.W. 1st
+  88%, docket `A##-####` 87% → extract; **`Minn.` official 3% → EXCLUDED**
+  despite being the 2nd most common format (our `reporter_cite` holds the
+  regional cite, so official cites resolve nowhere).
+- **Docket citations are MN-only and load-bearing** — a docket is the only key
+  reaching an opinion with no reporter cite (every unpublished one, plus the
+  whole backfill).
+- **Three false-positive classes, all found by READING SAMPLE OUTPUT, not by
+  tests:** spaced `131 N. W. 2d 855` parsed as first-series vol 131 page 2 and
+  resolved to the WRONG case; self-citation via the caption (the guard failed
+  for the ~15K malformed dockets — `a230373` uppercases to `A230373`, never
+  equal to the emitted `A23-0373`) — **my leak COUNTER had the same bug and
+  reported zero**; and consolidated appeals listing companion dockets in the
+  caption (`A23-0373, A23-0621`), which would draw edges between documents that
+  are one proceeding. A docket now counts only when followed by a Minnesota
+  court parenthetical.
+- **`extract_citations` had two NH-era assumptions** that made it unusable for
+  MN: it scanned only opinions WITH a reporter_cite (skipping every unpublished
+  opinion and the entire backfill), and resolved only by reporter_cite. Now
+  scans everything and resolves by docket too. **Ambiguous dockets are dropped,
+  never guessed** (676 in MN — a docket follows a case through review).
+- **Migration 0028 adds `OpinionCitation.source`** (`bulk` vs `extracted`).
+  Both are kept: CL's map resolves against THEIR full corpus so it reaches
+  cases we don't hold; ours carries quotes + treatment and covers what CL
+  lacks. `extract_citations` now deletes only its OWN rows — the old
+  delete-everything would have destroyed CL's 335,998 MN edges on the first
+  full sweep. `opinion_detail` dedupes per relationship, preferring extracted.
+  Migration took 28s (no index on the column, so no rebuild).
+
+**AZ IS BLOCKED — do not build an AZ extractor yet.** Same measurement on 700
+AZ opinions: P.2d 88% and P.3d 88% resolvable, but **`123 Ariz.` official is
+the most common format (5,213 hits, present in 606 of 700 opinions = 87%) and
+resolves at 0%**, as does `Ariz. App.` Cause: of 27,201 AZ reporter cites we
+hold, 25,335 are Pacific and only **151** are official. An extractor built now
+would capture ~40% and look successful. **The prerequisite is loading parallel
+cites** — `load_reporter_cites` fills ONE cite per opinion and skips non-empty
+rows, so we kept whichever CL listed first. CL's bulk citations export carries
+all of them. That one data job would take AZ's dominant format 0% → ~88% and
+fix MN's `Minn.` official gap for free.
+
+**Ops lessons this session:**
+- **A `nohup` supervisor is still a daemon.** The chunked command survived
+  fine, but I mis-read `ps` mid-chunk, concluded the wrapper had died, and
+  launched a manual chunk that ran CONCURRENTLY with it. No damage (0 duplicate
+  pairs — they hit disjoint ranges), but drive chunk loops from OUTSIDE with
+  short-lived invocations. **The DB is ground truth, not the log** — chunk 5's
+  edges were committed while its completion line never reached the log.
+- **`manage.py check` does not catch a missing import** used inside a view.
+  `views.py` referenced `OpinionCitation` without importing it; checks passed
+  and it would have 500'd every opinion page. Same shape as the documented
+  UnboundLocalError trap.
+- **Filtering `OpinionCitation` by `source` alone times out** (errno 1969) —
+  no index on that column, by design. Request-time code must narrow by
+  citing/cited opinion first; batch probes must lift `max_statement_time`.
+
+## Prior session (2026-08-03) — MN gap diagnosed; it is CourtListener's, not ours
 
 Went in to run the MN backfill. **The backfill did not run, because the premise
 was wrong** — the gap is upstream (full evidence in the header block above).
