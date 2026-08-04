@@ -163,7 +163,15 @@ class Command(BaseCommand):
                             own = "%s|%s" % (op.reporter_cite or "",
                                              (op.case_number or "").strip())
                             cites = extract_citations(code, op.raw_text, self_cite=own)
-                            OpinionCitation.objects.filter(citing_opinion_id=op.id).delete()
+                            # Rebuild only OUR OWN edges. Deleting everything
+                            # would wipe CourtListener's bulk map (335,998 MN
+                            # edges), which resolves against their full corpus
+                            # and reaches cases we don't hold -- our regex
+                            # cannot reproduce those.
+                            OpinionCitation.objects.filter(
+                                citing_opinion_id=op.id,
+                                source=OpinionCitation.Source.EXTRACTED,
+                            ).delete()
                             bulk = []
                             for c in cites:
                                 target = cite_map.get(c.reporter_cite)
@@ -177,6 +185,7 @@ class Command(BaseCommand):
                                     context=c.context[:500],
                                     context_quote=c.quote[:500],
                                     text_offset=c.text_offset,
+                                    source=OpinionCitation.Source.EXTRACTED,
                                 ))
                                 if target:
                                     internal += 1

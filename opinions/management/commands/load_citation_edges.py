@@ -119,6 +119,11 @@ class Command(BaseCommand):
                                 cited_opinion_id=top,
                                 cited_reference=(ref or "")[:64],
                                 treatment=OpinionCitation.Treatment.CITED,
+                                # Bulk edges carry no context and no real
+                                # treatment -- CL's citation map has neither.
+                                # Tagging the source keeps them distinguishable
+                                # from text-extracted edges, which do.
+                                source=OpinionCitation.Source.BULK,
                             ))
                     if new_rows and not dry_run:
                         OpinionCitation.objects.bulk_create(new_rows, batch_size=1000)

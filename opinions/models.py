@@ -824,10 +824,30 @@ class OpinionCitation(models.Model):
         CRITICIZED = "CRITICIZED", "Criticized"
         EXPLAINED = "EXPLAINED", "Explained"
 
+    class Source(models.TextChoices):
+        BULK = "bulk", "CourtListener bulk citation map"
+        EXTRACTED = "extracted", "Extracted from this opinion's text"
+
     cited_reference = models.CharField(
         max_length=64,
         db_index=True,
         help_text="Reporter cite as referenced, e.g. '2026 N.H. 7'. Always set.",
+    )
+    source = models.CharField(
+        max_length=16,
+        choices=Source.choices,
+        default=Source.EXTRACTED,
+        help_text=(
+            "Where this edge came from. 'bulk' = CourtListener's citation-map "
+            "export (load_citation_edges): resolved against THEIR full corpus, "
+            "so it can reach cases we don't hold, but carries no context quote "
+            "and no treatment. 'extracted' = parsed from the citing opinion's "
+            "own text (extract_citations): carries a quote and a classified "
+            "treatment, and is the only source that can cover opinions "
+            "CourtListener has no data for. Both are kept -- the two sources "
+            "resolve different things, so neither supersedes the other. "
+            "Display prefers 'extracted' when both describe the same pair."
+        ),
     )
     treatment = models.CharField(
         max_length=16,

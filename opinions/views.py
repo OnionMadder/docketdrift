@@ -26,7 +26,8 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.vary import vary_on_headers
 
 from opinions.case_numbers import canonical_case_number
-from opinions.models import Court, Judge, Opinion, State, StatuteCitation, Tag
+from opinions.models import (Court, Judge, Opinion, OpinionCitation, State,
+                             StatuteCitation, Tag)
 
 
 # Cache-Control max-age budgets, in seconds. Set on views below via the
@@ -925,16 +926,38 @@ def opinion_detail(request, case_number):
     ))
     cited_how = cited_how[:CITED_HOW_CAP]
 
-    cited_by_total = received.count()
-    cited_by = list(
+    # An edge can exist from BOTH sources -- CourtListener's bulk map and our
+    # own text extraction independently resolve some of the same pairs. Show
+    # each relationship once, preferring the extracted row (it carries the
+    # quote and the real treatment). Counting raw rows would overstate
+    # "cited by" wherever the two sources agree.
+    def _prefer_extracted(edges, key):
+        best = {}
+        for e in edges:
+            k = key(e)
+            if k is None:
+                best[id(e)] = e            # unresolved external cite: keep all
+            elif (k not in best
+                  or (e.source == OpinionCitation.Source.EXTRACTED
+                      and best[k].source != OpinionCitation.Source.EXTRACTED)):
+                best[k] = e
+        return list(best.values())
+
+    # .order_by() strips Meta.ordering so it can't bleed into the DISTINCT.
+    cited_by_total = (received.order_by()
+                      .values("citing_opinion_id").distinct().count())
+    cited_by = _prefer_extracted(
         received.select_related("citing_opinion", "citing_opinion__court")
-        .order_by("-citing_opinion__release_date")[:CITED_BY_CAP]
+        .order_by("-citing_opinion__release_date")[:CITED_BY_CAP * 2],
+        lambda e: e.citing_opinion_id,
+    )[:CITED_BY_CAP]
+    cites = _prefer_extracted(
+        list(opinion.citations_made
+             .select_related("cited_opinion", "cited_opinion__court")
+             .order_by("text_offset")),
+        lambda e: e.cited_opinion_id or e.cited_reference,
     )
-    cites = list(
-        opinion.citations_made
-        .select_related("cited_opinion", "cited_opinion__court")
-        .order_by("text_offset")
-    )
+    cites.sort(key=lambda e: e.text_offset or 0)
     _counts = {
         r["treatment"]: r["n"]
         for r in received.values("treatment").annotate(n=Count("id")).order_by()
