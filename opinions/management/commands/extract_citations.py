@@ -132,6 +132,11 @@ class Command(BaseCommand):
                 "%s: %d resolvable dockets (%d ambiguous, dropped)"
                 % (code, len(docket_owner), len(ambiguous))
             )
+            # Start the clock AFTER the maps are built. Building them walks the
+            # whole state corpus (~60s on MN), so counting it against
+            # --max-runtime made the command exit having scanned zero opinions
+            # while reporting success.
+            started = time.time()
             self.stdout.write(
                 "%s: scanning %d citing opinions (%d resolvable targets)..."
                 % (code, len(ids), len(cite_map))
