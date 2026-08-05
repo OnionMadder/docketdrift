@@ -1,11 +1,24 @@
 # DocketDrift — working backlog
 
-Snapshot 2026-07-24. Prioritized. Each item says what it is, why it matters,
+Snapshot 2026-08-04. Prioritized. Each item says what it is, why it matters,
 and roughly how big. "Onion" items need the member panel or are editorial.
 
-Status baseline (pulled live 2026-07-24): 119,250 opinions, all embedded.
-Dispositions MN 97.6% / NH 78.5% / AZ 67.7%. Holdings 39,402. Panel votes
-56,164. Citation graph 605,423 edges.
+Status baseline (pulled live 2026-08-04): **125,129 opinions**
+(MN 66,271 / AZ 38,135 / NH 20,723). Citation graph **1,103,138 edges** —
+605,353 from CourtListener's bulk map plus **497,785 text-extracted** with
+context quotes and classified treatment (MN 422,734, NH 75,051). Parallel
+cites 180,652. Non-default treatments 3,163 (was 0 in every state).
+
+**What changed on 2026-08-04** (full detail in CLAUDE.md):
+- **MN 2017–2022 backfilled: ~5,900 opinions.** 2020/21/22 went 0 → ~1,000
+  each; 2017 438 → 1,350; 2018 208 → 1,327; 2019 176 → 856.
+- **41,318 case numbers normalized** — filename stems now 0 remaining, which
+  is what made `ingest_pdfs` dedup correctly instead of duplicating years.
+- **MN + AZ citation extractors built; NH widened.** NH went 71 → 75,051 edges.
+- **ParallelCite loaded** — the single data gap that had been capping the
+  citation graph in all three states.
+- **eyecite settled with numbers**: installs fine on FreeBSD, measurably not
+  worth deploying for graph coverage. See CLAUDE.md before reopening.
 
 ---
 
@@ -326,10 +339,28 @@ must start with `/bin/sh`. Path alone is not enough.
 
 ## Tier 3 — coverage (bigger builds)
 
-- [~] **MN 2017–2023 backfill — PIPELINE WORKS, SWEEP NOT RUN (2026-08-03).**
-  Proof of concept is **live in prod**: MN 2021 went 0 → 29 opinions, all
-  parsed (28 nonprec / 1 prec; 25 Affirmed / 3 Reversed-and-remanded / 1
-  Reversed), `/opinion/A20-0623/` renders 200.
+- [~] **MN backfill — LARGELY DONE 2026-08-04. Two gaps left, both small.**
+
+  **Done:** 2020/2021/2022 rebuilt from 0 → 1,040 / 1,092 / 970; 2017 438 →
+  1,350; 2018 208 → 1,327; 2019 176 → 856. ~5,900 opinions, all with
+  dispositions (98%), statutes, holdings, panel votes, stored PDFs, and
+  text-extracted citation graphs. Reconciliation clean (2020–22 missing 5 of
+  3,108, all diagnosed; 2017–19 missing 0 of 3,311).
+
+  - [ ] **2019 H2 (~450 opinions).** `2019-07-15 .. 2019-12-31` was collected
+    as 27 SKIPPED windows — the bot wall blocked every navigation in that
+    stretch and a re-run collected zero. Needs the residential profile's
+    clearance to recover (hours/overnight), then one ~25-minute attended sweep.
+  - [ ] **2023 (still ~115).** Never swept. ~52 weeks, ~50 minutes attended.
+
+  **Do NOT skip the reconciliation step** on either. A skipped window is not an
+  empty one: 2019 came back at 803 and looked plausible, and only the SKIPPED
+  count revealed that half the year was never collected.
+
+  Ingest into these years is now safe because `normalize_case_numbers` ran —
+  before that, 2023's 115 rows were 115/115 malformed and every one would have
+  duplicated rather than skipped. Measured proof: the 2017–19 ingest skipped
+  598 already-held opinions and created 2,772, with 0 duplicates.
   **The working recipe** (`scripts/mn_scraper/backfill_mn_archive.py`):
   the search's `start-date`/`end-date` params are silently ignored, but the
   filename carries the filing date (`OP<case>-<mmddyy>.pdf`) and Vivisimo
@@ -416,13 +447,43 @@ must start with `/bin/sh`. Path alone is not enough.
   reporter cites + 605K-edge citation graph. Reserve `ingest_court` for the
   incremental cron. If a specific historical window is known-thin, a *small*
   `--limit` run with long spacing is fine; blind wide sweeps are not.
-- [ ] **Repair the 14,440 synthetic `CL-<id>` case numbers.** They're
-  unreachable by the only identifier a lawyer has (the real docket). Needs a
-  deliberate in-place rewrite pass (`update_or_create` would duplicate). Medium.
+- [ ] **Repair the 14,436 synthetic `cl-<id>` case numbers** (MN 6,448 /
+  NH 7,848 / AZ 140). Unreachable by the only identifier a lawyer has. **Not
+  solvable by string normalization** — the digits are CourtListener's cluster
+  ids and no docket is recoverable from the row, so this is the one population
+  `normalize_case_numbers` deliberately leaves alone. Needs `fetch_docket()`
+  against CL's API, keyed on `courtlistener_id`, written IN PLACE
+  (`update_or_create` would duplicate). Mind the rate limit — same token as the
+  weekly cron. Medium.
+
+- [ ] **Merge the 1,478 duplicate-opinion pairs** — phase 2 of the case-number
+  work, found by the normalization dry run. Both spellings of one docket exist
+  as separate rows. Classified on 2026-08-04: **961 "same date, different
+  length" + 13 near-certain → probable duplicates; 508 have DIFFERENT dates and
+  are two REAL opinions on one docket** (opinion + amended opinion, or opinion
+  + order) and **must never be fused** — a blanket merge would destroy 508 real
+  documents. Needs the `merge_duplicate_judges` discipline: keep the richer
+  row, carry editorial metadata forward, never merge on ambiguity. Medium.
 
 ## Tier 4 — throughput & hardening (lower priority)
 
+- [ ] **★ SEARCH UNDER CONCURRENCY — the #1 launch risk, still untouched.**
+  Measured 2026-08-02 and unchanged since: uncontended search is fine (MN 2–3s,
+  NH 1–5s, AZ 1–2s), but with just **TWO** concurrent search sessions one query
+  hit **183s**, reproduced on both AZ and MN, with sibling connections dying on
+  errno **188** and **1969** — the documented poison cascade. One gunicorn
+  worker × 8 threads. A launch moment (HN / CourtListener traffic) means many
+  simultaneous common-term searches, which is exactly this shape. Everything
+  else on this list is data quality; this is the one that takes the site down
+  in front of an audience. Nothing safe to do in five minutes — needs real
+  capacity work (worker count vs the NFSN RAM ceiling, or bounding the
+  search path harder).
+
 - [ ] **Triage the ~50K tag-review queue** via the pile-picker admin. Onion.
+  **Note:** the ~5,900 opinions backfilled 2026-08-04 embed on the overnight
+  tick (`.embed_state` now = MN), and `suggest_tags` must WAIT for that — new
+  rows carry a placeholder zero vector until embedded, so scoring them earlier
+  produces garbage.
 - [ ] **Harden the tag-review heavy slice** — self-bind slice/count queries
   with `SET STATEMENT max_statement_time` + catch-and-close (poison-cascade
   defense), mirroring `semantic.py`.
