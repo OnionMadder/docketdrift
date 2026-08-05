@@ -140,16 +140,104 @@ site answered it never.
   full sweep. `opinion_detail` dedupes per relationship, preferring extracted.
   Migration took 28s (no index on the column, so no rebuild).
 
-**AZ IS BLOCKED — do not build an AZ extractor yet.** Same measurement on 700
-AZ opinions: P.2d 88% and P.3d 88% resolvable, but **`123 Ariz.` official is
-the most common format (5,213 hits, present in 606 of 700 opinions = 87%) and
-resolves at 0%**, as does `Ariz. App.` Cause: of 27,201 AZ reporter cites we
-hold, 25,335 are Pacific and only **151** are official. An extractor built now
-would capture ~40% and look successful. **The prerequisite is loading parallel
-cites** — `load_reporter_cites` fills ONE cite per opinion and skips non-empty
-rows, so we kept whichever CL listed first. CL's bulk citations export carries
-all of them. That one data job would take AZ's dominant format 0% → ~88% and
-fix MN's `Minn.` official gap for free.
+### eyecite: INSTALLS FINE on FreeBSD, but MEASURED NOT WORTH DEPLOYING (2026-08-04)
+
+Settled with numbers so nobody reopens it every few months. Two questions, both
+answered.
+
+**1. Does it install on NFSN's FreeBSD? YES.** The requirements.txt warning
+("FREEBSD RISK … do NOT pip-install until confirmed") is now resolved: in a
+throwaway `/tmp/eyetest` venv, **all four C-extension deps built from source**
+— `fast-diff-match-patch`, `lxml`, `pyahocorasick`, `regex` — giving
+`eyecite 2.7.8` + `reporters-db` + `courts-db`. It also IMPORTS and tokenizes
+correctly, which is the check numpy fails (numpy's wheels build and then die on
+a missing `cblas_sdot` at import). So the install risk is closed. **Do not
+re-test this.**
+
+**2. Is it worth wiring? NO, not for graph coverage.** Bake-off on 300 real MN
+opinions, both extractors resolving against the SAME key set (reporter_cite ∪
+ParallelCite ∪ docket map), counting RESOLVED TARGETS (what becomes an edge),
+not citation strings:
+
+| | resolved targets |
+|---|---|
+| ours (`citations_mn`) | **1,661** |
+| eyecite | 1,574 |
+| shared | 1,559 |
+| **ours only** (eyecite misses) | **102** |
+| **eyecite only** (we miss) | **15** |
+| eyecite hits re-referencing a target we already have | **1,898** |
+
+- **eyecite would add ~1%** of targets (~3K corpus-wide) and a naive SWAP would
+  **lose ~21K** edges, because **eyecite does not model DOCKET citations** —
+  it's a reporter tokenizer, and `No. A19-1234 (Minn. App. 2020)` isn't a
+  reporter cite. Dockets are the only key reaching unpublished opinions and the
+  entire 2020–2022 backfill. **So it could only ever be a merge, never a swap.**
+- **Its 1,898 extra hits are short forms** (`425 N.W.2d at 582`, `id.`,
+  `supra`) pointing at cases ALREADY cited in full. Under one-edge-per-resolved-
+  target dedup those produce **no new edges**. Do not quote "eyecite finds 2×
+  the citations" as if it meant 2× the graph — it doesn't.
+
+**Caveat, stated because it cuts against the recommendation:** the comparison
+is BIASED AGAINST eyecite. It emits reporters with internal spacing (`297 N. W.
+710`, reporter `N. W.`) and the bake-off didn't normalize that, so some of the
+102 "ours only" is a normalization gap on OUR side, not an eyecite miss. True
+"eyecite only" is higher than 15. The structural finding survives correction
+anyway: dockets are invisible to it, and its dominant contribution is
+re-references.
+
+**When to revisit:** when TREATMENT QUALITY becomes the priority rather than
+graph size. Those 1,898 short-form contexts are each another passage where the
+court engages with a case — and courts short-cite when ARGUING with a case, so
+that is exactly where overruled/distinguished signal concentrates. At that
+point the right build is the hybrid the wrapper docstring always described:
+eyecite tokenizes reporter cites (all forms, all variants), OUR code keeps
+dockets, self-cite/caption guards, resolution, treatment, quotes, and storage.
+Cost to revisit: a real `pip install` into the app venv on prod (the deploy
+path is `git pull` + restart and does NOT run pip).
+
+### PARALLEL CITES — the one data gap that was capping ALL THREE states
+
+AZ was initially blocked: measured on 700 AZ opinions, P.2d/P.3d resolved at
+88% but **`123 Ariz.` official — the most common format, present in 87% of
+opinions — resolved at 0%**, because of 27,201 AZ cites we held, 25,335 were
+Pacific and only **151** were official. An extractor built then would have
+captured ~40% and looked successful.
+
+**Root cause: `load_reporter_cites` stores ONE cite per opinion** (whichever CL
+listed first) and skips non-empty rows. One scoping decision, made months ago
+for good reasons, silently capped the citation graph in every state.
+
+**Fixed 2026-08-04 by `ParallelCite` + `load_parallel_cites`** (migration 0029).
+Harvested all cites for our 119,224 clusters from CL's bulk citations export:
+290,407 rows, of which **96,381 of 103,465 clusters (93%) carry more than one
+cite**. Loaded 180,652 (AZ 57,194 / MN 89,915 / NH 33,543); LEXIS/WL/A.L.R.
+database identifiers are skipped — they never appear as citations in opinion
+text. Measured before → after:
+
+| state | format | was | now |
+|---|---|---|---|
+| AZ | `Ariz.` official | 0% | **93%** |
+| AZ | `Ariz. App.` | 0% | **98%** |
+| MN | `Minn.` official | 3% | **94%** |
+| NH | `N.H.` official | 5% | **95%** |
+
+Consequences, all shipped the same day: the **AZ extractor** was built
+(`citations_az.py`, registered), **MN's `Minn.` official** was moved from
+excluded to in-scope and MN re-swept, and **NH went 71 → 75,051 edges** — its
+extractor had always worked; it was starved of resolvable keys and that had
+been misread for months as the feature being "data-starved."
+
+**Lesson worth keeping:** NH's 71-edge graph looked like a corpus limitation
+and was even documented as one. It was a *loader scoping* bug two layers away.
+Same shape as the phantom judges — a number that reads as missing data pointing
+at a correctness problem somewhere else. The tell both times was a figure too
+small to be plausible (71 edges across 20K opinions that cite each other
+constantly).
+
+**A separate table, NOT columns on Opinion** — that table is 2.75GB and an
+indexed ADD COLUMN there is the 9-hour unkillable rebuild from the VECTOR INDEX
+attempt. ParallelCite is small and indexed on `cite`.
 
 **Ops lessons this session:**
 - **A `nohup` supervisor is still a daemon.** The chunked command survived
