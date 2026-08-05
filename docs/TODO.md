@@ -3,11 +3,15 @@
 Snapshot 2026-08-04. Prioritized. Each item says what it is, why it matters,
 and roughly how big. "Onion" items need the member panel or are editorial.
 
-Status baseline (pulled live 2026-08-04): **125,129 opinions**
-(MN 66,271 / AZ 38,135 / NH 20,723). Citation graph **1,103,138 edges** —
-605,353 from CourtListener's bulk map plus **497,785 text-extracted** with
-context quotes and classified treatment (MN 422,734, NH 75,051). Parallel
-cites 180,652. Non-default treatments 3,163 (was 0 in every state).
+Status baseline (pulled live 2026-08-05): **126,604 opinions**
+(MN 67,268 / AZ 38,135 / NH 20,723). Citation graph **1,129,736 edges** —
+605,353 from CourtListener's bulk map plus **524,383 text-extracted** with
+context quotes and classified treatment (MN 449,332, NH 75,051). Parallel
+cites 180,652. Non-default treatments 3,272 (was 0 in every state).
+
+**MN 2017–2023 IS DONE.** Continuous coverage 2015–2023, every year ~970–1,435:
+2015 1,435 · 2016 1,415 · 2017 1,350 · 2018 1,327 · 2019 1,431 · 2020 1,040 ·
+2021 1,092 · 2022 971 · 2023 1,014. ~7,500 opinions added.
 
 **What changed on 2026-08-04** (full detail in CLAUDE.md):
 - **MN 2017–2022 backfilled: ~5,900 opinions.** 2020/21/22 went 0 → ~1,000
@@ -347,11 +351,18 @@ must start with `/bin/sh`. Path alone is not enough.
   text-extracted citation graphs. Reconciliation clean (2020–22 missing 5 of
   3,108, all diagnosed; 2017–19 missing 0 of 3,311).
 
-  - [ ] **2019 H2 (~450 opinions).** `2019-07-15 .. 2019-12-31` was collected
-    as 27 SKIPPED windows — the bot wall blocked every navigation in that
-    stretch and a re-run collected zero. Needs the residential profile's
-    clearance to recover (hours/overnight), then one ~25-minute attended sweep.
-  - [ ] **2023 (still ~115).** Never swept. ~52 weeks, ~50 minutes attended.
+  - [x] **2019 H2 — DONE 2026-08-05.** 632 opinions, 0 windows skipped, 0
+    CAPTCHAs. 2019 856 → 1,431. The earlier block was TRANSIENT, not a burned
+    profile: a 4-week probe the next day walked straight through. **Probe with
+    one short window before concluding the wall is up.**
+  - [x] **2023 — DONE 2026-08-05.** 1,018 swept (0 skipped, 0 truncated),
+    1,016 ingested; 115 → 1,014. The 2 misses are Supreme PDFs that errored on
+    parse, named by the reconciliation.
+
+  - [ ] **NEW: 2024 (550) and 2025 (238) look THIN** against a ~1,400/yr norm,
+    and were not part of the known gap. Cause unknown — CL lag, or the weekly
+    scraper catching only part of the flow. Measure before assuming; the same
+    archive sweep would fill them if it is a real gap.
 
   **Do NOT skip the reconciliation step** on either. A skipped window is not an
   empty one: 2019 came back at 803 and looked plausible, and only the SKIPPED
