@@ -359,10 +359,39 @@ must start with `/bin/sh`. Path alone is not enough.
     1,016 ingested; 115 → 1,014. The 2 misses are Supreme PDFs that errored on
     parse, named by the reconciliation.
 
-  - [ ] **NEW: 2024 (550) and 2025 (238) look THIN** against a ~1,400/yr norm,
-    and were not part of the known gap. Cause unknown — CL lag, or the weekly
-    scraper catching only part of the flow. Measure before assuming; the same
-    archive sweep would fill them if it is a real gap.
+  - [ ] **2024 + 2025 — SAME UPSTREAM GAP, DIAGNOSED 2026-08-05. ~2,400
+    opinions.** Not CL lag and not our pipeline: **CourtListener's MN Court of
+    Appeals ingestion is STILL BROKEN, and degrading.** Live API `count=on`:
+
+    | minnctapp | CL live |
+    |---|---|
+    | 2016 (control) | 1,231 |
+    | 2024 | 463 (38%) |
+    | 2025 | **149 (12%)** |
+
+    Our DB matches CL almost exactly (2024: 550 vs 556 bulk; 2025: 238 vs 242),
+    so nothing was dropped on our side. The bulk export's precedential split
+    names the mechanism: 2024 = 381 Published / 175 Unpublished, against an MN
+    norm near 1,100 unpublished a year — **the UNPUBLISHED stream is what CL is
+    missing**, the same signature as 2017–2019 (2018 came through
+    Published-only).
+
+    So the documented story ("2020–2022 empty, 2017–2023 thin") is wrong in
+    scope: CL's MN coverage has been degraded continuously from 2017 to the
+    present and is currently at its WORST. It only read as "recent years still
+    filling in" because the older hole was total enough to dominate attention.
+
+    **Our own pipeline is fine** — proof: our 2026 count (232) EXCEEDS CL's
+    (128), because the weekly archive scraper has been adding since July. The
+    scraper works; it just only moves forward and was never going to backfill
+    what CL missed in 2024–2025.
+
+    Fix: the same archive sweep, ~100 weekly windows, ~90 min attended, plus
+    early 2026 up to whenever the weekly scraper started.
+
+    **Also worth telling FLP** — their issue is scoped to 2020–2023, but "the
+    scraper is still broken today, at 12%" is a materially different and more
+    actionable report than "there was a hole three years ago." 
 
   **Do NOT skip the reconciliation step** on either. A skipped window is not an
   empty one: 2019 came back at 803 and looked plausible, and only the SKIPPED
