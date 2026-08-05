@@ -1,5 +1,24 @@
 # DocketDrift — working backlog
 
+## ⚠ SESSION HANDOFF 2026-08-05 — FINISH THE EDGE DEDUPE FIRST
+
+Two concurrent MN citation sweeps (one launched with shell `&` that did not
+die, one launched properly) interleaved delete-then-insert and left
+**345,900 exactly-doubled (citing_opinion_id, cited_reference) pairs** among
+`source='extracted'` rows. A windowed dedupe (`DELETE a ... JOIN ... a.id >
+b.id`, 4,000-citing-id windows) was RUNNING via local ssh when the session
+closed — it may have been killed mid-pass. **It is idempotent: re-run it to
+completion.** Script: session scratchpad `dedupe_edges.py` (pattern is in the
+commit history if lost).
+
+Verify when done: 0 duplicated pairs; MN extracted should land ≈ **468,595**
+(not 814,495); non-default treatments will drop from the inflated 5,456 to
+≈ true count. THEN update the baseline below, which is stale on those numbers.
+
+Everything else is complete and deployed: MN continuous 2015–2025
+(2024 = 1,161, 2025 = 1,133, reconciled MISSING=0), disclosure updated,
+FLP bundle staged at /home/private/handover/, contact message sent.
+
 Snapshot 2026-08-04. Prioritized. Each item says what it is, why it matters,
 and roughly how big. "Onion" items need the member panel or are editorial.
 
