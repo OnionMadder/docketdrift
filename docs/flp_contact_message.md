@@ -3,7 +3,12 @@
 **Channel:** https://free.law/contact — topic dropdown → **CourtListener**.
 (No public email address is published; the form routes by topic.)
 
-**Status: NOT SENT.** Onion's to send.
+**Status: SENT 2026-08-05** by Onion, via the contact form, with her own edits
+(so the wording below is the draft, not necessarily what was sent verbatim).
+**Do not send again.** If a follow-up is ever needed, reply in the issue thread
+rather than re-opening the form — a second unsolicited contact on the same
+matter reads as pestering, and the issue is where any technical back-and-forth
+belongs.
 
 Deliberately short. It exists to get someone to look at the GitHub comment,
 not to contain the whole argument — the detail is already at
