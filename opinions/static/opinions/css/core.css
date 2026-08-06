@@ -190,6 +190,22 @@ svg {
   background: rgba(38, 255, 230, 0.06);
 }
 
+/* "Report an error" is a UTILITY, not a section: smaller and dimmer than
+   the destination links so it never competes with them, amber on hover
+   (the attention accent) rather than cyan (the you-are-here accent). */
+.site-nav a.nav-report {
+  font-size: 0.72rem;
+  opacity: 0.65;
+  letter-spacing: 0.8px;
+}
+.site-nav a.nav-report:hover,
+.site-nav a.nav-report:focus-visible {
+  opacity: 1;
+  color: var(--neon-amber);
+  border-left-color: var(--neon-amber);
+  background: rgba(255, 191, 0, 0.06);
+}
+
 /* ----------  Search module  ---------- */
 
 .search-module {
