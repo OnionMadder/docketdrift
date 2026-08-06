@@ -57,6 +57,16 @@ _EMBED_CACHE_MAX = 512
 # full 25s on one similar-opinions widget. Remove once the VECTOR INDEX lands.
 VECTOR_QUERY_TIMEOUT_S = 12
 
+# STOP-GAP (2026-08-05) pending the slim embedding table: states whose cosine
+# scan provably CANNOT finish inside the bound. Measured per-row throughput on
+# the fat table is ~2,400 rows/s, so NH (20.7K rows) completes in ~8s while AZ
+# (38K -> ~16s) and MN (69K -> ~29s) are ALWAYS killed at 12s -- every scan on
+# them burned 12 thread-seconds and returned nothing. Skipping the scan
+# entirely returns keyword-only results in ~1.5s instead of ~13s.
+# REMOVE this gate when opinions_opinionembedding lands and semantic.py is
+# retargeted at it (the slim clustered table makes these scans feasible).
+SEMANTIC_INFEASIBLE_STATES = {"MN", "AZ"}
+
 
 def _run_vector_query(sql: str, params) -> list:
     """Execute a cosine-distance SELECT, returning rows -- or [] on failure.
@@ -185,6 +195,8 @@ def search_similar_opinions(
         return []
     if not query_embedding or state is None:
         return []
+    if state.code in SEMANTIC_INFEASIBLE_STATES:
+        return []  # scan cannot finish inside the bound; see the constant.
 
     query_vec_text = json.dumps(query_embedding)
 
@@ -241,6 +253,11 @@ def similar_to_opinion(opinion, limit: int = 5, with_scores: bool = False):
     if connection.vendor != "mysql":
         return []
     if not opinion or not opinion.court_id:
+        return []
+    # Same stop-gap as search_similar_opinions: on MN/AZ even the 3-year
+    # window dies at the bound (the cost is fat-table IO, not the window),
+    # so the widget burned 12s per cold page for nothing.
+    if getattr(opinion.court, "state_id", None) in SEMANTIC_INFEASIBLE_STATES:
         return []
 
     # Limit the candidate set to the trailing ~3 years of the opinion's
