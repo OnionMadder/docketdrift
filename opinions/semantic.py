@@ -57,16 +57,6 @@ _EMBED_CACHE_MAX = 512
 # full 25s on one similar-opinions widget. Remove once the VECTOR INDEX lands.
 VECTOR_QUERY_TIMEOUT_S = 12
 
-# STOP-GAP (2026-08-05) pending the slim embedding table: states whose cosine
-# scan provably CANNOT finish inside the bound. Measured per-row throughput on
-# the fat table is ~2,400 rows/s, so NH (20.7K rows) completes in ~8s while AZ
-# (38K -> ~16s) and MN (69K -> ~29s) are ALWAYS killed at 12s -- every scan on
-# them burned 12 thread-seconds and returned nothing. Skipping the scan
-# entirely returns keyword-only results in ~1.5s instead of ~13s.
-# REMOVE this gate when opinions_opinionembedding lands and semantic.py is
-# retargeted at it (the slim clustered table makes these scans feasible).
-SEMANTIC_INFEASIBLE_STATES = {"MN", "AZ"}
-
 
 def _run_vector_query(sql: str, params) -> list:
     """Execute a cosine-distance SELECT, returning rows -- or [] on failure.
@@ -195,29 +185,32 @@ def search_similar_opinions(
         return []
     if not query_embedding or state is None:
         return []
-    if state.code in SEMANTIC_INFEASIBLE_STATES:
-        return []  # scan cannot finish inside the bound; see the constant.
-
     query_vec_text = json.dumps(query_embedding)
 
+    # Scan the SLIM table (opinions_opinionembedding), not the fat one.
+    # Measured 2026-08-05: the fat-table scan drags 2.75GB of clustered rows
+    # through the 8MB buffer pool (~2,400 rows/s -- MN needs ~29s vs the 12s
+    # bound, killed every time). The slim table is dense, and its clustered
+    # PK (court_id, release_date, opinion_id) means a date-windowed scan
+    # reads ONLY the window's pages: cold, MN 10yr = 2.2s / AZ 2.8s / NH
+    # 0.8s. The view's default 10-year window keeps this on the fast path;
+    # an explicit years=all full scan completes on NH (~8s) and degrades to
+    # [] at the bound on MN/AZ until the corpus gets real vector infra.
+    # Only embedded rows enter the slim table, so no embedding_pending
+    # predicate is needed here.
+    court_ids = list(state.courts.values_list("id", flat=True))
+    if not court_ids:
+        return []
+    placeholders = ",".join(["%s"] * len(court_ids))
     sql = [
-        "SELECT o.id,",
-        "       VEC_DISTANCE_COSINE(o.embedding, Vec_FromText(%s)) AS dist",
-        "FROM opinions_opinion o",
-        "JOIN opinions_court c ON c.id = o.court_id",
-        "WHERE c.state_id = %s",
-        # Exclude not-yet-embedded rows. As of 2026-06-27 the embedding column
-        # is NOT NULL with a zero-vector DEFAULT (added when the abandoned
-        # VECTOR INDEX attempt left NOT NULL committed out of band -- see
-        # CLAUDE.md), so a freshly-ingested opinion carries a placeholder
-        # [0,...] embedding until the overnight embed replaces it. Gate on the
-        # indexed embedding_pending flag so placeholders never reach the cosine
-        # scan (a zero vector has a degenerate cosine distance).
-        "  AND o.embedding_pending = 0",
+        "SELECT e.opinion_id,",
+        "       VEC_DISTANCE_COSINE(e.embedding, Vec_FromText(%s)) AS dist",
+        "FROM opinions_opinionembedding e",
+        "WHERE e.court_id IN (" + placeholders + ")",
     ]
-    params = [query_vec_text, state.code]
+    params = [query_vec_text, *court_ids]
     if date_cutoff is not None:
-        sql.append("  AND o.release_date >= %s")
+        sql.append("  AND e.release_date >= %s")
         params.append(date_cutoff)
     sql.append("ORDER BY dist")
     sql.append("LIMIT %s")
@@ -254,12 +247,6 @@ def similar_to_opinion(opinion, limit: int = 5, with_scores: bool = False):
         return []
     if not opinion or not opinion.court_id:
         return []
-    # Same stop-gap as search_similar_opinions: on MN/AZ even the 3-year
-    # window dies at the bound (the cost is fat-table IO, not the window),
-    # so the widget burned 12s per cold page for nothing.
-    if getattr(opinion.court, "state_id", None) in SEMANTIC_INFEASIBLE_STATES:
-        return []
-
     # Limit the candidate set to the trailing ~3 years of the opinion's
     # state corpus -- still gives a useful similar-opinions surface for
     # 95%+ of pages, and keeps the scan footprint bounded as the corpus
@@ -270,22 +257,24 @@ def similar_to_opinion(opinion, limit: int = 5, with_scores: bool = False):
     if opinion.release_date is not None:
         date_cutoff = opinion.release_date - timedelta(days=3 * 365)
 
+    # Candidates come from the SLIM table (see search_similar_opinions for
+    # the measured rationale); the SOURCE vector still comes from the fat
+    # table by primary key (one row), with its embedding_pending guard so a
+    # placeholder zero-vector never becomes the query point. The court
+    # subqueries run against the tiny opinions_court table.
     sql = [
-        "SELECT o.id,",
-        "       VEC_DISTANCE_COSINE(o.embedding, src.embedding) AS dist",
-        "FROM opinions_opinion o",
-        "JOIN opinions_court c ON c.id = o.court_id",
-        "JOIN opinions_opinion src ON src.id = %s",
-        "WHERE c.state_id = (SELECT state_id FROM opinions_court WHERE id = %s)",
-        "  AND o.id != %s",
-        # Skip placeholder zero-vector embeddings (see search_similar_opinions):
-        # both the candidate AND the source opinion must be really embedded.
-        "  AND o.embedding_pending = 0",
-        "  AND src.embedding_pending = 0",
+        "SELECT e.opinion_id,",
+        "       VEC_DISTANCE_COSINE(e.embedding, src.embedding) AS dist",
+        "FROM opinions_opinionembedding e",
+        "JOIN opinions_opinion src",
+        "  ON src.id = %s AND src.embedding_pending = 0",
+        "WHERE e.court_id IN (SELECT id FROM opinions_court WHERE state_id =",
+        "        (SELECT state_id FROM opinions_court WHERE id = %s))",
+        "  AND e.opinion_id != %s",
     ]
     params: list = [opinion.id, opinion.court_id, opinion.id]
     if date_cutoff is not None:
-        sql.append("  AND o.release_date >= %s")
+        sql.append("  AND e.release_date >= %s")
         params.append(date_cutoff)
     sql.append("ORDER BY dist")
     sql.append("LIMIT %s")

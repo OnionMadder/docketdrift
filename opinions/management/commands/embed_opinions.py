@@ -484,6 +484,22 @@ class Command(BaseCommand):
                                 "WHERE id = %s",
                                 [json.dumps(vec), opinion_id],
                             )
+                            # Dual-write the slim scan table (the surface all
+                            # cosine scans actually read since 2026-08-05).
+                            # INSERT..SELECT from the fat row we just wrote,
+                            # so court_id/release_date never drift from it;
+                            # ON DUPLICATE KEY covers re-embeds. A row missed
+                            # here (crash between statements) is repaired by
+                            # sync_embedding_table, which is idempotent.
+                            cursor.execute(
+                                "INSERT INTO opinions_opinionembedding "
+                                "  (court_id, release_date, opinion_id, embedding) "
+                                "SELECT court_id, release_date, id, embedding "
+                                "FROM opinions_opinion WHERE id = %s "
+                                "ON DUPLICATE KEY UPDATE "
+                                "  embedding = VALUES(embedding)",
+                                [opinion_id],
+                            )
                     break
                 except BaseException as db_exc:
                     # BaseException not Exception -- see _voyage_embed retry
