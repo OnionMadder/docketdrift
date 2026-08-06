@@ -1,36 +1,23 @@
 # DocketDrift — working backlog
 
-## ⚠ SESSION HANDOFF 2026-08-05 — FINISH THE EDGE DEDUPE FIRST
-
-Two concurrent MN citation sweeps (one launched with shell `&` that did not
-die, one launched properly) interleaved delete-then-insert and left
-**345,900 exactly-doubled (citing_opinion_id, cited_reference) pairs** among
-`source='extracted'` rows. A windowed dedupe (`DELETE a ... JOIN ... a.id >
-b.id`, 4,000-citing-id windows) was RUNNING via local ssh when the session
-closed — it may have been killed mid-pass. **It is idempotent: re-run it to
-completion.** Script: session scratchpad `dedupe_edges.py` (pattern is in the
-commit history if lost).
-
-Verify when done: 0 duplicated pairs; MN extracted should land ≈ **468,595**
-(not 814,495); non-default treatments will drop from the inflated 5,456 to
-≈ true count. THEN update the baseline below, which is stale on those numbers.
-
-Everything else is complete and deployed: MN continuous 2015–2025
-(2024 = 1,161, 2025 = 1,133, reconciled MISSING=0), disclosure updated,
-FLP bundle staged at /home/private/handover/, contact message sent.
-
-Snapshot 2026-08-04. Prioritized. Each item says what it is, why it matters,
+Snapshot 2026-08-05. Prioritized. Each item says what it is, why it matters,
 and roughly how big. "Onion" items need the member panel or are editorial.
 
-Status baseline (pulled live 2026-08-05): **126,604 opinions**
-(MN 67,268 / AZ 38,135 / NH 20,723). Citation graph **1,129,736 edges** —
-605,353 from CourtListener's bulk map plus **524,383 text-extracted** with
-context quotes and classified treatment (MN 449,332, NH 75,051). Parallel
-cites 180,652. Non-default treatments 3,272 (was 0 in every state).
+Status baseline (pulled live 2026-08-05, post-dedupe): **128,110 opinions**
+(MN 69,252 / AZ 38,135 / NH 20,723). Citation graph **1,148,999 edges** —
+605,353 from CourtListener's bulk map plus **543,646 text-extracted** with
+context quotes and classified treatment (MN 468,595, NH 75,051). Parallel
+cites 180,652. Non-default treatments 3,374 (was 0 in every state). 5,693
+opinions queued for the overnight embed.
 
-**MN 2017–2023 IS DONE.** Continuous coverage 2015–2023, every year ~970–1,435:
+**MN 2017–2025 IS DONE.** Continuous coverage 2015–2025, every year ~970–1,435:
 2015 1,435 · 2016 1,415 · 2017 1,350 · 2018 1,327 · 2019 1,431 · 2020 1,040 ·
-2021 1,092 · 2022 971 · 2023 1,014. ~7,500 opinions added.
+2021 1,092 · 2022 971 · 2023 1,014 · 2024 1,161 · 2025 1,133; 2026 forward-
+filled weekly. ~9,800 opinions rebuilt from the State Law Library archive.
+(The 2026-08-05 finish: 2019 H2 + 2023 + 2024–2025 swept clean, 0 CAPTCHAs on
+the final runs; two interleaved citation sweeps briefly DOUBLED 345,900
+extracted pairs — deduped and verified to 0; a court typo had dated one
+opinion 2101, fixed — future dates silently defeat check_freshness.)
 
 **What changed on 2026-08-04** (full detail in CLAUDE.md):
 - **MN 2017–2022 backfilled: ~5,900 opinions.** 2020/21/22 went 0 → ~1,000
