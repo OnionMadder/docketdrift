@@ -357,6 +357,17 @@ must start with `/bin/sh`. Path alone is not enough.
 
 ## Tier 3 — coverage (bigger builds)
 
+- [ ] **Louisiana rollout + FLP report #2** (queued behind landing MN with
+  FLP — pacing is deliberate). The every-state audit
+  (`docs/cl_coverage_audit/FINDINGS.md`, 2026-08-06) found LA Supreme DEAD in
+  CL since 2020 (~12K missing, largest single-court hole in the country)
+  while LA COA is intact — so the COA foundation comes from CL bulk and the
+  Supreme needs a direct lasc.gov source from day one. Verification of the
+  hole for FLP doubles as rollout recon. 16 other courts are flagged in the
+  findings doc; Nevada carries the cleanest unpub-died signature if a
+  non-rollout report is ever wanted first.
+
+
 - [~] **MN backfill — LARGELY DONE 2026-08-04. Two gaps left, both small.**
 
   **Done:** 2020/2021/2022 rebuilt from 0 → 1,040 / 1,092 / 970; 2017 438 →
