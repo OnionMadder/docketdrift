@@ -46,7 +46,7 @@ Remove-Item (Join-Path $pdfdir '*.pdf') -ErrorAction SilentlyContinue
 if ($LASTEXITCODE -ne 0) { Log "SCRAPER FAILED (exit $LASTEXITCODE) -- aborting"; exit 1 }
 
 $pdfs = @(Get-ChildItem -Path $pdfdir -Filter *.pdf -ErrorAction SilentlyContinue)
-if ($pdfs.Count -eq 0) { Log 'no PDFs downloaded (MN COA likely published nothing new). Done.'; exit 0 }
+if ($pdfs.Count -eq 0) { Log 'no PDFs downloaded (MN COA likely published nothing new). Done.'; & ssh docketdrift 'date -u +%s > /home/private/docketdrift/.scrape_mn_last' 2>&1 | Out-Null; exit 0 }
 Log ("downloaded {0} PDF(s)" -f $pdfs.Count)
 
 # Ship to NFSN staging.
@@ -60,3 +60,7 @@ if ($LASTEXITCODE -ne 0) { Log "INGEST FAILED (exit $LASTEXITCODE)"; exit 1 }
 
 Remove-Item (Join-Path $pdfdir '*.pdf') -ErrorAction SilentlyContinue
 Log '=== MN COA weekly run DONE (new rows embed overnight on NFSN) ==='
+# Freshness beacon: stamp success on NFSN so freshness_check.sh can
+# alert within a week if this task starts silently failing.
+& ssh docketdrift 'date -u +%s > /home/private/docketdrift/.scrape_mn_last' 2>&1 | Out-Null
+

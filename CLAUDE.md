@@ -146,6 +146,27 @@ in 0.00s (vary the vector or treat rep-2 timings as meaningless); and piping
 a probe through `grep` filters the WARNING lines out of the saved output —
 capture full output, filter at read time.
 
+### NH search is slowest BECAUSE it's smallest (2026-08-06) — accepted, not a bug
+
+Thursday audit flagged NH as the slowest search (4.8s) despite the smallest
+corpus. Per-phase profile: it is ENTIRELY the FULLTEXT candidate fetch on
+common terms ("negligence" fulltext=5.16s; everything else <0.8s). Mechanism:
+the fulltext index spans the whole shared table; the candidate query matches
+corpus-wide and discards non-NH rows, each discard costing a clustered-row
+fetch. NH is 16% of the corpus, so filling 200 NH candidates wades ~4x more
+postings than MN at 54% — **the smallest state pays the most, and its cost
+grows when OTHER states' corpora grow** (this week's +9K MN rows made NH
+slower). Specific terms are unaffected ("zoning variance" fulltext=0.88s,
+total ~1.5s).
+
+**Deliberately accepted.** Lowering FULLTEXT_CANDIDATE_CAP would speed the
+over-broad dead-end page but reclassify every 51-200-match search as capped,
+stripping semantic + snippets from exactly the most useful mid-size searches.
+The 5s case is bounded (12s), non-poisoning, and only hits ultra-common terms
+that already dead-end at "narrow your search." If it ever matters: per-state
+caps proportional to corpus share are the dial. Do not "fix" this by lowering
+the global cap without weighing the 51-200 band.
+
 ## Prior session (2026-08-04) — MN citation extractor; AZ blocked on parallel cites
 
 **MN now has a text-extracted citation graph: 353,992 edges**, alongside (not
