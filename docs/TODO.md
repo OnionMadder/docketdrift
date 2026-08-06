@@ -1,6 +1,7 @@
 # DocketDrift — working backlog
 
-Snapshot 2026-08-05 (evening). Prioritized.
+Snapshot 2026-08-06. Prioritized. Each item says what it is, why it matters,
+and roughly how big. "Onion" items need the member panel or are editorial.
 
 **SEARCH IS FIXED (2026-08-05b).** The concurrency cliff was dead cosine scans
 (MN/AZ needed 16-29s vs the 12s bound; every search burned 12 thread-seconds
