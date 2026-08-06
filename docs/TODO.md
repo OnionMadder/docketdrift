@@ -12,12 +12,13 @@ promise — dropped, replaced with a process-local cache. Detail in CLAUDE.md.
  Each item says what it is, why it matters,
 and roughly how big. "Onion" items need the member panel or are editorial.
 
-Status baseline (pulled live 2026-08-05, post-dedupe): **128,110 opinions**
-(MN 69,252 / AZ 38,135 / NH 20,723). Citation graph **1,148,999 edges** —
-605,353 from CourtListener's bulk map plus **543,646 text-extracted** with
-context quotes and classified treatment (MN 468,595, NH 75,051). Parallel
-cites 180,652. Non-default treatments 3,374 (was 0 in every state). 5,693
-opinions queued for the overnight embed.
+Status baseline (pulled live 2026-08-06, post-AZ-sweep): **128,150 opinions**
+(MN 69,292 / AZ 38,135 / NH 20,723). Citation graph **1,462,119 edges** —
+605,353 from CourtListener's bulk map plus **856,766 text-extracted**
+(MN 468,595 / AZ 313,120 / NH 75,051), of which 638,791 carry a context
+quote and 5,188 a non-default treatment (was 0 in every state a week ago).
+ALL THREE STATES now have the full citation story: bulk breadth + extracted
+quotes/treatment. Parallel cites 180,652. Zero duplicated extracted pairs.
 
 **MN 2017–2025 IS DONE.** Continuous coverage 2015–2025, every year ~970–1,435:
 2015 1,435 · 2016 1,415 · 2017 1,350 · 2018 1,327 · 2019 1,431 · 2020 1,040 ·
