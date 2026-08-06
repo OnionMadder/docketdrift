@@ -7,7 +7,7 @@ worrying about API mechanics or caching.
 The flow:
 
 1. ``get_query_embedding(query)`` -- returns the 1024-float vector for
-   a search query. Caches per-query in ``QueryEmbedding`` so repeat
+   a search query. Caches per-query in a PROCESS-LOCAL LRU so repeat
    searches cost zero Voyage credits.
 2. ``search_similar_opinions(query_embedding, state, limit)`` -- runs
    the actual cosine-distance ORDER BY against the corpus, returning
@@ -32,7 +32,6 @@ import os
 import requests
 from django.db import connection
 
-from opinions.models import QueryEmbedding
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +39,16 @@ logger = logging.getLogger(__name__)
 VOYAGE_EMBED_URL = "https://api.voyageai.com/v1/embeddings"
 VOYAGE_MODEL = "voyage-law-2"
 VOYAGE_TIMEOUT_SECONDS = 30  # Query embedding is one short doc, fast.
-QUERY_LENGTH_CAP = 255       # Skip cache for queries longer than this (matches QueryEmbedding.query column).
+QUERY_LENGTH_CAP = 255       # Skip cache for queries longer than this.
+# Process-local query-embedding cache. DELIBERATELY in-memory, never on disk:
+# a durable query->embedding table is a log of what users searched — the exact
+# subpoenable research-trail artifact the Privacy page promises cannot exist
+# ("we cannot produce what we never stored"). With workers=1 a dict still
+# deduplicates repeat searches across ALL users for the worker's lifetime
+# (~75-90 min between recycles); a cache miss costs one Voyage call
+# (~$0.000001). Bots never reach this path (request_is_crawler gate).
+_EMBED_CACHE: dict[str, list] = {}
+_EMBED_CACHE_MAX = 512
 
 # Per-query wall-clock bound for the cosine scans, well under the 25s session
 # max_statement_time. A healthy scan (NH ~215ms, warm MN/AZ) finishes far
@@ -112,18 +120,9 @@ def get_query_embedding(query: str) -> list[float] | None:
     if not normalized:
         return None
 
-    # Cache hit path -- check first, no API call.
-    if len(normalized) <= QUERY_LENGTH_CAP:
-        cached = QueryEmbedding.objects.filter(query=normalized).first()
-        if cached is not None:
-            QueryEmbedding.objects.filter(pk=cached.pk).update(
-                hit_count=cached.hit_count + 1,
-            )
-            try:
-                return json.loads(cached.embedding_json)
-            except (TypeError, ValueError):
-                logger.warning("Corrupt cache entry for %r; refetching.", normalized)
-                cached.delete()
+    # Cache hit path -- process-local, no API call, nothing persisted.
+    if normalized in _EMBED_CACHE:
+        return _EMBED_CACHE[normalized]
 
     # Miss -- call Voyage.
     api_key = os.environ.get("VOYAGE_API_KEY")
@@ -152,13 +151,11 @@ def get_query_embedding(query: str) -> list[float] | None:
         logger.warning("Voyage query embed failed for %r: %s", normalized, exc)
         return None
 
-    # Persist to cache (no harm if a race already inserted; uniqueness is
-    # PK on query so update_or_create avoids the rare collision).
     if len(normalized) <= QUERY_LENGTH_CAP:
-        QueryEmbedding.objects.update_or_create(
-            query=normalized,
-            defaults={"embedding_json": json.dumps(embedding)},
-        )
+        if len(_EMBED_CACHE) >= _EMBED_CACHE_MAX:
+            # Cheap eviction: drop the oldest insertion (dicts are ordered).
+            _EMBED_CACHE.pop(next(iter(_EMBED_CACHE)))
+        _EMBED_CACHE[normalized] = embedding
 
     return embedding
 
