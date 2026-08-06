@@ -1100,6 +1100,75 @@ def request_state(request):
     })
 
 
+def report_error(request):
+    """Public error-report form: emailed to the maintainer, persisted NOWHERE.
+
+    The nav's "Report an error" link lands here with ?page=<path> prefilled.
+    Mirrors request_state's conventions (honeypot, POST-redirect-GET) but the
+    report becomes an EMAIL via the host's sendmail rather than a DB row --
+    transit-only is the privacy-respecting shape for "what a reader was
+    looking at." A sendmail failure is shown to the reporter with a direct
+    mailto fallback, never swallowed: a lost error report is itself the class
+    of silent failure this site keeps relearning to surface.
+    """
+    from opinions.forms import ErrorReportForm
+    from django.urls import reverse
+
+    send_failed = False
+    if request.method == "POST":
+        form = ErrorReportForm(request.POST)
+        if form.is_valid():
+            if form.cleaned_data.get("website"):
+                # Honeypot tripped: silent thanks, no signal to the bot.
+                return redirect(reverse("opinions:report_error_thanks"))
+            import subprocess
+            page = form.cleaned_data["page"]
+            reply_to = form.cleaned_data.get("reply_to") or ""
+            body_lines = [
+                "To: hello@docketdrift.com",
+                "From: hello@docketdrift.com",
+                "Subject: DocketDrift error report: %s" % page[:120],
+            ]
+            if reply_to:
+                body_lines.append("Reply-To: %s" % reply_to)
+            body_lines += [
+                "",
+                "Page: %s" % page,
+                "",
+                form.cleaned_data["message"],
+                "",
+                "-- submitted via /report-error/; nothing stored server-side",
+            ]
+            try:
+                subprocess.run(
+                    ["sendmail", "-t"],
+                    input="\n".join(body_lines).encode("utf8"),
+                    timeout=15, check=True,
+                )
+                return redirect(reverse("opinions:report_error_thanks"))
+            except BaseException:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "error-report sendmail failed", exc_info=True)
+                send_failed = True
+    else:
+        form = ErrorReportForm(initial={
+            "page": request.GET.get("page", "")[:300],
+        })
+
+    return render(request, "opinions/report_error.html", {
+        "form": form,
+        "send_failed": send_failed,
+        "active_nav": "about",
+    })
+
+
+def report_error_thanks(request):
+    return render(request, "opinions/report_error_thanks.html", {
+        "active_nav": "about",
+    })
+
+
 def request_state_thanks(request):
     return render(request, "opinions/request_state_thanks.html", {
         "active_nav": "about",

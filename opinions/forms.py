@@ -45,3 +45,35 @@ class StateRequestForm(forms.ModelForm):
             "email": "Email (optional)",
             "notes": "Notes (optional)",
         }
+
+
+class ErrorReportForm(forms.Form):
+    """Public error-report form -- emailed to the maintainer, PERSISTED NOWHERE.
+
+    Deliberately a plain Form, not a ModelForm: a report describes what a
+    reader was looking at, so the privacy-respecting shape is transit-only --
+    it becomes an email and no server-side row. Same honeypot convention as
+    StateRequestForm.
+    """
+
+    website = forms.CharField(required=False, widget=forms.HiddenInput())
+
+    page = forms.CharField(
+        label="Page with the problem",
+        max_length=300,
+        widget=forms.TextInput(attrs={"autocomplete": "off"}),
+    )
+    message = forms.CharField(
+        label="What looks wrong?",
+        max_length=4000,
+        widget=forms.Textarea(attrs={
+            "rows": 6,
+            "placeholder": "Wrong disposition, misparsed date, a judge who "
+                           "wasn't on the panel -- whatever you spotted.",
+        }),
+    )
+    reply_to = forms.EmailField(
+        label="Your email (optional -- only if you'd like a reply)",
+        required=False,
+        widget=forms.EmailInput(attrs={"autocomplete": "email"}),
+    )

@@ -1,0 +1,70 @@
+{% extends "opinions/base.html" %}
+{% block title %}Report an error &middot; DocketDrift{% endblock %}
+
+{% block content %}
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+  <ol>
+    <li><a href="https://docketdrift.com/">DocketDrift</a></li>
+    <li aria-current="page">Report an error</li>
+  </ol>
+</nav>
+
+<div class="glossy-frame">
+  <h1>Report an error</h1>
+  <p class="subtle-lead">
+    Wrong disposition, misparsed date, a judge who wasn&rsquo;t on the panel
+    &mdash; quiet correction is the most valuable contribution anyone makes to
+    this site. This form goes straight to the maintainer&rsquo;s inbox and is
+    <strong>stored nowhere</strong>: no database row, no log entry, just the email.
+  </p>
+
+  {% if send_failed %}
+    <p class="form-error">
+      Sending failed on our end (not yours). Please email the report directly:
+      <a href="mailto:hello@docketdrift.com">hello@docketdrift.com</a>
+    </p>
+  {% endif %}
+
+  <form method="post" class="cta-form">
+    {% csrf_token %}
+
+    {# Honeypot: humans don't see this, bots fill it. CSS hides it. #}
+    <div class="hp-trap" aria-hidden="true">
+      <label>Leave this field blank: {{ form.website }}</label>
+    </div>
+
+    <div class="form-row">
+      <label for="{{ form.page.id_for_label }}">{{ form.page.label }}</label>
+      {{ form.page }}
+      {% if form.page.errors %}
+        <p class="form-error">{{ form.page.errors|join:" " }}</p>
+      {% endif %}
+    </div>
+
+    <div class="form-row">
+      <label for="{{ form.message.id_for_label }}">{{ form.message.label }}</label>
+      {{ form.message }}
+      {% if form.message.errors %}
+        <p class="form-error">{{ form.message.errors|join:" " }}</p>
+      {% endif %}
+    </div>
+
+    <div class="form-row">
+      <label for="{{ form.reply_to.id_for_label }}">{{ form.reply_to.label }}</label>
+      {{ form.reply_to }}
+      {% if form.reply_to.errors %}
+        <p class="form-error">{{ form.reply_to.errors|join:" " }}</p>
+      {% endif %}
+    </div>
+
+    <div class="form-actions">
+      <button type="submit" class="cta-primary">Send report &rarr;</button>
+    </div>
+  </form>
+
+  <p class="cta-footnote">
+    Prefer email? <a href="mailto:hello@docketdrift.com">hello@docketdrift.com</a>
+    works just as well.
+  </p>
+</div>
+{% endblock %}

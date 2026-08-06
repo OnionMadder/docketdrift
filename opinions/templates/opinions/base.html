@@ -110,15 +110,14 @@ crawlers see structured data for every opinion + judge.
         <li><a href="{% url 'opinions:about' %}"{% if active_nav == 'about' %} aria-current="page"{% endif %}>About</a></li>
         <li><a href="{% url 'opinions:privacy' %}"{% if active_nav == 'privacy' %} aria-current="page"{% endif %}>Privacy</a></li>
         {% comment %}
-        Error reporting from ANY page, one click, no second page. A plain
-        mailto -- client-side and user-initiated, so nothing is logged
-        server-side (query privacy posture unaffected). The subject/body
-        carry request.path ONLY, never the query string: search is POST so a
-        query can't appear in the path, and GET filter params are excluded on
-        purpose. On an opinion page the path IS the docket number, which is
-        exactly the context an error report needs.
+        Error reporting from ANY page: links to /report-error/ with the
+        current page prefilled via ?page=. Carries request.path ONLY, never
+        the query string: search is POST so a query can't appear in the path,
+        and GET filter params are excluded on purpose. On an opinion page the
+        path IS the docket number -- exactly the context a report needs. The
+        form emails the maintainer and persists nothing server-side.
         {% endcomment %}
-        <li><a class="nav-report" href="mailto:hello@docketdrift.com?subject=DocketDrift%20error%20report&body=Page:%20https://{{ request.get_host }}{{ request.path|urlencode }}%0A%0AWhat%20looks%20wrong:%20" title="Spotted something wrong on this page? Email us -- quiet correction is the most valuable contribution.">Report an error</a></li>
+        <li><a class="nav-report" href="{% url 'opinions:report_error' %}?page=https://{{ request.get_host }}{{ request.path|urlencode }}" title="Spotted something wrong on this page? One form, straight to a human.">Report an error</a></li>
       </ul>
     </nav>
 
