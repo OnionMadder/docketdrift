@@ -97,7 +97,56 @@ in indexed JSON-LD) was reverted — extractive holdings = "no generated text",
 the strong original posture, is correct. Migrations 0026 (holdings) + 0027
 (clustering) are on main and applied on prod.
 
-## Latest session (2026-08-04) — MN citation extractor; AZ blocked on parallel cites
+## Latest session (2026-08-05b) — search fixed: slim embedding table; query-log privacy hole closed
+
+The "search concurrency problem" was misdiagnosed. Profiling per phase showed
+the MN/AZ cosine scans had crossed their feasibility point: ~2,400 rows/s on
+the fat table means MN (69K embedded rows) needs ~29s against the 12s bound —
+**killed every time, every search burning 12 thread-seconds for zero results**.
+At workers=1 × 8 threads that is the 183s cliff from the 2026-08-02 audit:
+capacity ~0.7 searches/s, everything queuing behind dead scans. The cost is
+fat-table IO, not vector math — scanning `embedding` drags the 2.75GB
+clustered rows through the 8MB pool. NH's own history proves it: 215ms in
+June, 8.5s now; its corpus grew 6 rows while the shared table grew ~10K.
+A 15-year window did NOT help on the fat table (optimizer still walks it).
+
+**Fix shipped: `opinions_opinionembedding`** (migration 0031) — slim table,
+clustered PK (court_id, release_date, opinion_id), embedding VECTOR, **no
+secondary indexes, deliberately NO vector index** (the 2026-06 HNSW attempts
+failed at index BUILD; this table makes the O(N) scan cheap instead). Only
+embedded rows enter it, so scans need no embedding_pending predicate. Raw SQL,
+no Django model (same precedent as Opinion.embedding). Backfilled 122,417 rows
+in ONE pass (`sync_embedding_table`, idempotent, --prune anti-joins stale
+rows). `embed_opinions` dual-writes via INSERT..SELECT from the fat row it
+just updated, so court/date can't drift. Measured cold, 10-yr window: **MN
+2.2s / AZ 2.8s / NH 0.8s** (vs killed / killed / 7.6s full-fat). The view's
+DEFAULT_SEARCH_YEARS=10 keeps default searches on that path; `years=all`
+full-scans complete on NH and degrade to [] at the bound on MN/AZ — behavior
+falls out of the bound, no per-state gating. **Live after deploy: MN search
+13.3s → 1.7s; three concurrent searches 1.3/1.3/2.3s** (was 183s for two).
+The MN semantic block renders for the first time since the corpus outgrew the
+fat scan. If cosine latency creeps up again as the corpus grows, widen nothing
+— check rows/s against the bound and shrink the window or revisit infra.
+
+**Privacy hole found en route and closed: `QueryEmbedding` stored every search
+query VERBATIM** (PK on query text, hit_count, last_used_at — 36 rows on prod)
+while the Privacy page said "We don't log search queries." By the project's
+own subpoena test that table must not exist. Migration 0030 drops it (rows
+destroyed); the cache is now a process-local dict in semantic.py (workers=1
+makes it effective; misses cost ~$0.000001; crawlers never reach the path).
+**Lesson: both of the last two integrity failures (this and the eyecite claim)
+were found as side-effects of unrelated work, not by audit.** When touching
+any cache, ask what it persists and whether the Privacy page still tells the
+truth.
+
+Probe-methodology traps that burned time this session: `curl` without a
+browser UA is treated as a crawler and silently SKIPS semantic search (test
+with a real UA); MariaDB's query cache returns identical repeated statements
+in 0.00s (vary the vector or treat rep-2 timings as meaningless); and piping
+a probe through `grep` filters the WARNING lines out of the saved output —
+capture full output, filter at read time.
+
+## Prior session (2026-08-04) — MN citation extractor; AZ blocked on parallel cites
 
 **MN now has a text-extracted citation graph: 353,992 edges**, alongside (not
 replacing) CourtListener's 605,353 bulk edges. 272,158 carry a context quote.

@@ -1,6 +1,14 @@
 # DocketDrift — working backlog
 
-Snapshot 2026-08-05. Prioritized. Each item says what it is, why it matters,
+Snapshot 2026-08-05 (evening). Prioritized.
+
+**SEARCH IS FIXED (2026-08-05b).** The concurrency cliff was dead cosine scans
+(MN/AZ needed 16-29s vs the 12s bound; every search burned 12 thread-seconds
+for nothing). Slim embedding table + 10-yr windowed scans: MN search 13.3s →
+1.7s live; 3 concurrent searches 1.3/1.3/2.3s (was 183s for two). Also closed:
+QueryEmbedding stored every search query verbatim, contradicting the privacy
+promise — dropped, replaced with a process-local cache. Detail in CLAUDE.md.
+ Each item says what it is, why it matters,
 and roughly how big. "Onion" items need the member panel or are editorial.
 
 Status baseline (pulled live 2026-08-05, post-dedupe): **128,110 opinions**
