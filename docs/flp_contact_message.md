@@ -3,7 +3,17 @@
 **Channel:** https://free.law/contact — topic dropdown → **CourtListener**.
 (No public email address is published; the form routes by topic.)
 
-**Status: SENT 2026-08-05** by Onion. **Do not send again.** If a follow-up is
+**Status: SENT 2026-08-05** by Onion. **FLP REPLIED 2026-08-06** (ticket #1673): "lets talk on GitHub." — standard
+routing to the issue thread; Onion acknowledged same day. The conversation now
+lives on juriscraper#1115; watch there for their engineer's response. The
+handover bundle was refreshed the same day to cover everything now held:
+`/home/private/handover/docketdrift_mn_2017_2026.csv` (+.sha256) — **10,137
+opinions 2017–2026**, larger than the ~7,500 offered in the email because
+2024–2025 and the weekly catch-up were rebuilt after it was sent. Columns:
+docket_number, date_filed, cl_court_id, precedential_status, source_pdf_url,
+in_docketdrift, disposition. If they say "send it", it's one message.
+
+**Do not send again.** If a follow-up is
 ever needed, reply in the issue thread rather than re-opening the form — a
 second unsolicited contact on the same matter reads as pestering, and the issue
 is where technical back-and-forth belongs.
