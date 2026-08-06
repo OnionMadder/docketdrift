@@ -1124,14 +1124,15 @@ def report_error(request):
             import subprocess
             page = form.cleaned_data["page"]
             reply_to = form.cleaned_data.get("reply_to") or ""
-            # NO From header, on purpose: NFSN's sendmail wrapper fills in
-            # its default sender, which Gmail accepts (probe B, 2026-08-06).
-            # Claiming From: hello@docketdrift.com fails SPF at Gmail and the
-            # mail is dropped WITHOUT A BOUNCE (probe A never arrived) -- the
-            # worst kind of failure for an error-report box. If a docketdrift
-            # From is ever wanted, add NFSN's relay to the domain's SPF first.
+            # From: hello@docketdrift.com ON PURPOSE -- measured 2026-08-06
+            # with probe emails: this sender lands in Gmail's PRIMARY inbox,
+            # while NFSN's default sender lands in SPAM. First-contact mail on
+            # this path is GREYLISTED (~20-40 min deferred delivery), which
+            # briefly looked like an SPF drop and caused a wrong "fix" -- do
+            # not re-diagnose deliverability from the first 10 minutes.
             body_lines = [
                 "To: hello@docketdrift.com",
+                "From: hello@docketdrift.com",
                 "Subject: DocketDrift error report: %s" % page[:120],
             ]
             if reply_to:
