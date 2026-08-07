@@ -9,8 +9,17 @@ for nothing). Slim embedding table + 10-yr windowed scans: MN search 13.3s →
 1.7s live; 3 concurrent searches 1.3/1.3/2.3s (was 183s for two). Also closed:
 QueryEmbedding stored every search query verbatim, contradicting the privacy
 promise — dropped, replaced with a process-local cache. Detail in CLAUDE.md.
- Each item says what it is, why it matters,
-and roughly how big. "Onion" items need the member panel or are editorial.
+
+**What changed 2026-08-06** (detail in CLAUDE.md's session block): MN weekly
+scraper rebuilt in manifest mode + success BEACONS wired into freshness_check
+(a dead weekly now alerts in ~1 week, not 45 days; weekly forward-fills MN
+Supreme too); `/report-error/` live + verified end-to-end (emailed, stored
+nowhere; nav link on every page); every-state CL coverage audit committed
+(`docs/cl_coverage_audit/` — 17 courts MN-shaped, LA Supreme the worst hole
+in the country); Ko-fi "Launch Louisiana" $250 goal live, support page
+matches; FLP replied — bridged to #1115, bundle staged at
+`/home/private/handover/`, **WAITING, no nudge before ~2 weeks**; onioncore
+design sweep — 30 rules, one accent grammar site-wide.
 
 Status baseline (pulled live 2026-08-06, post-AZ-sweep): **128,150 opinions**
 (MN 69,292 / AZ 38,135 / NH 20,723). Citation graph **1,462,119 edges** —

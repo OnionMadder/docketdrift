@@ -97,7 +97,81 @@ in indexed JSON-LD) was reverted — extractive holdings = "no generated text",
 the strong original posture, is correct. Migrations 0026 (holdings) + 0027
 (clustering) are on main and applied on prod.
 
-## Latest session (2026-08-05b) — search fixed: slim embedding table; query-log privacy hole closed
+## Latest session (2026-08-06) — Thursday audit; weekly scraper rebuilt; AZ graph; error reports; coverage audit; design sweep
+
+Long day, many threads; details live in the commit messages and the sections
+referenced below. What shipped and what it changed:
+
+- **Thursday audit: GREEN everywhere except one finding.** All pages 200 on
+  all subdomains; search holding (MN 1.3s / AZ 1.4s solo, 3-way concurrent
+  1.1-2.4s — the slim-table fix is stable); overnight embed cleared 5,693 ->
+  9; slim table in EXACT sync with embedded count; zero future dates, zero
+  duplicate edges, zero slim orphans. The finding: **Monday's MN weekly
+  scrape failed silently** (Windows Last Result 1 — it collided with the
+  attended backfill session holding the same Chrome profile) and MN sat 10
+  days stale with nothing alerting.
+- **Weekly scraper rebuilt in manifest mode** (`run_mn_weekly.ps1`): the
+  in-page PDF fetch ALSO broke this day ("TypeError: Failed to fetch",
+  40/40), so the weekly now uses the backfill split — browser only LISTS,
+  NFSN downloads — and forward-fills the SUPREME court too (the old weekly
+  was COA-only; Supreme arrived solely via the degraded CL cron). Catch-up
+  ran: 40 opinions, MN newest 2026-08-05. **Success beacons added**: both
+  weekly wrappers stamp `.scrape_{mn,nh}_last` on NFSN after every
+  successful run (including the legitimate "nothing new" exit) and
+  `freshness_check.sh` alerts when a beacon is missing or >9 days old. A
+  dead weekly scraper now surfaces in one email cycle, not at the 45-day
+  corpus threshold. Beacons are seeded only AFTER verifying a real run — a
+  beacon stamped on faith recreates the false-health signal it exists to
+  kill.
+- **AZ citation sweep ran: 313,120 extracted edges** (198,709 quotes, 1,814
+  treatments) — the parity gap closed; all three states now carry the full
+  extracted graph. Totals: **1,462,119 edges** (605,353 bulk + 856,766
+  extracted = MN 468,595 / AZ 313,120 / NH 75,051), 5,188 non-default
+  treatments.
+- **NH is slowest BECAUSE smallest** — measured, explained, deliberately
+  accepted; see its own section above. Do not "fix" via the candidate cap.
+- **`/report-error/` shipped and verified end-to-end** — nav link on every
+  page (?page= prefill, path only), plain-Form emailed via sendmail,
+  persisted NOWHERE, honeypot, send-failures shown never swallowed. The
+  debugging found a header-injection hole (closed via EmailMessage) and
+  three mail traps now recorded in the "Sending email from NFSN" gotcha.
+  En route: `hello@` forwarding CONFIRMED working (NFSN Hybrid Forwarding,
+  hello -> kellye.sundar@gmail.com, catch-all -> onionmadder@gmail.com).
+- **Every-state CL coverage audit** (`docs/cl_coverage_audit/`): the MN
+  diagnostic run across all state appellate courts. **17 courts show
+  MN-shaped degradation (~60-80K opinions missing 2023-2025)**; worst is
+  Louisiana Supreme — dead since 2020, ~12K missing, the largest
+  single-court hole in the country — while LA's COA feed is intact. That
+  split shapes the LA rollout (COA from CL bulk, Supreme direct from
+  lasc.gov) and makes LA the natural FLP report #2. Caveats in FINDINGS.md
+  (candidates not verdicts; the flagged list is a FLOOR — pre-2019 breaks
+  like MN itself are invisible to the 2012-2019 baseline).
+- **FLP thread advanced**: their support reply ("let's talk on GitHub")
+  bridged onto issue #1115 under Onion's account; the offer now reads
+  2017-2026, ~10,100 opinions; handover bundle staged at
+  `/home/private/handover/`. Waiting on them; do not nudge before ~2 weeks.
+- **Funding surface built**: Ko-fi cover (brand banner, 1200x400), costed
+  "Launch Louisiana" $250 goal, page copy tightened to house voice; X
+  profile refreshed (bio/banner); support page now names Louisiana with the
+  itemized goal and had two stale cost numbers corrected to measured ones.
+  `DONATE_URL` restored in prod `.env` (it silently vanishes when unset —
+  now in `.env.example`).
+- **Onioncore design sweep: 30 rules re-pointed.** One grammar site-wide:
+  primary cards keep corner ticks; every other accent is a side strip
+  fading top->bottom, painted the same way the ticks are, `--strip` as the
+  per-element knob. Boxed banners quieted. The semantic color key
+  (disposition/treatment/review edges, vote chips) deliberately untouched —
+  those edges are data, not chrome. Layout shifted zero pixels.
+
+**Methodology lessons this day (all bit me):** a task can fail while its
+panel shows a healthy "Last Run" (run the script, don't read the status);
+git-bash heredoc surgery mangles backslash escapes — use the Edit tool for
+code containing them (three strikes now); Windows curl mangles non-ASCII
+form input — test unicode paths from the FreeBSD side; and the fix for a
+wrongly diagnosed system is often worse than the disease (the From-header
+revert).
+
+## Prior session (2026-08-05b) — search fixed: slim embedding table; query-log privacy hole closed
 
 The "search concurrency problem" was misdiagnosed. Profiling per phase showed
 the MN/AZ cosine scans had crossed their feasibility point: ~2,400 rows/s on
@@ -1153,27 +1227,30 @@ identity decoupled; semantic/keyword alerts refused-by-design, not stored).
 
 ## Where things stand right now
 
-(Numbers pulled live from prod 2026-08-02. **Re-measure before quoting these
-anywhere public** — a query is cheap and stale numbers on a public page are
-the exact class of problem the 2026-08-02 audit was cleaning up.)
+(Numbers pulled live from prod 2026-08-06 evening. **Re-measure before
+quoting these anywhere public** — stale numbers on a public page are the
+exact class of problem the 2026-08-02 audit was cleaning up.)
 
 Three states live, all on subdomains of `docketdrift.com`. MN is the
-**Flagship**; NH + AZ carry a green **Live** pill. Nothing is labeled "beta"
-any more — that undersold three mature corpora.
+**Flagship**; NH + AZ carry a green **Live** pill.
 
-| State | Subdomain | Opinions | Embedded | Dispositions | Reporter cites | Judges | Newest |
-|---|---|---|---|---|---|---|---|
-| MN (flagship) | `mn.docketdrift.com` | 60,457 | 100% | 97.6% | 92.9% | 122 | 2026-07-27 |
-| NH (live) | `nh.docketdrift.com` | 20,723 | 100% | 78.5% | 90.2% | 36 | 2026-07-31 |
-| AZ (live) | `az.docketdrift.com` | 38,132 | 100% | 63.9% | 75.0% | 119 | 2026-07-30 |
+| State | Subdomain | Opinions | Newest | Notes |
+|---|---|---|---|---|
+| MN (flagship) | `mn.docketdrift.com` | 69,292 | 2026-08-05 | **CONTINUOUS 2015-2025** (~970-1,435/yr); ~9,800 rebuilt from the State Law Library archive |
+| AZ (live) | `az.docketdrift.com` | 38,153 | current | CL feed healthy per coverage audit; our ONLY state with no independent pipeline |
+| NH (live) | `nh.docketdrift.com` | 20,723 | current | proving ground; steady state |
 
-Corpus-wide: 119,312 opinions · 56,165 panel votes · 605,424 citation edges ·
-39,446 extracted holdings · 2,116 tags applied / 50,287 pending review.
+Corpus-wide: **128,168 opinions**, all embedded (slim table in exact sync).
+Citation graph **1,462,119 edges** — 605,353 CL bulk + **856,766
+text-extracted** (MN 468,595 / AZ 313,120 / NH 75,051) with context quotes;
+**5,188 non-default treatments** (was 0 in every state before 2026-08-04).
+Parallel cites 180,652. Holdings 41K+. Tags 2,116 applied / ~50K pending.
 
-Two caveats those numbers hide, both load-bearing:
-- **MN's date range reads "1851–present" but 2020–2022 is EMPTY** (see the
-  header block). The range is honest; continuity is not implied and must not
-  be implied in public copy.
+Caveats that stay load-bearing:
+- **Rebuilt MN years are substantially covered, not provably complete**
+  (~83% COA vs control; ~53% Supreme — the archive carries no Supreme
+  ORDERS), and they have no reporter cites until CL backfills. Disclosed on
+  /about/; keep it that way.
 - **AZ judges 139 → 119 and NH 69 → 36 are CORRECTIONS, not losses.** The old
   counts included citation false-positives and OCR/hyphenation duplicate rows.
   Same for AZ panel votes 142 → 29K+, which was a ReDoS bug, not a gap.
