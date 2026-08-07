@@ -253,9 +253,18 @@ def similar_to_opinion(opinion, limit: int = 5, with_scores: bool = False):
     # grows. Subqueries are kept simple so the optimizer picks the
     # release_date btree index first.
     from datetime import timedelta
-    date_cutoff = None
+    date_cutoff = date_ceiling = None
     if opinion.release_date is not None:
+        # SYMMETRIC +/-3y window. The lower bound alone (the original shape)
+        # left old opinions with an unbounded top: a 2004 MN opinion scanned
+        # 2001->today -- ~30K slim rows after the 2026-08 backfills, blowing
+        # the 12s bound and burning a worker thread on every cold page
+        # (measured 2026-08-07: 12.0s -> KILLed -> widget silently empty).
+        # The ceiling makes every page's scan the same bounded size; a
+        # contemporaneous window is also the editorially right candidate set
+        # (later engagement belongs to the cited-by panel, not this widget).
         date_cutoff = opinion.release_date - timedelta(days=3 * 365)
+        date_ceiling = opinion.release_date + timedelta(days=3 * 365)
 
     # Candidates come from the SLIM table (see search_similar_opinions for
     # the measured rationale); the SOURCE vector still comes from the fat
@@ -274,8 +283,8 @@ def similar_to_opinion(opinion, limit: int = 5, with_scores: bool = False):
     ]
     params: list = [opinion.id, opinion.court_id, opinion.id]
     if date_cutoff is not None:
-        sql.append("  AND e.release_date >= %s")
-        params.append(date_cutoff)
+        sql.append("  AND e.release_date BETWEEN %s AND %s")
+        params.extend([date_cutoff, date_ceiling])
     sql.append("ORDER BY dist")
     sql.append("LIMIT %s")
     params.append(limit)
