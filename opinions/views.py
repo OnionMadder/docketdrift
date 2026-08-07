@@ -1018,9 +1018,18 @@ def opinion_cited_by(request, case_number):
     citing = (
         opinion.citations_received
         .select_related("citing_opinion", "citing_opinion__court")
+        # raw_text + html_content are 50-100KB TEXT columns and this is a
+        # list-style query: undeferred, one page of 50 dragged a measured
+        # 1.4MB of text the template never renders (it uses only title,
+        # case_number, court, release_date, reporter_cite). That is what made
+        # this page intermittently lose the connection mid-query (errno 2013)
+        # on the shared DB. Deferring: 1.4MB -> 0, 0.23s -> 0.09s.
+        .defer("citing_opinion__raw_text", "citing_opinion__html_content")
         .order_by("-citing_opinion__release_date")
     )
-    paginator = Paginator(citing, HOME_PAGE_SIZE)
+    # Local import, matching this module's existing convention for it.
+    from opinions.paginators import NoJoinCountPaginator
+    paginator = NoJoinCountPaginator(citing, HOME_PAGE_SIZE)
     page_obj = paginator.get_page(request.GET.get("page", 1))
     return render(request, "opinions/opinion_cited_by.html", {
         "opinion": opinion,
