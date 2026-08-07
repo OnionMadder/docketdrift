@@ -47,4 +47,12 @@ check_beacon() {
 check_beacon MN /home/private/docketdrift/.scrape_mn_last 9
 check_beacon NH /home/private/docketdrift/.scrape_nh_last 9
 
+# --- Are the PAGES still rendering? -----------------------------------------
+# Everything above answers "is data arriving?" -- nothing above notices a page
+# type that 500s on every request. On 2026-08-06 cited-by had been dead for 12
+# days, plus three sitemap chunks and 117 dockets with no URL, while every
+# check here reported green. Bolted on to this task rather than registered as
+# its own, since the panel step is where monitors go to die.
+/bin/sh /home/private/docketdrift/scripts/error_rate_check.sh || fail=1
+
 exit $fail
