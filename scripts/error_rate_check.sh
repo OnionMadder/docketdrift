@@ -45,7 +45,7 @@ fi
 # and slashes (AZ election appeals: "CV-24-0222-AP/EL"), both of which a naive
 # whitespace split truncates -- that mistake made this exact scan misreport
 # "/opinion/1" as its own error class earlier today.
-tail -n "$LINES" "$LOG" | awk -v min5="$MIN_5XX" -v ratepct="$RATE_PCT" '
+tail -n "$LINES" "$LOG" | awk -F'"' -v min5="$MIN_5XX" -v ratepct="$RATE_PCT" '
 {
     req = $2                      # GET /some/path HTTP/1.1
     if (req !~ /^[A-Z]+ /) next
