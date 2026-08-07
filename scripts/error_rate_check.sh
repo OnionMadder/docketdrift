@@ -27,7 +27,11 @@ LOG=/home/logs/daemon_gunicorn.log
 # Bound the scan. NFSN culls a process at roughly 40s of CPU, and this log is
 # large enough that a full grep gets killed partway -- which would fail as a
 # false ALL CLEAR. tail keeps it to a fixed, cheap slice.
-LINES=${DD_ERR_LINES:-200000}
+# ~1 day of traffic. The original 200000 spanned ~4 days, so a burst that
+# was found AND FIXED kept re-alerting until it aged out of the window
+# (seen 2026-08-07: Thursday's fixed cited-by burst still tripping Friday's
+# check). The alert should describe breakage that exists NOW.
+LINES=${DD_ERR_LINES:-50000}
 
 # Alert if EITHER the absolute count or the rate crosses. The absolute floor
 # catches a single page type dying (cited-by was ~117 per slice, well under
