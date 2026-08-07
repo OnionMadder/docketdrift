@@ -263,7 +263,13 @@
   font-size: 0.95rem;
   letter-spacing: 0.3px;
   margin: 0 0 0.85rem;
-  border-left: 2px solid rgba(var(--neon-violet-rgb), 0.45);
+  border-left: 2px solid transparent;
+  --strip: rgba(var(--neon-violet-rgb), 0.55);
+  background-image: linear-gradient(to bottom, var(--strip), transparent);
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  background-clip: border-box;
+  background-size: 2px 100%;
   padding-left: 0.85rem;
   max-width: none;
 }
@@ -288,7 +294,13 @@
 .opinion-sibling {
   margin: -0.4rem 0 0.85rem;
   padding-left: 0.85rem;
-  border-left: 2px solid rgba(var(--neon-cyan-rgb), 0.3);
+  border-left: 2px solid transparent;
+  --strip: rgba(var(--neon-cyan-rgb), 0.4);
+  background-image: linear-gradient(to bottom, var(--strip), transparent);
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  background-clip: border-box;
+  background-size: 2px 100%;
   font-size: 0.85rem;
   color: var(--text-dim);
 }
@@ -657,7 +669,13 @@
 .citation-graph .cite-quote {
   margin: 0;
   padding: 0.1rem 0 0.1rem 0.85rem;
-  border-left: 2px solid rgba(16, 254, 226, 0.4);
+  border-left: 2px solid transparent;
+  --strip: rgba(16, 254, 226, 0.5);
+  background-image: linear-gradient(to bottom, var(--strip), transparent);
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  background-clip: border-box;
+  background-size: 2px 100%;
   color: var(--text-bright, #e8e8e8);
   font-size: 0.92rem;
   line-height: 1.5;
@@ -820,7 +838,13 @@
   padding: 0.65rem 0.85rem;
   background: rgba(20, 0, 30, 0.55);
   border: var(--border-soft);
-  border-left: 3px solid var(--neon-cyan);
+  border-left: 3px solid transparent;
+  --strip: var(--neon-cyan);
+  background-image: linear-gradient(to bottom, var(--strip), transparent);
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  background-clip: border-box;
+  background-size: 3px 100%;
   border-radius: var(--radius-sm);
   font-size: 0.85rem;
 }
@@ -986,7 +1010,13 @@
    ============================================================ */
 
 .cta-frame {
-  border-left: 3px solid var(--neon-pink);
+  border-left: 3px solid transparent;
+  --strip: var(--neon-pink);
+  background-image: linear-gradient(to bottom, var(--strip), transparent);
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  background-clip: border-box;
+  background-size: 3px 100%;
 }
 
 .cta-actions {
@@ -1067,7 +1097,13 @@ button.cta-primary {
 
 .cost-list li {
   padding: 0.85rem 0 0.85rem 1.25rem;
-  border-left: 2px solid rgba(38, 255, 230, 0.4);
+  border-left: 2px solid transparent;
+  --strip: rgba(38, 255, 230, 0.5);
+  background-image: linear-gradient(to bottom, var(--strip), transparent);
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  background-clip: border-box;
+  background-size: 2px 100%;
   margin-bottom: 0.6rem;
   background: rgba(38, 255, 230, 0.04);
   line-height: 1.55;
@@ -1229,7 +1265,13 @@ button.cta-primary {
    default; the dot + note line carry the live review state.
    ============================================================ */
 .holding-panel {
-  border-left: 2px solid rgba(255, 191, 61, 0.4);
+  border-left: 2px solid transparent;
+  --strip: rgba(255, 191, 61, 0.5);
+  background-image: linear-gradient(to bottom, var(--strip), transparent);
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  background-clip: border-box;
+  background-size: 2px 100%;
 }
 
 .holding-panel__head {
@@ -1284,7 +1326,13 @@ button.cta-primary {
   position: relative;
   margin: 0 0 0.9rem;
   padding: 0 0 0 1rem;
-  border-left: 2px solid rgba(var(--dd-cyan-rgb), 0.45);
+  border-left: 2px solid transparent;
+  --strip: rgba(var(--dd-cyan-rgb), 0.55);
+  background-image: linear-gradient(to bottom, var(--strip), transparent);
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  background-clip: border-box;
+  background-size: 2px 100%;
   font-size: 1.08rem;
   line-height: 1.6;
   color: var(--text-primary);
@@ -1383,7 +1431,13 @@ button.cta-primary {
   padding: 0.95rem 1.1rem;
   background: rgba(20, 0, 30, 0.55);
   border: var(--border-soft);
-  border-left: 3px solid var(--neon-pink);
+  border-left: 3px solid transparent;
+  --strip: var(--neon-pink);
+  background-image: linear-gradient(to bottom, var(--strip), transparent);
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  background-clip: border-box;
+  background-size: 3px 100%;
   border-radius: var(--radius-sm);
   font-size: 0.92rem;
   line-height: 1.6;
@@ -1612,13 +1666,19 @@ button.cta-primary {
   padding: 0.85rem 1rem;
   background: rgba(20, 0, 30, 0.5);
   border: var(--border-soft);
-  border-left: 3px solid var(--neon-pink);
+  border-left: 3px solid transparent;
+  --strip: var(--neon-pink);
+  background-image: linear-gradient(to bottom, var(--strip), transparent);
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  background-clip: border-box;
+  background-size: 3px 100%;
   border-radius: var(--radius-sm);
 }
 
-.landing-stats li:nth-child(2) { border-left-color: var(--neon-cyan); }
-.landing-stats li:nth-child(3) { border-left-color: var(--neon-green); }
-.landing-stats li:nth-child(4) { border-left-color: var(--neon-violet); }
+.landing-stats li:nth-child(2) { --strip: var(--neon-cyan); }
+.landing-stats li:nth-child(3) { --strip: var(--neon-green); }
+.landing-stats li:nth-child(4) { --strip: var(--neon-violet); }
 
 .landing-stats strong {
   font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
@@ -1728,8 +1788,14 @@ button.cta-primary {
   margin: 0 0 1.25rem;
   padding: 0.9rem 1.1rem;
   background: rgba(var(--neon-cyan-rgb), 0.06);
-  border: 1px solid rgba(var(--neon-cyan-rgb), 0.22);
-  border-left: 3px solid var(--neon-cyan);
+  border: 1px solid rgba(var(--neon-cyan-rgb), 0.10);
+  border-left: 3px solid transparent;
+  --strip: var(--neon-cyan);
+  background-image: linear-gradient(to bottom, var(--strip), transparent);
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  background-clip: border-box;
+  background-size: 3px 100%;
   border-radius: var(--radius-sm);
   font-size: 0.92rem;
   line-height: 1.5;
@@ -1757,8 +1823,14 @@ button.cta-primary {
   margin: 1.5rem 0 2rem;
   padding: 1.25rem 1.5rem;
   background: rgba(var(--neon-pink-rgb), 0.06);
-  border: 1px solid rgba(var(--neon-pink-rgb), 0.25);
-  border-left: 4px solid var(--neon-magenta);
+  border: 1px solid rgba(var(--neon-pink-rgb), 0.10);
+  border-left: 4px solid transparent;
+  --strip: var(--neon-magenta);
+  background-image: linear-gradient(to bottom, var(--strip), transparent);
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  background-clip: border-box;
+  background-size: 4px 100%;
   border-radius: var(--radius-sm);
 }
 .ai-disclosure h2 {
@@ -1863,9 +1935,15 @@ button.cta-primary {
 .judge-bio-toggle {
   margin: 0.5rem 0 1rem;
   border: var(--border-soft);
-  border-left: 3px solid var(--neon-magenta);
+  border-left: 3px solid transparent;
+  --strip: var(--neon-magenta);
+  background-image: linear-gradient(to bottom, var(--strip), transparent);
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  background-clip: border-box;
+  background-size: 3px 100%;
   border-radius: var(--radius-sm);
-  background: rgba(20, 0, 30, 0.35);
+  background-color: rgba(20, 0, 30, 0.35);
   overflow: hidden;
 }
 .judge-bio-toggle > summary {
@@ -1914,7 +1992,13 @@ button.cta-primary {
   padding: 1rem 1.1rem;
   background: rgba(20, 0, 30, 0.5);
   border: var(--border-soft);
-  border-left: 3px solid var(--neon-cyan);
+  border-left: 3px solid transparent;
+  --strip: var(--neon-cyan);
+  background-image: linear-gradient(to bottom, var(--strip), transparent);
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  background-clip: border-box;
+  background-size: 3px 100%;
   border-radius: var(--radius-sm);
 }
 
@@ -1936,7 +2020,7 @@ button.cta-primary {
 }
 
 .judge-stat-card--accent {
-  border-left-color: var(--neon-pink);
+  --strip: var(--neon-pink);
 }
 .judge-stat-card--accent strong {
   color: var(--neon-pink);
@@ -2452,7 +2536,13 @@ button.cta-primary {
   text-decoration: none;
   font-style: italic;
   padding: 0.25rem 0.5rem 0.4rem 2rem;
-  border-left: 2px solid rgba(var(--neon-pink-rgb), 0.3);
+  border-left: 2px solid transparent;
+  --strip: rgba(var(--neon-pink-rgb), 0.4);
+  background-image: linear-gradient(to bottom, var(--strip), transparent);
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  background-clip: border-box;
+  background-size: 2px 100%;
   background: rgba(0, 0, 0, 0.12);
   border-radius: 0 2px 2px 0;
 }
@@ -2460,8 +2550,8 @@ button.cta-primary {
 .doc-snippet-link:hover,
 .doc-snippet-link:focus-visible {
   color: var(--text-bright);
-  border-left-color: var(--neon-pink);
-  background: rgba(var(--neon-pink-rgb), 0.06);
+  --strip: var(--neon-pink);
+  background-color: rgba(var(--neon-pink-rgb), 0.06);
   outline: none;
 }
 
@@ -2566,7 +2656,14 @@ button.cta-primary {
   margin: 0 0 1rem;
   padding: 0.55rem 0.9rem;
   background: rgba(var(--neon-pink-rgb), 0.08);
-  border: 1px solid rgba(var(--neon-pink-rgb), 0.25);
+  border: 1px solid rgba(var(--neon-pink-rgb), 0.10);
+  border-left: 3px solid transparent;
+  --strip: var(--neon-pink);
+  background-image: linear-gradient(to bottom, var(--strip), transparent);
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  background-clip: border-box;
+  background-size: 3px 100%;
   border-radius: 3px;
   font-size: 0.86rem;
   color: var(--text-bright);
@@ -2579,15 +2676,23 @@ button.cta-primary {
   margin: 0 0 1rem;
   padding: 0.55rem 0.9rem;
   background: rgba(var(--neon-cyan-rgb), 0.07);
-  border: 1px solid rgba(var(--neon-cyan-rgb), 0.22);
+  border: 1px solid rgba(var(--neon-cyan-rgb), 0.10);
+  border-left: 3px solid transparent;
+  --strip: var(--neon-cyan);
+  background-image: linear-gradient(to bottom, var(--strip), transparent);
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  background-clip: border-box;
+  background-size: 3px 100%;
   border-radius: 3px;
   font-size: 0.86rem;
   color: var(--text-bright);
 }
 
 .search-notice--warn {
-  background: rgba(var(--neon-amber-rgb), 0.08);
-  border-color: rgba(var(--neon-amber-rgb), 0.30);
+  background-color: rgba(var(--neon-amber-rgb), 0.08);
+  border-color: rgba(var(--neon-amber-rgb), 0.12);
+  --strip: var(--neon-amber);
 }
 
 .opinion-find-banner a {
@@ -2763,7 +2868,13 @@ button.cta-primary {
 }
 
 .similar-panel {
-  border-left: 2px solid rgba(38, 255, 230, 0.35);
+  border-left: 2px solid transparent;
+  --strip: rgba(38, 255, 230, 0.45);
+  background-image: linear-gradient(to bottom, var(--strip), transparent);
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  background-clip: border-box;
+  background-size: 2px 100%;
 }
 
 .similar-panel__head {
@@ -2918,9 +3029,15 @@ button.cta-primary {
   margin-top: 0.7rem;
   padding: 0.85rem 1rem;
   border: var(--border-soft);
-  border-left: 3px solid var(--neon-cyan);
+  border-left: 3px solid transparent;
+  --strip: var(--neon-cyan);
+  background-image: linear-gradient(to bottom, var(--strip), transparent);
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  background-clip: border-box;
+  background-size: 3px 100%;
   border-radius: var(--radius-sm);
-  background: var(--bg-tile);
+  background-color: var(--bg-tile);
   max-width: 46rem;
 }
 

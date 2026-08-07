@@ -173,21 +173,28 @@ svg {
   letter-spacing: 1px;
   color: var(--text-dim);
   border-radius: var(--radius-sm);
+  transition: color var(--transition), background var(--transition);
+  /* Fading side strip (onioncore grammar); --strip set by state rules. */
   border-left: 2px solid transparent;
-  transition: color var(--transition), border-color var(--transition), background var(--transition);
+  --strip: transparent;
+  background-image: linear-gradient(to bottom, var(--strip), transparent);
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  background-clip: border-box;
+  background-size: 2px 100%;
 }
 
 .site-nav a:hover,
 .site-nav a:focus-visible {
   color: var(--neon-pink);
-  border-left-color: var(--neon-pink);
-  background: rgba(255, 43, 179, 0.06);
+  --strip: var(--neon-pink);
+  background-color: rgba(255, 43, 179, 0.06);
 }
 
 .site-nav a[aria-current="page"] {
   color: var(--neon-cyan);
-  border-left-color: var(--neon-cyan);
-  background: rgba(38, 255, 230, 0.06);
+  --strip: var(--neon-cyan);
+  background-color: rgba(38, 255, 230, 0.06);
 }
 
 /* "Report an error" is a UTILITY, not a section: smaller and dimmer than
@@ -202,8 +209,8 @@ svg {
 .site-nav a.nav-report:focus-visible {
   opacity: 1;
   color: var(--neon-amber);
-  border-left-color: var(--neon-amber);
-  background: rgba(255, 191, 0, 0.06);
+  --strip: var(--neon-amber);
+  background-color: rgba(255, 191, 0, 0.06);
 }
 
 /* ----------  Search module  ---------- */
@@ -412,8 +419,14 @@ body[data-nav-open="true"] .nav-toggle .bar:nth-child(3) {
 
 .update-teaser {
   background: var(--bg-tile);
-  border: 1px solid rgba(255, 191, 0, 0.25);
-  border-left-width: 3px;
+  border: var(--border-soft);
+  border-left: 3px solid transparent;
+  --strip: rgba(255, 191, 0, 0.65);
+  background-image: linear-gradient(to bottom, var(--strip), transparent);
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  background-clip: border-box;
+  background-size: 3px 100%;
   border-radius: var(--radius);
   padding: 1.25rem 1.35rem 1.15rem;
   display: flex;
