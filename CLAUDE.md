@@ -1342,6 +1342,29 @@ is not good enough — "never store it" is the bar.
 
 ## Recurring gotchas — DO NOT MAKE THESE AGAIN
 
+### Sending email from NFSN (report-error form) — three traps, all measured 2026-08-06
+
+`/usr/bin/sendmail` is NFSN's own wrapper (symlink to `/nfsn/sendmail`); the
+`/report-error/` view pipes to it. Everything below was established with probe
+emails, not guessed:
+
+1. **Non-ASCII in a hand-built header = SILENT drop.** A raw UTF-8 em-dash in
+   the Subject made the relay eat the message -- no bounce, no log, exit 0.
+   Build mail with `email.message.EmailMessage` (RFC-2047-encodes headers,
+   raises on CR/LF header injection); NEVER hand-join header strings.
+2. **First-contact mail is GREYLISTED** (~20-40 min deferred). Do not diagnose
+   deliverability from the first ten minutes -- that misread caused a wrong
+   "SPF fix" here that had to be reverted.
+3. **Sender choice is measured, not aesthetic:** `From: hello@docketdrift.com`
+   lands in Gmail's Primary/Updates; NFSN's default sender lands in SPAM.
+   Keep the hello@ From.
+
+Also: `hello@docketdrift.com` is an NFSN Hybrid Forwarding alias ->
+kellye.sundar@gmail.com (member panel; catch-all -> onionmadder@gmail.com).
+Gmail's default search EXCLUDES Spam/Trash -- verify delivery with
+`in:anywhere <marker>`. And git-bash curl on Windows mangles non-ASCII in
+--data-urlencode: test unicode submissions from the FreeBSD side.
+
 ### Django template comments are single-line only
 
 `{# this is fine #}` works **only on a single line**. Multi-line `{# ... #}`
