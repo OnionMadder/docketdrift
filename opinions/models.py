@@ -184,6 +184,17 @@ class Judge(models.Model):
         db_index=True,
         help_text="CourtListener person identifier, when known.",
     )
+    cl_absent = models.BooleanField(
+        default=False,
+        help_text=(
+            "A human confirmed this is a real judge that CourtListener's "
+            "people DB does not carry (CL is FJC/federal-heavy and omits many "
+            "state judges -- e.g. NH's Hantz Marconi). This is a TERMINAL "
+            "resolution state, equal to having a courtlistener_id: it takes "
+            "the row out of the 'unresolved / needs a CL lookup' pile without "
+            "faking an id. Leave False for rows not yet reviewed."
+        ),
+    )
     source_id = models.CharField(
         max_length=128,
         blank=True,

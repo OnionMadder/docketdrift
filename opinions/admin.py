@@ -183,9 +183,13 @@ class JudgeAdmin(admin.ModelAdmin):
     # without opening each change-form -- pair it with the cl_search_link
     # column for a click-out-then-paste-back workflow.
     list_display = ("full_name", "state", "status", "is_currently_seated",
-                    "courtlistener_id", "cl_search_link", "view_on_site_link")
-    list_editable = ("courtlistener_id",)
-    list_filter = ("state", "status", "is_currently_seated")
+                    "courtlistener_id", "cl_absent", "cl_search_link",
+                    "view_on_site_link")
+    # Both the CL id and the "not in CL" checkbox are inline-editable, so a
+    # judge can be resolved either way straight from the changelist -- paste
+    # an id, or tick cl_absent for a real judge CL simply doesn't carry.
+    list_editable = ("courtlistener_id", "cl_absent")
+    list_filter = ("state", "status", "is_currently_seated", "cl_absent")
     search_fields = ("full_name", "slug", "courtlistener_id")
     list_select_related = ("state", "court")
     list_per_page = 50
@@ -200,7 +204,13 @@ class JudgeAdmin(admin.ModelAdmin):
         from urllib.parse import quote_plus
         if obj.courtlistener_id:
             return format_html(
-                '<span style="color:#888">resolved</span>'
+                '<span style="color:#888">resolved (CL id)</span>'
+            )
+        if obj.cl_absent:
+            return format_html(
+                '<span style="color:#888" '
+                'title="Confirmed real; CourtListener has no record">'
+                'resolved (not in CL)</span>'
             )
         return format_html(
             '<a href="https://www.courtlistener.com/person/?q={}" '
@@ -247,7 +257,11 @@ class JudgeAdmin(admin.ModelAdmin):
             quick_filters=[
                 {"label": "Currently seated", "querystring": "?is_currently_seated__exact=1"},
                 {"label": "Historical only", "querystring": "?is_currently_seated__exact=0"},
-                {"label": "Without CL id", "querystring": "?courtlistener_id__exact="},
+                # Truly unresolved = no CL id AND not yet confirmed-absent, so a
+                # real judge CL doesn't carry drops out of the pile once ticked.
+                {"label": "Unresolved (needs CL review)",
+                 "querystring": "?courtlistener_id__exact=&cl_absent__exact=0"},
+                {"label": "Confirmed not in CL", "querystring": "?cl_absent__exact=1"},
             ],
         )
 
