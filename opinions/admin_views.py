@@ -111,10 +111,35 @@ def _resolve_state_opinions(state_code):
     """
     if not state_code:
         return None
-    court_ids = Court.objects.filter(state__code=state_code).values_list("id", flat=True)
-    return list(
-        Opinion.objects.filter(court_id__in=list(court_ids)).values_list("id", flat=True)
+    court_ids = list(
+        Court.objects.filter(state__code=state_code).values_list("id", flat=True)
     )
+    if not court_ids:
+        return []
+    # The obvious ORM form (filter(court_id__in=...).values_list("id")) walked
+    # the PRIMARY key -- dragging the 2.75GB clustered rows to filter by court
+    # -- and measured 20.6s for AZ (the July "~300ms" note predates the corpus
+    # growth that flipped the optimizer's plan). Forcing the (court_id,
+    # case_number) unique index makes it index-only ("Using index"): the
+    # secondary index implicitly carries the PK, so id comes straight off it.
+    # Same pathology and same cure as the 2026-08-06 sitemap fix. Raw SQL
+    # because the ORM offers no FORCE INDEX. MySQL-only path is fine: local
+    # SQLite dev has a corpus small enough for the ORM form.
+    if connection.vendor != "mysql":
+        return list(
+            Opinion.objects.filter(court_id__in=court_ids).values_list("id", flat=True)
+        )
+    ids: list[int] = []
+    with connection.cursor() as cur:
+        for cid in court_ids:  # per-court equality = ref access, never a scan
+            cur.execute(
+                "SELECT id FROM opinions_opinion "
+                "FORCE INDEX (opinions_opinion_court_id_case_number_0da2d765_uniq) "
+                "WHERE court_id = %s",
+                [cid],
+            )
+            ids.extend(r[0] for r in cur.fetchall())
+    return ids
 
 
 def _apply_suggestion_filters(qs, filters, opinion_ids):
