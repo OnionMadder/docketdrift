@@ -1,0 +1,22 @@
+/* Collapsible changelist filter sidebar -- paired with collapse_filter.js. */
+
+/* Hide the sidebar when collapsed. In the modern flex-based admin changelist
+   the results sibling reflows to full width automatically; the margin resets
+   below cover older float-based layouts defensively. */
+.dd-filters-collapsed #changelist-filter { display: none !important; }
+
+.dd-filters-collapsed #changelist .results,
+.dd-filters-collapsed #changelist .changelist-form-container,
+.dd-filters-collapsed #changelist #changelist-form,
+.dd-filters-collapsed #changelist .paginator {
+  margin-right: 0 !important;
+}
+
+/* Floating fallback, only used when there is no .object-tools row to host the
+   toggle as a pill. */
+button#dd-filter-toggle {
+  position: fixed;
+  top: 80px;
+  right: 12px;
+  z-index: 1000;
+}

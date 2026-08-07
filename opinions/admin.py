@@ -177,8 +177,19 @@ class CourtAdmin(admin.ModelAdmin):
         )
 
 
+class CollapsibleFilterMixin:
+    """Adds a "Hide filters" toggle to a changelist's object-tools that
+    collapses the right-hand filter sidebar (state remembered in
+    localStorage). Mix into any wide changelist whose inline-editable columns
+    get squeezed by the filter panel. Vanilla JS/CSS, no build step."""
+
+    class Media:
+        js = ("opinions/admin/collapse_filter.js",)
+        css = {"all": ("opinions/admin/collapse_filter.css",)}
+
+
 @admin.register(Judge)
-class JudgeAdmin(admin.ModelAdmin):
+class JudgeAdmin(CollapsibleFilterMixin, admin.ModelAdmin):
     # courtlistener_id is editable inline so blank rows can be filled in
     # without opening each change-form -- pair it with the cl_search_link
     # column for a click-out-then-paste-back workflow.
