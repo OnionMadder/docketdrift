@@ -1128,27 +1128,38 @@ def report_error(request):
             # with probe emails: this sender lands in Gmail's PRIMARY inbox,
             # while NFSN's default sender lands in SPAM. First-contact mail on
             # this path is GREYLISTED (~20-40 min deferred delivery), which
-            # briefly looked like an SPF drop and caused a wrong "fix" -- do
-            # not re-diagnose deliverability from the first 10 minutes.
-            body_lines = [
-                "To: hello@docketdrift.com",
-                "From: hello@docketdrift.com",
-                "Subject: DocketDrift error report: %s" % page[:120],
-            ]
-            if reply_to:
-                body_lines.append("Reply-To: %s" % reply_to)
-            body_lines += [
-                "",
-                "Page: %s" % page,
-                "",
-                form.cleaned_data["message"],
-                "",
-                "-- submitted via /report-error/; nothing stored server-side",
-            ]
+            # briefly looked like an SPF drop -- don't re-diagnose
+            # deliverability from the first ten minutes.
+            #
+            # Built with email.message.EmailMessage, NOT hand-joined header
+            # strings, for two measured reasons: (1) a raw UTF-8 em-dash in a
+            # hand-built Subject made the relay eat the message with no
+            # bounce (both early form tests vanished; every ASCII-header
+            # probe delivered) -- EmailMessage RFC-2047-encodes non-ASCII
+            # headers; (2) user text was flowing into the Subject line, and
+            # EmailMessage raises on embedded CR/LF, closing the
+            # header-injection hole the hand-built version had.
+            from email.message import EmailMessage
+            msg = EmailMessage()
+            try:
+                msg["To"] = "hello@docketdrift.com"
+                msg["From"] = "hello@docketdrift.com"
+                msg["Subject"] = ("DocketDrift error report: %s"
+                                  % " ".join(page.split())[:120])
+                if reply_to:
+                    msg["Reply-To"] = reply_to
+            except Exception:
+                # Header rejected (injection attempt or pathological input):
+                # treat like the honeypot -- silent thanks, no signal.
+                return redirect(reverse("opinions:report_error_thanks"))
+            msg.set_content(
+                "Page: %s\n\n%s\n\n"
+                "-- submitted via /report-error/; nothing stored server-side"
+                % (page, form.cleaned_data["message"]))
             try:
                 subprocess.run(
                     ["sendmail", "-t"],
-                    input="\n".join(body_lines).encode("utf8"),
+                    input=msg.as_bytes(),
                     timeout=15, check=True,
                 )
                 return redirect(reverse("opinions:report_error_thanks"))
