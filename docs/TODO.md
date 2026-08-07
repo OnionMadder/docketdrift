@@ -205,6 +205,23 @@ The working tree is now clean and main is in sync with origin. What happened:
 
 ## Tier 1 — editorial polish (the honest asterisks on the dashboard)
 
+- [x] **AZ phantom-author cull + DeConcini merge — DONE 2026-08-07.** The
+  survey found the July cull left THREE stale citation-author leaks behind:
+  **Connor / Souter / Burger** were recorded as the *author* of ~12 AZ
+  opinions where the name only appears deep in the body as a SCOTUS citation
+  (`(Souter, J., concurring)`, `Justice O'Connor observed…`). Root cause was
+  narrow and confirmed: `oconnor` is stoplisted but the apostrophe-stripped
+  `connor` isn't, `souter` is deliberately unstoplisted (to protect NH's real
+  Souter), and the byline path never consulted the stoplist anyway. Verified
+  all 18 votes are deep-body citations (offset 8k–80k, never a top byline),
+  and — the key check — the CURRENT byline regex (post-July "of the Court"
+  anchor) re-mints **zero** of them, so these were purely stale pre-fix rows
+  and **culling needs no code guard**. Also merged **"Concini" (42 votes,
+  1949–50 = Evo DeConcini's AZ Supreme tenure)** into the existing
+  **"Evo Anton DeConcini"** row (a "De Concini" surname-split, distinct from
+  the hyphenation dupes the July pass caught) → 46 votes, 0 collisions.
+  AZ judges 251 → 247. DB-only, verified: 0 orphan votes, culled rows gone,
+  DeConcini page 200.
 - [~] **AZ judge roster cleanup — PREP PASS DONE 2026-07-25; ~30 admin rows
   left for Onion.** `resolve_judges --create-missing` minted 280 UNKNOWN AZ
   judges from bylines. It was NOT "forged garbage" — 162 were real judges named
