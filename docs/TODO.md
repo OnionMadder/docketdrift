@@ -227,12 +227,17 @@ The working tree is now clean and main is in sync with origin. What happened:
   Pxnney/Pokteb → one Pinney), the Flórez/Florez/Floréz accent cluster, and
   byline-real surname-only rows that just need a full name (Vásquez 139,
   Staring 74, Sklar/Eppich 40, Brearcliffe 39).
-  **STILL TODO — root code fix:** the AZ extractor's footer/panel path still
-  mints (a) non-name tokens and (b) parenthetical-citation judges. Fix =
-  reject a candidate whose match sits inside `(...)` (a citation) and reject
-  non-name tokens, so leaks/junk stop recurring. Same shape as the July "of
-  the Court" byline anchor. Until then, re-run `cleanup_az_judges` after any
-  `resolve_judges --state AZ --create-missing`.
+  **ROOT CODE FIX — DONE 2026-08-07.** `_extract_generic_byline` now carries
+  two name-agnostic guards: `_inside_open_paren` skips any footer/dissent match
+  sitting inside an unclosed `(` (a `(Name, J., concurring)` citation, not a
+  panel signoff — catches EVERY cross-court leak, not just the SCOTUS names the
+  stoplist covered), and `_valid_surname`/`_NON_NAME_TOKENS` reject
+  connective/role/party tokens + single letters (And/Appel/Opinion/State/M) at
+  every capture point. Integration-tested on prod: the Tjoflat + Dietzen
+  citation opinions now extract nothing; a real Vásquez byline and a bare
+  Territorial Tweed signoff still extract. So leaks/junk no longer recur — a
+  future `resolve_judges --state AZ` is safe. (Does NOT fix OCR-variant
+  re-minting — inherent to bad scans; that stays a human-pass concern.)
 - [x] **AZ phantom-author cull + DeConcini merge — DONE 2026-08-07.** The
   survey found the July cull left THREE stale citation-author leaks behind:
   **Connor / Souter / Burger** were recorded as the *author* of ~12 AZ

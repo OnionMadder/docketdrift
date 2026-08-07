@@ -610,6 +610,26 @@ a *coverage* problem. They were a *correctness* problem pointing the other way �
 not missing data, invented data. When a data quality metric looks bad, check
 whether the bad rows are real before building machinery to complete them.
 
+**Follow-up 2026-08-07 — the AZ "double the judges" cleanup + the root fix.**
+AZ carried 247 judge rows vs MN 122 / NH 37; the inflation was three extraction
+defects, not real judges: junk tokens (And/Appel/Opinion/State), cross-court
+citation leaks (Kozinski/9th, Dietzen/MN, Titone/NY — cited judges minted as AZ
+panelists), and OCR name-splits (Údall/Udaljl→Udall). `cleanup_az_judges`
+(one-shot, verified pk lists) actioned the high-confidence tier → 247→202.
+**The durable lesson is the discriminator for cross-court leaks: a
+`SURNAME, J., concurring` that sits INSIDE parentheses is a citation to another
+court; a bare one is this court's panel signoff.** `_CROSS_COURT_JUSTICES`
+only ever stoplisted SCOTUS surnames, so circuit/state judges leaked; the
+name-agnostic `_inside_open_paren` guard in `resolve_judges` now catches all of
+them at extraction time. It correctly KEEPS the real 19th-c. Arizona Territorial
+justices (Tweed/Sloan/Pinney — bare signoffs). Two method notes that bit here:
+the dry-run's evidence dump is what caught its own false positives (a naive
+"SURNAME, J., concurred" rule nearly culled the Territorial justices; dist-2
+"OCR" matching false-matched Fink→King, Arabian→Fabian where Arabian is a
+*California* justice — a leak); and `filter(case_number=X)` alone table-SCANS
+(case_number isn't the leading column of the `(court_id, case_number)` index) —
+narrow by court_id or lift max_statement_time when probing by docket.
+
 ## Prior session (2026-07-24 → 25)
 
 Long session — closed the last big per-state gaps, shipped extractive holdings,
