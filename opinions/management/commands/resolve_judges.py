@@ -159,6 +159,46 @@ _CROSS_COURT_JUSTICES = frozenset({
     "taft", "thomas", "vinson", "waite", "warren", "white", "whittaker",
 })
 
+# Non-name tokens the strict-caps name regexes can still capture as a
+# "surname" -- connectives, role words, procedural verbs, party/structural
+# words, plus a few confirmed junk captures (2026-08-07 AZ audit: "And",
+# "Appel", "Opinion", "State", ...). NONE collide with a real MN/NH/AZ judge
+# surname. Applied at every capture point in _extract_generic_byline.
+_NON_NAME_TOKENS = frozenset({
+    "a", "an", "and", "or", "the", "of", "to", "by", "for", "with", "in",
+    "which", "per", "also", "we", "did", "not", "sit", "at",
+    "judge", "judges", "justice", "justices", "chief", "vice", "presiding",
+    "associate", "curiam", "panel", "court", "courts", "opinion", "opinions",
+    "appeal", "appeals", "appel", "appellant", "appellee", "state",
+    "concurred", "concurring", "dissented", "dissenting", "joined", "join",
+    "authored", "delivered", "affirmed", "reversed",
+    "silent", "trade", "one", "hon", "ini",
+})
+
+
+def _valid_surname(tok: str) -> bool:
+    """Reject non-name tokens the strict-caps name regex can capture. A real
+    surname is >=3 letters, contains an alphabetic character, and is not a
+    known non-name word."""
+    t = tok.strip().lower().rstrip(",.;'")
+    return len(t) >= 3 and t not in _NON_NAME_TOKENS and any(c.isalpha() for c in t)
+
+
+def _inside_open_paren(text: str, pos: int, window: int = 150) -> bool:
+    """True if ``pos`` sits inside an unclosed ``(`` within the preceding
+    window -- i.e. the surname is part of a parenthetical citation
+    ``(Name, J., concurring)`` rather than a bare end-of-opinion panel
+    signoff. This is the reliable discriminator between a CITED out-of-court
+    judge and a real panelist: citations are parenthetical, signoffs are not.
+    It catches every cross-court leak generically (circuit judges, sister-state
+    justices), not just the SCOTUS surnames in _CROSS_COURT_JUSTICES -- which is
+    what let Kozinski/Dietzen/Titone/Tjoflat through into the AZ roster.
+    A closed ``(...)`` before ``pos`` (e.g. a "(1993)" year cite) does not
+    trip it: rfind of the later ``)`` wins."""
+    pre = text[max(0, pos - window):pos]
+    return pre.rfind("(") > pre.rfind(")")
+
+
 # AZ-style byline lives at the TOP of the opinion, not the bottom. Two
 # distinct conventions, both handled here:
 #
@@ -269,7 +309,11 @@ def _extract_generic_byline(raw_text: str) -> GenericByline:
     head = raw_text[:5000]
 
     def _last(name: str) -> str:
-        return name.strip().split()[-1].lower().rstrip(",.;'")
+        parts = name.strip().split()
+        if not parts:
+            return ""
+        tok = parts[-1]
+        return tok.lower().rstrip(",.;'") if _valid_surname(tok) else ""
 
     for block in _AZ_BYLINE_BLOCK_RE.finditer(head):
         raw_matches.append(block.group(0)[:200])
@@ -324,15 +368,23 @@ def _extract_generic_byline(raw_text: str) -> GenericByline:
     tail = raw_text[-8000:]
 
     for m in _PANEL_GROUP_RE.finditer(tail):
+        # A "SURNAME, J., concurring" that sits inside a parenthetical is a
+        # CITATION to another court's opinion ("...472 (Kozinski, J.,
+        # concurring)"), not this court's panel signoff. Real signoffs are
+        # bare sentences. This is name-agnostic, so it catches circuit and
+        # sister-state judges the SCOTUS-only _CROSS_COURT_JUSTICES stoplist
+        # never could -- the root cause of the 2026-08-07 AZ leak cull.
+        if _inside_open_paren(tail, m.start()):
+            continue
         raw_matches.append(m.group(0))
         chief = m.group("chief")
         names_blob = m.group("panel")
         role = m.group("role")
         # The inline Chief Justice (when present) is the signer/author of
         # the opinion -- record + remember separately from the panel. Skip it
-        # if it's a stoplisted cross-court justice (a cited "(Roberts, C.J.,
-        # ...)" must not become this opinion's author).
-        if chief and chief.lower() not in _CROSS_COURT_JUSTICES:
+        # if it's a non-name token or a stoplisted cross-court justice (a cited
+        # "(Roberts, C.J., ...)" must not become this opinion's author).
+        if chief and _valid_surname(chief) and chief.lower() not in _CROSS_COURT_JUSTICES:
             author_last = chief.lower()
         # Split on " and " and "," to enumerate panel surnames. The
         # _SURNAME regex requires uppercase + 3+ letters, so role
@@ -346,6 +398,7 @@ def _extract_generic_byline(raw_text: str) -> GenericByline:
         names = [
             n.strip() for n in names
             if n.strip() and "." not in n
+            and _valid_surname(n)
             and n.strip().lower() not in _CROSS_COURT_JUSTICES
         ]
         # Fallback author detection when no explicit chief prefix was
@@ -365,8 +418,13 @@ def _extract_generic_byline(raw_text: str) -> GenericByline:
     # single footer, but be safe).
     seen_dissenters: set[str] = set()
     for m in _DISSENT_FOOTER_RE.finditer(tail):
+        # Same parenthetical guard: "(Bassett, J., dissented)" in a citation
+        # is not this opinion's dissenter.
+        if _inside_open_paren(tail, m.start()):
+            continue
         ln = (m.group("name") or "").lower()
-        if ln and ln not in seen_dissenters and ln not in _CROSS_COURT_JUSTICES:
+        if (ln and _valid_surname(ln) and ln not in seen_dissenters
+                and ln not in _CROSS_COURT_JUSTICES):
             seen_dissenters.add(ln)
             dissenter_lasts.append(ln)
             raw_matches.append(m.group(0))
