@@ -21,6 +21,23 @@ matches; FLP replied — bridged to #1115, bundle staged at
 `/home/private/handover/`, **WAITING, no nudge before ~2 weeks**; onioncore
 design sweep — 30 rules, one accent grammar site-wide.
 
+**FOUR BROKEN PAGE TYPES FOUND + FIXED 2026-08-06b — none of them by a
+monitor.** A search-concurrency re-measurement (which came back clean) tripped
+one crawler 500, and pulling that thread found: `cited-by` hard-500ing on
+**1,844 pages for 12 days** (bare `.get()` on a docket, which isn't unique
+after appeal — `_pick_opinion` existed since July but this view shipped later
+and never got it); the same view dragging **1.4MB of `raw_text` per page** it
+never rendered (intermittent errno 2013); **every state's sitemap having a
+500ing chunk** — NH's ONLY chunk, AZ's chunk 2, MN's chunk 3, all ~27s past the
+25s cap, because one `release_date` column for `<lastmod>` knocked the query off
+the covering index (27.0s → 0.08s once dropped; `<lastmod>` was `release_date`,
+which never changes, so it signalled nothing); and **117 AZ dockets containing a
+slash** (`CV-24-0222-AP/EL`) that `<str:>` could not reverse, 500ing whole judge
+pages. All fixed, verified, and now watched by the new 5xx monitor (Tier 4).
+**The lesson worth keeping: all four were invisible to every existing check,
+survived a full site audit, and were found only by reading the access log.
+Data-freshness monitoring cannot see a page that doesn't render.**
+
 Status baseline (pulled live 2026-08-06, post-AZ-sweep): **128,150 opinions**
 (MN 69,292 / AZ 38,135 / NH 20,723). Citation graph **1,462,119 edges** —
 605,353 from CourtListener's bulk map plus **856,766 text-extracted**
@@ -543,17 +560,41 @@ must start with `/bin/sh`. Path alone is not enough.
 
 ## Tier 4 — throughput & hardening (lower priority)
 
-- [ ] **★ SEARCH UNDER CONCURRENCY — the #1 launch risk, still untouched.**
-  Measured 2026-08-02 and unchanged since: uncontended search is fine (MN 2–3s,
-  NH 1–5s, AZ 1–2s), but with just **TWO** concurrent search sessions one query
-  hit **183s**, reproduced on both AZ and MN, with sibling connections dying on
-  errno **188** and **1969** — the documented poison cascade. One gunicorn
-  worker × 8 threads. A launch moment (HN / CourtListener traffic) means many
-  simultaneous common-term searches, which is exactly this shape. Everything
-  else on this list is data quality; this is the one that takes the site down
-  in front of an audience. Nothing safe to do in five minutes — needs real
-  capacity work (worker count vs the NFSN RAM ceiling, or bounding the
-  search path harder).
+- [x] **★ SEARCH UNDER CONCURRENCY — RE-MEASURED 2026-08-06, NO LONGER A RISK.**
+  The 183s figure was pre-slim-table and is stale. Re-measured on prod under
+  live crawler load, distinct terms per request (the query cache returns a
+  repeated statement in 0.00s), real browser UA (a bare curl UA is classed as
+  a crawler and SKIPS the semantic block — the expensive half):
+
+  | load | worst request | 5xx |
+  |---|---|---|
+  | solo | MN 6.2s · AZ 4.0s · NH 1.8s | 0 |
+  | 2 concurrent (the 2026-08-02 shape) | 1.9s | 0 |
+  | 6 concurrent | 5.9s | 0 |
+  | 8 concurrent, all semantic path | 5.8s | 0 |
+  | 3 sustained waves of 6 | 5.1s | 0 |
+
+  **Concurrency is now effectively free** — 8 simultaneous searches cost no
+  more than one solo search (5.8s vs 6.2s). No errno 188/1969, and no
+  degradation across sustained waves (wave 3 == wave 1, so nothing
+  accumulates). The slim embedding table did more than fix solo latency: each
+  scan got cheap enough that scans interleave across the 8 threads instead of
+  one dead 12s scan starving the rest.
+  **Limit of the measurement, stated honestly:** tested to 8 concurrent, which
+  IS the thread count. Queueing behavior past 8 was not measured. If a launch
+  moment is expected, measure 16/32 before assuming it scales further.
+
+- [x] **5xx MONITORING — BUILT 2026-08-06 (`scripts/error_rate_check.sh`).**
+  Called from `freshness_check.sh`, so it rides the already-registered
+  `freshnesscheck` task — deliberately NOT a new task, since two monitors here
+  have already sat silently broken behind a member-panel step. Alerts on an
+  absolute 5xx count OR a rate; both thresholds are load-bearing, because
+  cited-by was ~0.3% of traffic and a rate-only rule would have stayed silent
+  through the whole 12-day outage. Fails LOUD on an unreadable log or a
+  zero-parse — a blind monitor reporting "ok" is worse than none. Bounded by
+  `tail` so the ~40s CPU cull can't kill it mid-scan and leave a false pass.
+  **This existed because freshness_check answers "is data arriving?" and
+  cannot see a page type that 500s on every request.**
 
 - [ ] **Triage the ~50K tag-review queue** via the pile-picker admin. Onion.
   **Note:** the ~5,900 opinions backfilled 2026-08-04 embed on the overnight
