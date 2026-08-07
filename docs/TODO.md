@@ -540,23 +540,50 @@ must start with `/bin/sh`. Path alone is not enough.
   reporter cites + 605K-edge citation graph. Reserve `ingest_court` for the
   incremental cron. If a specific historical window is known-thin, a *small*
   `--limit` run with long spacing is fine; blind wide sweeps are not.
-- [ ] **Repair the 14,436 synthetic `cl-<id>` case numbers** (MN 6,448 /
-  NH 7,848 / AZ 140). Unreachable by the only identifier a lawyer has. **Not
-  solvable by string normalization** — the digits are CourtListener's cluster
-  ids and no docket is recoverable from the row, so this is the one population
-  `normalize_case_numbers` deliberately leaves alone. Needs `fetch_docket()`
-  against CL's API, keyed on `courtlistener_id`, written IN PLACE
-  (`update_or_create` would duplicate). Mind the rate limit — same token as the
-  weekly cron. Medium.
+- [x] **cl-`<id>` case numbers — RESOLVED 2026-08-06b, and the premise was
+  wrong.** The planned `fetch_docket()` repair would have burned ~14,400 API
+  calls for **zero** recoveries: joining all 14,436 rows against the local CL
+  bulk subsets (offline, zero API) showed every cluster present and **14,416
+  with an EMPTY docket_number in CL's own dockets table**; a 3-call live-API
+  probe confirmed upstream is still empty today. CL genuinely has no docket
+  for these. What actually happened instead:
+  - **AZ: 24 repaired from OUR OWN text** — modern opinions whose caption
+    carries the docket (`No. CV-08-0225-PR`). Extraction anchored to the first
+    2,500 chars, court/docket-shape alignment guard, collision-checked,
+    verified live. 36 more extracted a docket another row already holds —
+    true duplicate pairs, handed to `merge_duplicate_opinions`.
+  - **MN + NH: nothing to repair, and no reachability hole.** Their cl- rows
+    are 1860s–1930s reporter-OCR opinions — no caption, no docket, in text or
+    upstream. But **MN 100% / NH 99% of them carry a `reporter_cite`**, which
+    IS the identifier a lawyer pastes for a 19th-century case. The cl- URL is
+    cosmetic there, not a gap.
+  - Residual: ~80 AZ misses (62 territorial-era + bar-discipline/OCR-mangled
+    captions) and the ~20 real `Cl-##-####` MN dockets the old count
+    mistakenly included (case-insensitive LIKE). Nothing further to do.
 
-- [ ] **Merge the 1,478 duplicate-opinion pairs** — phase 2 of the case-number
-  work, found by the normalization dry run. Both spellings of one docket exist
-  as separate rows. Classified on 2026-08-04: **961 "same date, different
-  length" + 13 near-certain → probable duplicates; 508 have DIFFERENT dates and
-  are two REAL opinions on one docket** (opinion + amended opinion, or opinion
-  + order) and **must never be fused** — a blanket merge would destroy 508 real
-  documents. Needs the `merge_duplicate_judges` discipline: keep the richer
-  row, carry editorial metadata forward, never merge on ambiguity. Medium.
+- [x] **Duplicate-opinion pairs — MERGED 2026-08-06b: 605 pairs.** New
+  `merge_duplicate_opinions` command (dry-run default, --apply, --limit,
+  --pairs-file), built with the `merge_duplicate_judges` discipline. Three
+  gates — same court, same release_date, token-containment title match — and
+  every refusal is reported, never guessed. 581 canonical-collision pairs +
+  24 AZ cl-caption pairs merged; **4,465+ inbound citation edges re-pointed**
+  (a bare delete would have cascaded them away), scalars fill empty survivor
+  fields only. Verified after: corpus exactly −605 (127,563), **zero orphaned
+  FKs across all seven referencing tables, zero self-edges, zero duplicate
+  (court, case_number) keys**, survivors render 200.
+  **Remaining 906 + 12 are deliberate refusals, not backlog debt:** the
+  different-date pairs are two real documents on one docket (opinion +
+  amended/order — never merge), and the title-conflict pairs include
+  same-serial rows that are *genuinely different cases*. One reviewable
+  sliver: ~7 AZ cl- pairs skipped on abbreviation-artifact titles (`Adot` vs
+  `DEPT. OF TRANSP.`) — same case, needs 2 minutes of human eyes; rerun with
+  `--pairs-file` after confirming.
+  **Two shared-DB traps hit en route, both now in the command:** a DELETE on
+  the slim embedding table must address the full clustered PK (no secondary
+  index → a bare opinion_id predicate locks all 128K rows, errno 1206); and
+  chunk drives must expect intermittent 2013 drops (per-pair transactions
+  make a died chunk cleanly resumable — chunk 5 picked up chunk 4's remainder
+  exactly).
 
 ## Tier 4 — throughput & hardening (lower priority)
 
@@ -601,9 +628,19 @@ must start with `/bin/sh`. Path alone is not enough.
   tick (`.embed_state` now = MN), and `suggest_tags` must WAIT for that — new
   rows carry a placeholder zero vector until embedded, so scoring them earlier
   produces garbage.
-- [ ] **Harden the tag-review heavy slice** — self-bind slice/count queries
-  with `SET STATEMENT max_statement_time` + catch-and-close (poison-cascade
-  defense), mirroring `semantic.py`.
+- [x] **Tag-review heavy slice — HARDENED 2026-08-06b, and the bound caught a
+  real regression on day one.** `_slice_bound()` narrows the session cap to
+  12s around the heavy block (ORM can't use semantic.py's `SET STATEMENT ...
+  FOR` form), force-evaluates page rows inside it (the template would
+  otherwise evaluate them lazily, outside the bound), and on failure closes
+  the poisoned connection and renders the pile picker with a notice instead
+  of 500ing. Bulk accept/reject same treatment; retry-safe by construction.
+  The first test tripped the degradation — and profiling showed it wasn't
+  contention: `_resolve_state_opinions` had regressed to **20.6s** (optimizer
+  walking the clustered PK, the July "~300ms" note predates the corpus
+  growth). Fixed with FORCE INDEX on the (court_id, case_number) unique index
+  — the same pathology and cure as the sitemap chunks. Heaviest slice
+  (sixth-amendment × AZ) now renders fully inside the bound.
 - [x] **Fix the broken per-page Twitter-card meta.** ✅ DONE 2026-07-25.
   `twitter:title`/`description` used the no-op `{{ self.og_title }}` Jinja
   idiom, so every X card showed "DocketDrift". Fixed by dropping the broken

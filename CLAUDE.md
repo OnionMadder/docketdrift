@@ -1710,6 +1710,30 @@ is protected by the zero-vector default + the `embedding_pending` search gate.
 256-dim embedding for ~4× cheaper scans — verify voyage-law-2 quality first,
 it's not documented as Matryoshka).
 
+### One non-covered column beside a court_id filter = 2.75GB clustered walk
+
+Bit TWICE on 2026-08-06b, in different code, same mechanism. A query like
+`WHERE court_id IN (...)` selecting ONLY columns carried by the
+`(court_id, case_number)` unique index (id rides along implicitly) is
+index-only — "Using index", ~0.1s. Add ONE column that index doesn't carry
+(`release_date`, anything) and the optimizer abandons it for a PRIMARY-key
+walk, dragging the 2.75GB clustered rows (raw_text and all) through the 8MB
+buffer pool to filter by court. Measured: the sitemap chunks 27s → 0.08s
+(dropped `release_date`/`<lastmod>` from the SELECT), and tag-review's
+`_resolve_state_opinions` 20.6s → fast (raw SQL + FORCE INDEX; per-court
+equality, not IN). Two corollaries:
+
+- **A query that was fast can regress silently as the corpus grows** — the
+  July "~300ms even for AZ" measurement was true then and 20.6s now; the
+  plan flipped, not the code. Re-measure before trusting old latency notes.
+- The smallest state pays the most on shared-table walks (NH's only sitemap
+  chunk was the slowest), same as the FULLTEXT candidate mechanism below.
+
+Related trap, same day: the slim embedding table has deliberately NO
+secondary index, so any `WHERE opinion_id = X` there scans — and in a
+DELETE, **locks** — all 128K rows (errno 1206, shared lock table). Always
+address its full clustered PK `(court_id, release_date, opinion_id)`.
+
 ### FULLTEXT search on a common term must be CAPPED, never unbounded
 
 InnoDB FULLTEXT scores EVERY matching document. A common term ("negligence"
