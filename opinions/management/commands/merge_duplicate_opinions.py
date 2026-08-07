@@ -266,8 +266,21 @@ class Command(BaseCommand):
         )
         parser.add_argument("--apply", action="store_true",
                             help="Commit. Omit for a dry-run preview.")
+        parser.add_argument(
+            "--trust-titles", action="store_true",
+            help="Pairs-file only: waive the title-compatibility gate for "
+                 "pairs a human has already verified (e.g. by body-text "
+                 "n-gram comparison -- caption styles like 'ica/masterson' "
+                 "vs \"INDUSTRIAL COM'N\" defeat token matching on the same "
+                 "case). The same-court and same-date gates still apply and "
+                 "cannot be waived.",
+        )
 
-    def handle(self, *args, state, pairs_file, limit, apply, **options):
+    def handle(self, *args, state, pairs_file, limit, apply, trust_titles, **options):
+        if trust_titles and not pairs_file:
+            self.stderr.write("--trust-titles requires --pairs-file: the waiver "
+                              "exists for human-reviewed pair lists only.")
+            return
         if connection.vendor == "mysql":
             with connection.cursor() as cur:
                 cur.execute("SET SESSION max_statement_time = 0")
@@ -289,7 +302,7 @@ class Command(BaseCommand):
                 self.stdout.write(f"--limit {limit} reached; stopping this chunk.")
                 break
 
-            reason = self._skip_reason(loser, survivor)
+            reason = self._skip_reason(loser, survivor, trust_titles)
             if reason:
                 skipped += 1
                 self.stdout.write(
@@ -319,13 +332,13 @@ class Command(BaseCommand):
         ))
 
     # ------------------------------------------------------------------
-    def _skip_reason(self, loser, survivor):
+    def _skip_reason(self, loser, survivor, trust_titles=False):
         if loser.court_id != survivor.court_id:
             return "different courts"
         if loser.release_date != survivor.release_date:
             return (f"different dates ({loser.release_date} vs {survivor.release_date}) "
                     "— two real documents on one docket, never merged")
-        if not titles_compatible(loser.title, survivor.title):
+        if not trust_titles and not titles_compatible(loser.title, survivor.title):
             return f"titles conflict ({loser.title[:40]!r} vs {survivor.title[:40]!r})"
         return None
 
