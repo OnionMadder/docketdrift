@@ -233,12 +233,17 @@ def merge_opinion(loser: Opinion, survivor: Opinion, apply: bool) -> dict:
         if changed:
             survivor.save(update_fields=changed)
         # slim embedding table has no Django model -- raw SQL, and MariaDB-only
-        # (local SQLite dev has no such table).
+        # (local SQLite dev has no such table). MUST address the full
+        # clustered PK (court_id, release_date, opinion_id): the table
+        # deliberately has no secondary index, so a bare opinion_id predicate
+        # scans -- and in a DELETE, LOCKS -- all 128K rows, overflowing the
+        # shared server's lock table (errno 1206, hit on the first apply run).
         if connection.vendor == "mysql":
             with connection.cursor() as cur:
                 cur.execute(
-                    "DELETE FROM opinions_opinionembedding WHERE opinion_id = %s",
-                    [loser.pk],
+                    "DELETE FROM opinions_opinionembedding "
+                    "WHERE court_id = %s AND release_date = %s AND opinion_id = %s",
+                    [loser.court_id, loser.release_date, loser.pk],
                 )
         loser.delete()
 
