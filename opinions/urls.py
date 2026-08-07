@@ -16,9 +16,21 @@ urlpatterns = [
     path("report-error/thanks/", views.report_error_thanks, name="report_error_thanks"),
     path("request-state/", views.request_state, name="request_state"),
     path("request-state/thanks/", views.request_state_thanks, name="request_state_thanks"),
-    path("opinion/<str:case_number>/pdf/", views.opinion_pdf, name="opinion_pdf"),
-    path("opinion/<str:case_number>/cited-by/", views.opinion_cited_by, name="opinion_cited_by"),
-    path("opinion/<str:case_number>/", views.opinion_detail, name="detail"),
+    # <path:> not <str:>, because 117 real AZ dockets contain a slash
+    # ("CV-24-0222-AP/EL" -- consolidated election appeals). The <str:>
+    # converter is [^/]+, so it could not REVERSE those: every page rendering
+    # a link to one raised NoReverseMatch and returned a hard 500. That took
+    # out whole judge pages (Hurwitz, Montgomery) and any opinion citing one.
+    # Those opinions also had no working URL at all -- percent-encoding the
+    # slash doesn't help, since WSGI decodes %2F back to "/" before routing.
+    #
+    # Order matters and is load-bearing: <path:> is greedy (".+"), so the two
+    # suffixed routes MUST stay above the bare detail route. Each is anchored
+    # by its trailing literal, so "/opinion/A/B/cited-by/" resolves to
+    # case_number="A/B" rather than being swallowed by detail.
+    path("opinion/<path:case_number>/pdf/", views.opinion_pdf, name="opinion_pdf"),
+    path("opinion/<path:case_number>/cited-by/", views.opinion_cited_by, name="opinion_cited_by"),
+    path("opinion/<path:case_number>/", views.opinion_detail, name="detail"),
     path("current-judges/", views.current_judges, name="current_judges"),
     path("judge/<slug:slug>/", views.judge_detail, name="judge_detail"),
     path("compare/judges/", views.judge_compare, name="judge_compare"),

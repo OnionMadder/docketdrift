@@ -2327,10 +2327,28 @@ def sitemap_opinions(request, chunk: int):
     # multi-second query at the very tail of the corpus.
     court_ids = _state_court_ids(state)
     offset = (chunk - 1) * SITEMAP_CHUNK_SIZE
+    # Select ONLY case_number, ordered by (court_id, case_number), so this is
+    # served entirely from the opinions_opinion_court_id_case_number_*_uniq
+    # index -- "Using index", zero reads of the 2.75GB clustered table.
+    #
+    # It used to also select release_date for <lastmod>. That single extra
+    # column is not in any index covering court_id, so the optimizer fell back
+    # to walking the PRIMARY key and filtering by court -- dragging the fat
+    # clustered rows. Measured: NH 27.0s, AZ chunk 2 27.0s, MN chunk 3 27.7s,
+    # ALL past the 25s max_statement_time, so every one of those chunks
+    # returned a hard 500 and those URLs reached no crawler at all. Dropping
+    # the column: 27.0s -> 0.08s (NH), 4.66s -> 0.12s (MN).
+    #
+    # <lastmod> is optional, and here it was release_date -- which never
+    # changes after ingest, so it gave crawlers no freshness signal to act on.
+    # A working sitemap without it strictly beats a 500ing one with it.
+    # Chunk size is unchanged, and (court_id, case_number) is UNIQUE, so the
+    # offset slicing is stable -- no row can be dropped or duplicated between
+    # chunks the way a non-unique sort key could allow.
     rows = list(
         Opinion.objects.filter(court_id__in=court_ids)
-        .order_by("id")
-        .values_list("case_number", "release_date")[offset : offset + SITEMAP_CHUNK_SIZE]
+        .order_by("court_id", "case_number")
+        .values_list("case_number", flat=True)[offset : offset + SITEMAP_CHUNK_SIZE]
     )
     if not rows:
         raise Http404("Sitemap chunk empty")
@@ -2340,16 +2358,19 @@ def sitemap_opinions(request, chunk: int):
     # invalid URL that crawlers can't fetch -- ~20K AZ opinions were
     # uncrawlable. quote() keeps the unreserved chars (letters, digits, - . _
     # ~) and turns spaces into %20, matching how the opinion view resolves the
-    # docket. safe="" so a stray "/" in a docket can't split the path.
+    # docket. See the safe="/" note at the quote() call below for why a
+    # docket's slash is deliberately NOT encoded.
     from urllib.parse import quote
 
     lines = _sitemap_xml_header()
-    for case_number, release_date in rows:
-        loc = f"{host}/opinion/{quote(case_number, safe='')}/"
+    for case_number in rows:
+        # safe="/" so a docket's slash stays a real path separator. The route
+        # is <path:case_number>, which matches across "/", and %2F would be
+        # decoded back to "/" by WSGI before routing anyway -- encoding it
+        # produced a URL that 404'd.
+        loc = f"{host}/opinion/{quote(case_number, safe='/')}/"
         lines.append(f"  <url>")
         lines.append(f"    <loc>{loc}</loc>")
-        if release_date:
-            lines.append(f"    <lastmod>{release_date.isoformat()}</lastmod>")
         lines.append(f"  </url>")
     lines.extend(_sitemap_xml_footer())
     return HttpResponse("\n".join(lines), content_type="application/xml; charset=utf-8")
