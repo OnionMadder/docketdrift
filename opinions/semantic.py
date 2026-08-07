@@ -269,19 +269,35 @@ def similar_to_opinion(opinion, limit: int = 5, with_scores: bool = False):
     # Candidates come from the SLIM table (see search_similar_opinions for
     # the measured rationale); the SOURCE vector still comes from the fat
     # table by primary key (one row), with its embedding_pending guard so a
-    # placeholder zero-vector never becomes the query point. The court
-    # subqueries run against the tiny opinions_court table.
+    # placeholder zero-vector never becomes the query point.
+    #
+    # Court ids are resolved in PYTHON and inlined as literals -- NEVER via
+    # an IN-subquery/join on opinions_court. EXPLAIN (2026-08-07): with the
+    # join, the optimizer can only ref-access the slim PK on court_id
+    # (key_len 8) and walks EVERY row of the court across all years,
+    # post-filtering dates -- MN blew the 12s bound on every cold page. With
+    # literals it range-scans (court_id, release_date) (key_len 11): the
+    # same window is ~0.8s. Same rule as the "pre-resolve court IDs" gotcha
+    # in CLAUDE.md, and the same shape search_similar_opinions already uses.
+    from opinions.models import Court  # local: this module keeps model imports lazy
+
+    court_ids = list(
+        Court.objects.filter(state_id=opinion.court.state_id)
+        .values_list("id", flat=True)
+    )
+    if not court_ids:
+        return []
+    placeholders = ",".join(["%s"] * len(court_ids))
     sql = [
         "SELECT e.opinion_id,",
         "       VEC_DISTANCE_COSINE(e.embedding, src.embedding) AS dist",
         "FROM opinions_opinionembedding e",
         "JOIN opinions_opinion src",
         "  ON src.id = %s AND src.embedding_pending = 0",
-        "WHERE e.court_id IN (SELECT id FROM opinions_court WHERE state_id =",
-        "        (SELECT state_id FROM opinions_court WHERE id = %s))",
+        "WHERE e.court_id IN (" + placeholders + ")",
         "  AND e.opinion_id != %s",
     ]
-    params: list = [opinion.id, opinion.court_id, opinion.id]
+    params: list = [opinion.id, *court_ids, opinion.id]
     if date_cutoff is not None:
         sql.append("  AND e.release_date BETWEEN %s AND %s")
         params.extend([date_cutoff, date_ceiling])
