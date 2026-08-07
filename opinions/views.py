@@ -1002,10 +1002,18 @@ def opinion_cited_by(request, case_number):
     oqs = Opinion.objects.select_related("court", "court__state")
     if state is not None:
         oqs = oqs.filter(court__state=state)
-    try:
-        opinion = oqs.get(case_number=case_number)
-    except Opinion.DoesNotExist:
+    # Resolve exactly like opinion_detail. A bare .get(case_number=...) was
+    # wrong twice over: a docket follows a case from the Court of Appeals to
+    # the Supreme Court, so case_number is NOT unique (1,844 shared dockets
+    # corpus-wide) and .get() raised MultipleObjectsReturned -> a hard 500 on
+    # every one of those pages; and an exact match alone 404s the
+    # pre-normalization spellings ('a230380') that older indexed links still
+    # carry. _match_opinions + _pick_opinion fix both, and give this view the
+    # same ?court=appeals|supreme disambiguation the detail page has.
+    matches = _match_opinions(oqs, case_number)
+    if not matches:
         raise Http404("Opinion not found")
+    opinion = _pick_opinion(matches, request.GET.get("court"))
 
     citing = (
         opinion.citations_received
