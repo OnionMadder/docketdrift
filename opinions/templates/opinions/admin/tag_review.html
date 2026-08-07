@@ -386,6 +386,20 @@
   </div>
 {% endif %}
 
+{% if slice_error or bulk_act == 'error' %}
+  <div class="tr-flash tr-flash-reject">
+    {% if bulk_act == 'error' %}
+      That bulk action timed out under database load. It is safe to run
+      again &mdash; it only ever touches still-pending rows, so a retry picks
+      up exactly where it stopped. Or narrow the slice first (pick a tag,
+      add a confidence floor).
+    {% else %}
+      That slice timed out under database load. Nothing is broken &mdash; try
+      again in a moment, or narrow it (one tag, one state, a confidence floor).
+    {% endif %}
+  </div>
+{% endif %}
+
 <div class="tr-stats">
   <div class="tr-stat">
     <strong>{{ status_counts.pending|default:0 }}</strong>

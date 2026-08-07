@@ -29,10 +29,12 @@ a second login.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from urllib.parse import urlencode
 
 from django.contrib.admin.views.decorators import staff_member_required
 from django.core.paginator import Paginator
+from django.db import connection
 from django.db.models import Count, Q
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseNotFound
 from django.shortcuts import redirect, render
@@ -44,6 +46,40 @@ from opinions.models import Court, Opinion, State, Tag, TagSuggestion
 
 
 REVIEW_PAGE_SIZE = 25
+
+# The heavy tag-review slice queries (state-id resolution against the 2.75GB
+# opinions table + big opinion_id__in scans) self-bound to this instead of
+# riding the session-wide 25s cap. Mirrors semantic.VECTOR_QUERY_TIMEOUT_S:
+# the admin shares the single gunicorn worker with the public site, so a
+# stalled slice under DB contention must degrade quickly, not pin a thread
+# for the full 25s and risk the poison cascade.
+SLICE_TIMEOUT_S = 12
+
+
+@contextmanager
+def _slice_bound(seconds=SLICE_TIMEOUT_S):
+    """Tighten max_statement_time around the heavy slice queries.
+
+    ORM querysets can't use semantic.py's ``SET STATEMENT ... FOR`` per-query
+    form, so this narrows the SESSION cap for the block and restores the 25s
+    settings.py default afterward. Callers MUST force-evaluate lazy querysets
+    inside the block -- a queryset that first evaluates during template
+    rendering would run OUTSIDE the bound.
+
+    On failure the caller is expected to ``connection.close()`` (drop the
+    possibly-poisoned pooled connection; the restore is skipped -- a fresh
+    connection re-applies the init_command cap).
+    """
+    if connection.vendor != "mysql":
+        yield
+        return
+    with connection.cursor() as cur:
+        cur.execute("SET SESSION max_statement_time = %s", [seconds])
+    yield
+    # Only reached on success; on exception the connection gets closed by the
+    # caller, so the next request's connection starts from init_command's 25.
+    with connection.cursor() as cur:
+        cur.execute("SET SESSION max_statement_time = 25")
 
 
 def _suggestion_filters(request_data):
@@ -149,27 +185,47 @@ def tag_review(request):
     # with or without a state -- stay fast.
     page_obj = None
     slice_active = active_tag
+    slice_error = False
     slice_total = slice_reviewed = slice_pending = slice_pct = 0
     if active_tag:
-        opinion_ids = _resolve_state_opinions(filters["state"])
-        qs = _apply_suggestion_filters(
-            TagSuggestion.objects
-            .filter(status=status)
-            .select_related("opinion", "opinion__court", "tag")
-            .defer("opinion__raw_text", "opinion__html_content")
-            .order_by("-confidence"),
-            filters, opinion_ids,
-        )
-        page_obj = Paginator(qs, REVIEW_PAGE_SIZE).get_page(request.GET.get("page", 1))
-        slice_total = _apply_suggestion_filters(
-            TagSuggestion.objects.all(), filters, opinion_ids
-        ).count()
-        slice_pending = _apply_suggestion_filters(
-            TagSuggestion.objects.filter(status=TagSuggestion.Status.PENDING),
-            filters, opinion_ids,
-        ).count()
-        slice_reviewed = slice_total - slice_pending
-        slice_pct = round(100 * slice_reviewed / slice_total) if slice_total else 0
+        # The heavy slice work self-bounds to SLICE_TIMEOUT_S and degrades to
+        # the picker + a notice on failure, instead of stalling the shared
+        # worker for the full 25s and risking the pooled-connection poison
+        # cascade (a KILLed statement leaves the connection interrupted; the
+        # NEXT request 500s -- see CLAUDE.md). Catch Exception, not just
+        # DatabaseError: the KILL often lands during row fetch, surfacing as
+        # a raw pymysql error outside Django's translation layer.
+        try:
+            with _slice_bound():
+                opinion_ids = _resolve_state_opinions(filters["state"])
+                qs = _apply_suggestion_filters(
+                    TagSuggestion.objects
+                    .filter(status=status)
+                    .select_related("opinion", "opinion__court", "tag")
+                    .defer("opinion__raw_text", "opinion__html_content")
+                    .order_by("-confidence"),
+                    filters, opinion_ids,
+                )
+                page_obj = Paginator(qs, REVIEW_PAGE_SIZE).get_page(
+                    request.GET.get("page", 1)
+                )
+                # Force evaluation INSIDE the bound -- the template would
+                # otherwise evaluate this lazily, outside it.
+                page_obj.object_list = list(page_obj.object_list)
+                slice_total = _apply_suggestion_filters(
+                    TagSuggestion.objects.all(), filters, opinion_ids
+                ).count()
+                slice_pending = _apply_suggestion_filters(
+                    TagSuggestion.objects.filter(status=TagSuggestion.Status.PENDING),
+                    filters, opinion_ids,
+                ).count()
+            slice_reviewed = slice_total - slice_pending
+            slice_pct = round(100 * slice_reviewed / slice_total) if slice_total else 0
+        except Exception:
+            connection.close()  # drop the possibly-poisoned pooled connection
+            page_obj = None
+            slice_active = False
+            slice_error = True
 
     return render(request, "opinions/admin/tag_review.html", {
         "title": "Tag suggestions review",
@@ -187,6 +243,7 @@ def tag_review(request):
         "active_status": status,
         "active_min_confidence": filters["min_confidence"],
         "slice_active": slice_active,
+        "slice_error": slice_error,
         "slice_total": slice_total,
         "slice_reviewed": slice_reviewed,
         "slice_pending": slice_pending,
@@ -223,36 +280,50 @@ def tag_review_bulk(request):
             "apply the entire low-confidence pile in one click."
         )
 
-    opinion_ids = _resolve_state_opinions(filters["state"])
-
-    qs = _apply_suggestion_filters(
-        TagSuggestion.objects.filter(status=TagSuggestion.Status.PENDING),
-        filters, opinion_ids,
-    )
+    if action not in ("accept", "reject"):
+        return HttpResponseBadRequest("Unknown action")
 
     now = timezone.now()
     user = request.user.username
 
-    if action == "accept":
-        # Attach the tags in bulk (one INSERT ... ON DUPLICATE KEY via
-        # ignore_conflicts) instead of N per-row .add() calls, then flip the
-        # suggestion rows to ACCEPTED. Both target status=PENDING, so the
-        # values_list snapshot and the update hit the same rows.
-        pairs = list(qs.values_list("opinion_id", "tag_id"))
-        through = Opinion.tags.through
-        through.objects.bulk_create(
-            [through(opinion_id=o, tag_id=t) for o, t in pairs],
-            ignore_conflicts=True,
-        )
-        n = qs.update(
-            status=TagSuggestion.Status.ACCEPTED, reviewed_at=now, reviewed_by=user
-        )
-    elif action == "reject":
-        n = qs.update(
-            status=TagSuggestion.Status.REJECTED, reviewed_at=now, reviewed_by=user
-        )
-    else:
-        return HttpResponseBadRequest("Unknown action")
+    # Same self-bound + degrade discipline as the list view. Every step here
+    # is idempotent-or-safe on retry: the through-table insert ignores
+    # conflicts, and both updates only touch rows still PENDING -- so a run
+    # that dies partway leaves a smaller pending slice, never a wrong one.
+    try:
+        with _slice_bound():
+            opinion_ids = _resolve_state_opinions(filters["state"])
+            qs = _apply_suggestion_filters(
+                TagSuggestion.objects.filter(status=TagSuggestion.Status.PENDING),
+                filters, opinion_ids,
+            )
+            if action == "accept":
+                # Attach the tags in bulk (one INSERT ... ON DUPLICATE KEY via
+                # ignore_conflicts) instead of N per-row .add() calls, then flip
+                # the suggestion rows to ACCEPTED. Both target status=PENDING, so
+                # the values_list snapshot and the update hit the same rows.
+                pairs = list(qs.values_list("opinion_id", "tag_id"))
+                through = Opinion.tags.through
+                through.objects.bulk_create(
+                    [through(opinion_id=o, tag_id=t) for o, t in pairs],
+                    ignore_conflicts=True,
+                )
+                n = qs.update(
+                    status=TagSuggestion.Status.ACCEPTED,
+                    reviewed_at=now, reviewed_by=user,
+                )
+            else:
+                n = qs.update(
+                    status=TagSuggestion.Status.REJECTED,
+                    reviewed_at=now, reviewed_by=user,
+                )
+    except Exception:
+        connection.close()
+        params = {"status": "pending", "act": "error"}
+        for key in ("tag", "category", "state", "min_confidence"):
+            if filters[key]:
+                params[key] = filters[key]
+        return redirect(f"{reverse('admin_tag_review')}?{urlencode(params)}")
 
     # Back to the same filtered slice with a flash count.
     params = {"status": "pending", "done": n, "act": action}
