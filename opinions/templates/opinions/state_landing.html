@@ -89,12 +89,29 @@
     <span class="status-pill status-pill--live">Live &middot; {{ state.name }}</span>
   {% endif %}
   <h1>{{ state.name }}</h1>
-  <p class="lede">Public-records analysis of {{ state.name }} appellate courts.</p>
+  <p class="lede">Free, searchable {{ state.name }} case law &mdash; no account, no paywall.</p>
   {% if date_range.first %}
     <p class="lede-secondary">
-      Opinions of the {{ state.name }} Supreme Court and Court of Appeals, {{ date_range.first|date:"Y" }}&ndash;present.
+      Opinions of the {{ state.name }} Supreme Court and Court of Appeals, {{ date_range.first|date:"Y" }}&ndash;present. A public-records project.
     </p>
   {% endif %}
+</div>
+
+<div class="glossy-frame landing-values-frame">
+  <ul class="landing-values">
+    <li class="landing-value">
+      <strong>Free &amp; open</strong>
+      <span>Every opinion, free to read and search. No account, no paywall, no charge per search.</span>
+    </li>
+    <li class="landing-value">
+      <strong>Private by design</strong>
+      <span>We never store your searches &mdash; there is no research history to subpoena, sell, or leak.</span>
+    </li>
+    <li class="landing-value">
+      <strong>The court's own words</strong>
+      <span>Holdings and quotes come straight from the opinion, verbatim. We never paraphrase or generate legal text.</span>
+    </li>
+  </ul>
 </div>
 
 {% if coverage_note %}
@@ -173,11 +190,18 @@
 {% endif %}
 
 <div class="glossy-frame">
-  <h2>Browse the {{ state.name }} corpus</h2>
+  <h2>What you can do here</h2>
+  <ul class="landing-capabilities">
+    <li><strong>Search by keyword or by concept.</strong> Full-text search across every opinion, plus semantic search that finds cases by idea, not just matching words.</li>
+    <li><strong>Jump straight to a citation.</strong> Paste a reporter or docket citation and go directly to the opinion.</li>
+    <li><strong>See how a case has been treated.</strong> For any opinion, see which later cases cite it &mdash; and whether they followed, distinguished, or overruled it.</li>
+    <li><strong>Read the holding in the court's own words.</strong> The operative holding, quoted verbatim and linked to the paragraph it came from.</li>
+    <li><strong>Study the bench.</strong> Per-judge dossiers with voting record, dissent rate, and frequent co-panelists.</li>
+  </ul>
   <div class="landing-browse-grid">
     <a href="{% url 'opinions:opinion_list' %}" class="landing-browse-card">
       <strong>Opinions</strong>
-      <span>Search + filter the {{ total_opinions }} opinions in the corpus. Keyword search via MariaDB FULLTEXT; semantic search via voyage-law-2 embeddings.</span>
+      <span>Search and filter all {{ total_opinions }} opinions in the corpus &mdash; by keyword, concept, outcome, and court.</span>
     </a>
     <a href="{% url 'opinions:current_judges' %}" class="landing-browse-card">
       <strong>Judges</strong>

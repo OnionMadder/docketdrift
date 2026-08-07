@@ -1702,6 +1702,75 @@ button.cta-primary {
   text-transform: uppercase;
 }
 
+/* Value trio under the hero: free / private / verbatim. Reuses the
+   landing-stats side-strip accent grammar (one accent = a left strip fading
+   top->bottom), so it reads as the same system, not a bolted-on band. */
+.landing-values-frame {
+  padding: 1.2rem 1.4rem;
+}
+
+.landing-values {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1.1rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.landing-value {
+  padding: 0.95rem 1.1rem;
+  background: rgba(20, 0, 30, 0.5);
+  border: var(--border-soft);
+  border-left: 3px solid transparent;
+  --strip: var(--neon-green);
+  background-image: linear-gradient(to bottom, var(--strip), transparent);
+  background-repeat: no-repeat;
+  background-origin: border-box;
+  background-clip: border-box;
+  background-size: 3px 100%;
+  border-radius: var(--radius-sm);
+}
+
+.landing-value:nth-child(2) { --strip: var(--neon-cyan); }
+.landing-value:nth-child(3) { --strip: var(--neon-violet); }
+
+.landing-value strong {
+  display: block;
+  font-family: "Chakra Petch", system-ui, sans-serif;
+  font-size: 1.02rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  margin-bottom: 0.35rem;
+}
+
+.landing-value span {
+  font-size: 0.9rem;
+  color: var(--text-dim);
+  line-height: 1.55;
+}
+
+/* "What you can do here" capability list -- plain, scannable, cyan tick strip
+   per item to echo the accent grammar without competing with the value trio. */
+.landing-capabilities {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.25rem;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.landing-capabilities li {
+  padding-left: 0.9rem;
+  border-left: 2px solid rgba(var(--neon-cyan-rgb), 0.4);
+  font-size: 0.95rem;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.landing-capabilities strong { color: var(--text-primary); }
+
 .landing-section-header {
   display: flex;
   align-items: baseline;
