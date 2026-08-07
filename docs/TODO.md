@@ -412,9 +412,26 @@ must start with `/bin/sh`. Path alone is not enough.
     1,016 ingested; 115 → 1,014. The 2 misses are Supreme PDFs that errored on
     parse, named by the reconciliation.
 
-  - [ ] **2024 + 2025 — SAME UPSTREAM GAP, DIAGNOSED 2026-08-05. ~2,400
-    opinions.** Not CL lag and not our pipeline: **CourtListener's MN Court of
-    Appeals ingestion is STILL BROKEN, and degrading.** Live API `count=on`:
+  - [x] **2024 + 2025 — DONE (was already done; this box was stale).** The
+    2026-08-05 evening sweep that closed 2019 H2 + 2023 also swept 2024–2025
+    (the header table's 1,161 / 1,133 ARE the post-sweep numbers; a
+    2026-08-06b monthly census re-confirmed them live). The diagnosis below
+    stands as the FLP-report evidence — CL's live MN COA feed remains at
+    12–38% — but there is no remaining backfill work in these years.
+  - [x] **Early 2026 — SWEPT + INGESTED + RECONCILED 2026-08-06b.** Jan–Jul
+    2026 was the last thin span (held ~234 vs ~700 norm; the weekly scraper
+    only reaches back to mid-July). Attended sweep: 30 windows, 1 CAPTCHA,
+    **747 collected**; one window skipped twice (Jan 1–2: New Year's
+    Thursday + Friday, no Mon/Tue/Wed filing day — accepted as empty,
+    ~1–2-opinion risk). NFSN fetch 746/746 (0 failures) → **519 created /
+    227 already held / 0 errors**. Derived passes ran same night: statutes,
+    holdings (+418), judges (+238 votes, completion verified with a second
+    pass), citations (**6,451 edges** over exactly the 519). Reconciliation:
+    **736/746 in DB, 0 missing**; 10 date mismatches = 5 filename-vs-Filed
+    conventions + 5 same-court second decisions the schema cannot hold (new
+    Tier-4 item). Embed: 559 pending, `.embed_state`=MN, overnight tick.
+    `suggest_tags` NOT run — waits for the embed (placeholder-vector rule).
+    Original diagnosis kept below for the FLP thread:
 
     | minnctapp | CL live |
     |---|---|
@@ -586,6 +603,22 @@ must start with `/bin/sh`. Path alone is not enough.
   exactly).
 
 ## Tier 4 — throughput & hardening (lower priority)
+
+- [ ] **Same-court second decisions on one docket are silently DROPPED at
+  ingest** — found by the 2026-08-06b backfill reconciliation. The
+  `(court, case_number)` unique key can hold a COA + Supreme pair (court
+  differs) but NOT two same-court decisions (opinion after remand, amended
+  opinion): `ingest_pdfs` skips the second as "already in DB." Tonight that
+  cost 5 real 2026 documents (`A25-0808`, `A24-1676`, `A23-1275`,
+  `A23-1062`, `A25-1018` — each manifests months-to-years after the held
+  row's date); the 508 never-merge pairs coexist only because their
+  spellings differed pre-normalization. **The weekly scraper has the same
+  blind spot**, so this is ongoing loss (~0.4% by the historical pair rate),
+  not a one-time miss. Needs a deliberate design call (e.g. a sequence
+  suffix in the key, or a sibling-document model) — do NOT bolt on
+  `--update`, which would overwrite the earlier decision with the later
+  one. The 5 named PDFs are still in the manifest for re-ingest once
+  decided.
 
 - [x] **★ SEARCH UNDER CONCURRENCY — RE-MEASURED 2026-08-06, NO LONGER A RISK.**
   The 183s figure was pre-slim-table and is stale. Re-measured on prod under
