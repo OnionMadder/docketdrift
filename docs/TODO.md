@@ -205,6 +205,34 @@ The working tree is now clean and main is in sync with origin. What happened:
 
 ## Tier 1 — editorial polish (the honest asterisks on the dashboard)
 
+- [x] **AZ roster cleanup Tier 1 — DONE 2026-08-07 (247 -> 202).** Root of the
+  "AZ has 2x the judges of MN/NH" mystery: three extraction defects, not real
+  judges. `cleanup_az_judges` (one-shot, dry-run default, verified verdicts as
+  explicit pk lists, name-checked + curated-metadata-guarded) actioned the
+  high-confidence tier: **11 junk-token deletes** (And/Appel/Opinion/State/M
+  /Silent/One/Hon/Ini/Judge/Trade), **24 cross-court citation-leak culls**
+  (each a parenthetical `(Name, J., concurring)` cite to another court —
+  Kozinski/9th, Dietzen/MN, Titone/NY, Sealia=Scalia, Ginsberg=Ginsburg…),
+  **10 dist-1 OCR merges** into real rows (Údall/Udaljl→Udall,
+  Donoprio/Donofrlo→Donofrio, Eockwood/Lockwoód→Lockwood, Bindes→Windes…).
+  0 orphan votes after; survivors render. **The dry-run caught its own two
+  false-positive directions before apply:** a naive "SURNAME, J., concurred"
+  rule nearly culled the real 19th-c. Territorial justices (Tweed/Sloan/
+  Stilwell/Pinney — bare panel signoffs, KEPT), and dist-2 "OCR" matching is
+  noisy (Prade→LaPrade right, but Fink→King / Olson→Nelson / Arabian→Fabian
+  wrong — Arabian's a *California* justice). The clean discriminator turned
+  out to be **is-the-name-parenthetical** (citation) vs bare (panel signoff).
+  **Left for the human roster pass (Tier 2/3):** the ~24 dist-2 candidates
+  (per-row confirm), the Territorial justices' OCR clusters (Pinney/Pinnei/
+  Pxnney/Pokteb → one Pinney), the Flórez/Florez/Floréz accent cluster, and
+  byline-real surname-only rows that just need a full name (Vásquez 139,
+  Staring 74, Sklar/Eppich 40, Brearcliffe 39).
+  **STILL TODO — root code fix:** the AZ extractor's footer/panel path still
+  mints (a) non-name tokens and (b) parenthetical-citation judges. Fix =
+  reject a candidate whose match sits inside `(...)` (a citation) and reject
+  non-name tokens, so leaks/junk stop recurring. Same shape as the July "of
+  the Court" byline anchor. Until then, re-run `cleanup_az_judges` after any
+  `resolve_judges --state AZ --create-missing`.
 - [x] **AZ phantom-author cull + DeConcini merge — DONE 2026-08-07.** The
   survey found the July cull left THREE stale citation-author leaks behind:
   **Connor / Souter / Burger** were recorded as the *author* of ~12 AZ
