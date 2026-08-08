@@ -33,7 +33,10 @@ from django.db import connection
 from opinions.models import Court, Judge, Opinion, PanelVote
 
 _LEAD_NO = re.compile(r"^N[Oo][Ss]?\.?\s*")
-_DIV = re.compile(r"([12])\s*CA", re.I)
+# digit, then any mix of spaces/hyphens, then CA -- covers '1 CA', '1CA',
+# '1-CA', '2-CA-CR'. Reversed/typo'd dockets ('2 SA-CA', '1 AC-TX') stay
+# unresolved on purpose.
+_DIV = re.compile(r"([12])[\s-]*CA", re.I)
 
 
 def az_division(case_number: str) -> str | None:
