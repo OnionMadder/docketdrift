@@ -276,6 +276,120 @@ class JudgeAdmin(CollapsibleFilterMixin, admin.ModelAdmin):
             ],
         )
 
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        """Scope the Court dropdown to the judge's own state.
+
+        Before this: editing an AZ judge showed every court from every
+        state in the dropdown (MN + NH + AZ + LA), which is not only
+        noisy but a live footgun -- attaching an AZ judge to a MN court
+        would silently create a cross-state row. Now the queryset is
+        pre-filtered on the object's current state whenever we're
+        editing an existing judge. Creating a new judge (state not yet
+        set) still sees all courts, since the state must be picked
+        first; save + reopen to narrow the court list. Cheap: one
+        indexed FK lookup per change-form render.
+        """
+        if db_field.name == "court":
+            obj_id = (request.resolver_match.kwargs.get("object_id")
+                      if request.resolver_match else None)
+            if obj_id:
+                state_id = (Judge.objects
+                            .filter(pk=obj_id)
+                            .values_list("state_id", flat=True)
+                            .first())
+                if state_id:
+                    kwargs["queryset"] = (
+                        Court.objects
+                        .filter(state_id=state_id)
+                        .order_by("level", "division")
+                    )
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def get_readonly_fields(self, request, obj=None):
+        """Add the linked-opinions panel only on the change form.
+
+        On the add form there's nothing to link to yet, so we skip it
+        (the field method would error on obj=None). On the change form
+        it renders a top-N list of opinions this judge appears on, with
+        vote_type + date + case + docket + link -- enough context to
+        identify a surname-only mystery judge without hitting Delete.
+        """
+        base = tuple(super().get_readonly_fields(request, obj))
+        if obj is not None:
+            return base + ("linked_opinions",)
+        return base
+
+    @admin.display(description="Opinions on record")
+    def linked_opinions(self, obj):
+        """Top-20 opinions this judge is on, with vote type + link.
+
+        Renders inline on the change form so an editor can identify a
+        judge from opinion context (surname-only rows especially) without
+        clicking Delete. Uses PanelVote to include vote_type so an
+        author/dissent split is obvious at a glance. Bounded at 20 so
+        prolific judges (Cattani, McMurdie, etc.) don't blow up the page.
+        The total count is shown at the top; click 'View all' to go to
+        the filtered public state page.
+        """
+        from django.utils.html import format_html
+        from django.utils.safestring import mark_safe
+
+        total = obj.panel_votes.count()
+        if total == 0:
+            return format_html(
+                '<span style="color:#888">'
+                'No opinions link to this judge yet.'
+                '</span>'
+            )
+        # Top 20 most recent. Select the fields we need + defer the
+        # heavy ones (raw_text, html_content) so the panel is cheap
+        # even on 500-vote judges.
+        votes = (
+            obj.panel_votes
+            .select_related("opinion", "opinion__court")
+            .only(
+                "vote_type",
+                "opinion__id", "opinion__case_number", "opinion__title",
+                "opinion__release_date", "opinion__court__id",
+                "opinion__court__state_id", "opinion__court__level",
+                "opinion__court__division",
+            )
+            .order_by("-opinion__release_date")[:20]
+        )
+        row_tpl = (
+            '<li style="margin-bottom:4px">'
+            '<span style="color:#666;font-size:0.85em;'
+            'display:inline-block;min-width:180px">'
+            '{} &middot; {}</span> '
+            '<a href="https://{}.docketdrift.com/opinion/{}/" '
+            'target="_blank" rel="noopener" title="{}">'
+            '{}</a> '
+            '<span style="color:#888">({})</span>'
+            '</li>'
+        )
+        rows_html = "".join(
+            format_html(
+                row_tpl,
+                v.get_vote_type_display(),
+                v.opinion.release_date.isoformat()
+                    if v.opinion.release_date else "n/a",
+                (v.opinion.court.state_id or "").lower(),
+                v.opinion.case_number,
+                v.opinion.title or "",
+                ((v.opinion.title or "(no title)")[:70]
+                 + ("..." if len(v.opinion.title or "") > 70 else "")),
+                v.opinion.case_number,
+            )
+            for v in votes
+        )
+        return format_html(
+            '<p style="margin:0 0 8px 0"><strong>{}</strong> total; '
+            'showing the {} most recent.</p>'
+            '<ul style="list-style:none;padding-left:0;margin:0;'
+            'max-height:520px;overflow-y:auto">{}</ul>',
+            total, min(total, 20), mark_safe(rows_html),
+        )
+
 
 class PanelVoteInline(admin.TabularInline):
     model = PanelVote
