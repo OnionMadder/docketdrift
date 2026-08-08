@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from .az import ArizonaParser
 from .base import ParsedOpinion, StateParser
+from .la import LouisianaParser
 from .mn import MinnesotaParser
 from .nh import NewHampshireParser
 
@@ -27,6 +28,7 @@ REGISTRY: dict[str, StateParser] = {
     "MN": MinnesotaParser(),
     "NH": NewHampshireParser(),
     "AZ": ArizonaParser(),
+    "LA": LouisianaParser(),
 }
 
 
