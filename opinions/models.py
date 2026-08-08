@@ -50,6 +50,19 @@ class Court(models.Model):
 
     state = models.ForeignKey(State, on_delete=models.PROTECT, related_name="courts")
     level = models.CharField(max_length=16, choices=Level.choices)
+    division = models.CharField(
+        max_length=32,
+        blank=True,
+        default="",
+        help_text=(
+            "Division / district designator for multi-panel appellate systems "
+            "(e.g. '1' and '2' for the Arizona Court of Appeals' two divisions; "
+            "'1st'-'6th' for California's districts). Empty for single-court "
+            "levels -- a state Supreme Court, or a unified Court of Appeals like "
+            "Minnesota's. Part of the court's identity, so (state, level, "
+            "division) is unique."
+        ),
+    )
     name = models.CharField(
         max_length=128,
         help_text="Display name, e.g. 'Minnesota Supreme Court'.",
@@ -63,8 +76,8 @@ class Court(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = [("state", "level")]
-        ordering = ["state__code", "level"]
+        unique_together = [("state", "level", "division")]
+        ordering = ["state__code", "level", "division"]
 
     def __str__(self):
         return self.name
@@ -77,8 +90,15 @@ class Court(models.Model):
         beats trying to derive abbreviations algorithmically (Tex. vs Tx.,
         Cal. vs Calif. -- legal Bluebook convention varies). Fall through
         to ``self.name`` for any unmapped court so nothing breaks if a row
-        ships before its label is curated.
+        ships before its label is curated. A division suffix (e.g.
+        'Ariz. Ct. App. Div. 1') is appended when the court carries one.
         """
+        base = self._base_short_label()
+        if self.division:
+            return f"{base} Div. {self.division}"
+        return base
+
+    def _base_short_label(self) -> str:
         if self.state_id == "MN":
             if self.level == self.Level.SUPREME:
                 return "Minn."
