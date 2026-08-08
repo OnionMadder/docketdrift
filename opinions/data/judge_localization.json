@@ -140,11 +140,6 @@
     "photo": "opinions/judges/mn/jennifer-l-frisch.jpg"
   },
   {
-    "state": "AZ",
-    "slug": "john-r-lopez-iv",
-    "photo": "opinions/judges/az/john-r-lopez-iv.png"
-  },
-  {
     "state": "MN",
     "slug": "jon-schmidt",
     "photo": "opinions/judges/mn/jon-schmidt.jpg"
@@ -173,6 +168,11 @@
     "state": "MN",
     "slug": "kevin-g-ross",
     "photo": "opinions/judges/mn/kevin-g-ross.jpg"
+  },
+  {
+    "state": "AZ",
+    "slug": "lopez",
+    "photo": "opinions/judges/az/john-r-lopez-iv.png"
   },
   {
     "state": "MN",
