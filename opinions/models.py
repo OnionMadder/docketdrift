@@ -720,7 +720,7 @@ class PanelVote(models.Model):
         NOT_PARTICIPATING = "NOT_PARTICIPATING", "Did not participate"
 
     opinion = models.ForeignKey(Opinion, on_delete=models.CASCADE, related_name="panel_votes")
-    judge = models.ForeignKey(Judge, on_delete=models.PROTECT, related_name="panel_votes")
+    judge = models.ForeignKey(Judge, on_delete=models.CASCADE, related_name="panel_votes")
     vote_type = models.CharField(max_length=24, choices=Vote.choices)
 
     class Meta:
