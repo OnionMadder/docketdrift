@@ -700,21 +700,28 @@ must start with `/bin/sh`. Path alone is not enough.
 
 ## Tier 4 — throughput & hardening (lower priority)
 
-- [ ] **Same-court second decisions on one docket are silently DROPPED at
-  ingest** — found by the 2026-08-06b backfill reconciliation. The
-  `(court, case_number)` unique key can hold a COA + Supreme pair (court
-  differs) but NOT two same-court decisions (opinion after remand, amended
-  opinion): `ingest_pdfs` skips the second as "already in DB." Tonight that
-  cost 5 real 2026 documents (`A25-0808`, `A24-1676`, `A23-1275`,
-  `A23-1062`, `A25-1018` — each manifests months-to-years after the held
-  row's date); the 508 never-merge pairs coexist only because their
-  spellings differed pre-normalization. **The weekly scraper has the same
-  blind spot**, so this is ongoing loss (~0.4% by the historical pair rate),
-  not a one-time miss. Needs a deliberate design call (e.g. a sequence
-  suffix in the key, or a sibling-document model) — do NOT bolt on
-  `--update`, which would overwrite the earlier decision with the later
-  one. The 5 named PDFs are still in the manifest for re-ingest once
-  decided.
+- [x] **Same-court second decisions on one docket — FIXED 2026-08-08
+  (migration 0036 + ingest fixes + read-side ?on=).** Unique key widened
+  from `(court, case_number)` to `(court, case_number, release_date)`, so
+  opinion + amended-opinion and opinion-on-remand coexist on one docket
+  (the COA/Supreme case was already fine because court differs). Both
+  loss modes closed: `ingest_pdfs` no longer SKIPs the second document,
+  `ingest_court.update_or_create` no longer OVERWRITES the first with
+  the second's fields. Read side mirrors the existing COA/Supreme sibling
+  UI: `_pick_opinion` gains `?on=YYYY-MM-DD` and defaults to newest
+  release_date within a level; the "Also decided on this docket" panel
+  lists date + appends `on=` to the sibling link. **De-risk before
+  migrating:** 0 collisions on the proposed 3-column key across the whole
+  128K corpus, so the constraint held cleanly with no data touching.
+  **Migration:** 1m 13s in-place on the 2.75GB opinions_opinion table
+  (`SET SESSION max_statement_time=0` inside the migration, per the 0023
+  pattern). **Re-ingested the 4 named misses that were real** — A23-1062,
+  A23-1275, A24-1676, A25-0808 all landed as new siblings and render 200;
+  A25-1018 turned out to be a false alarm (PDF's parsed date matched the
+  held row exactly — the manifest date was wrong, correctly SKIP'd). One
+  small find worth keeping: the TODO's list of 5 was over-counted by one
+  — always verify the PDF's PARSED date, not the manifest filename date,
+  before calling something a sibling.
 
 - [x] **★ SEARCH UNDER CONCURRENCY — RE-MEASURED 2026-08-06, NO LONGER A RISK.**
   The 183s figure was pre-slim-table and is stale. Re-measured on prod under
