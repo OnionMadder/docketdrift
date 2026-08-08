@@ -474,7 +474,7 @@ class Opinion(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = [("court", "case_number")]
+        unique_together = [("court", "case_number", "release_date")]
         ordering = ["-release_date"]
         indexes = [
             models.Index(fields=["-release_date"]),

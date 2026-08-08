@@ -82,16 +82,19 @@
   </p>
 
   {% comment %}
-  A docket number follows a case through review, so the same case_number can
-  carry both the Court of Appeals opinion and the later Supreme Court one.
-  We show the highest court by default; this links the sibling decision(s),
-  which is what makes them reachable at all (?court=<level>).
+  A docket number follows a case through review, so the same case_number
+  can carry: (a) the COA opinion + the later Supreme decision (different
+  court), and since migration 0036 (b) the opinion + a later amended
+  opinion or opinion on remand (same court, different date). We show
+  the newest highest-court decision by default; this lists the
+  sibling(s) with what disambiguates them -- always the date, plus the
+  ?court= or ?on= selector needed to reach them past the default.
   {% endcomment %}
   {% if siblings %}
     <p class="opinion-sibling">
-      Also decided in this case:
+      Also decided on this docket:
       {% for s in siblings %}
-        <a href="{% url 'opinions:detail' case_number=s.case_number %}?court={{ s.court.level_slug }}">{{ s.court.short_label }}{% if s.release_date %}, {{ s.release_date|date:"Y" }}{% endif %}</a>{% if s.reporter_cite %} <span class="reporter-cite">{{ s.reporter_cite }}</span>{% endif %}{% if not forloop.last %};{% endif %}
+        <a href="{% url 'opinions:detail' case_number=s.case_number %}?court={{ s.court.level_slug }}&amp;on={{ s.release_date|date:'Y-m-d' }}">{{ s.court.short_label }}{% if s.release_date %}, {{ s.release_date|date:"F j, Y" }}{% endif %}</a>{% if s.reporter_cite %} <span class="reporter-cite">{{ s.reporter_cite }}</span>{% endif %}{% if not forloop.last %};{% endif %}
       {% endfor %}
     </p>
   {% endif %}
@@ -162,11 +165,9 @@
 
   Carries its OWN review status (holding_review_status), shown with the same
   amber/cyan/red dot convention as the opinion's editorial review_status.
-  NOT yet documented on /how-we-differ/ -- that page's holdings section is
-  still parked and describes the LLM version we did not ship. Dismissible
-  site-wide via the "hide" toggle (persisted in localStorage). Only renders
-  when a holding exists, so states with no extraction run simply don't show
-  the panel.
+  Dismissible site-wide via the "hide" toggle (persisted in localStorage).
+  Only renders when a holding exists, so states with no extraction run
+  simply don't show the panel.
   {% endcomment %}
   {% with hstatus=opinion.holding_review_status %}
   <section class="glossy-frame holding-panel" id="holding-panel"

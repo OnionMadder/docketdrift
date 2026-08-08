@@ -215,12 +215,20 @@ class Command(BaseCommand):
                     from django.db import connection as _db, OperationalError as _DBErr
                     for db_attempt in range(1, DB_MAX_RETRIES + 1):
                         try:
+                            # Keyed on (court, case_number, release_date)
+                            # since migration 0036. Without release_date
+                            # here, a second same-court decision on the
+                            # docket (opinion + amended, opinion on
+                            # remand) would OVERWRITE the first with the
+                            # newer document's raw_text/title/etc --
+                            # different loss mode than ingest_pdfs's
+                            # SKIP, same root cause.
                             _, created = Opinion.objects.update_or_create(
                                 court=court,
                                 case_number=case_number,
+                                release_date=parsed_date,
                                 defaults={
                                     "title": case_name,
-                                    "release_date": parsed_date,
                                     "is_precedential": precedential_status == "published",
                                     "raw_text": raw_text,
                                     "source_url": absolute_url,

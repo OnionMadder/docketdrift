@@ -214,9 +214,12 @@ The working tree is now clean and main is in sync with origin. What happened:
   verbatim holdings barely need review (no hallucination to catch).
 - **`extract_holdings` LLM command: dropped** — not on main (lives only on the
   parked branch as history). The product stays extractive, ML in two places.
-- [ ] **Give `/how-we-differ/` an extractive-holdings section**, then repoint
-  the holdings panel link at it. Content task — the link is correctly generic
-  until then, so this is polish, not a fix.
+- [x] **`/how-we-differ/` extractive-holdings section — SHIPPED 2026-08-02**
+  (`#holdings`, "The one panel that looks generated, and isn't"); the holdings
+  panel link on opinion pages was repointed at `{% url ... %}#holdings` in the
+  same session. Cleaned up a stale contradictory template comment 2026-08-08
+  (opinion_detail.html:165 still said "NOT yet documented" months after the
+  fact — CLAUDE.md was right, this item was a stale TODO).
 
 ## Court-level modeling — AZ divisions split (2026-08-07)
 

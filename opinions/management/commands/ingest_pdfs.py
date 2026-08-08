@@ -8,8 +8,11 @@ For each PDF in ``--dir``:
      is_precedential, and a confidence dict.
   3. Compute the raw_text SHA-256 for dedup.
   4. Look up the target Court row via ``--state`` + ``--court``.
-  5. If an Opinion with that (court, case_number) already exists, skip
-     by default (or overwrite when ``--update`` is on).
+  5. If an Opinion with that (court, case_number, release_date)
+     already exists, skip by default (or overwrite when ``--update``
+     is on). A second decision on the same docket with a DIFFERENT
+     date -- opinion + amended, opinion on remand -- lands as a new
+     row (schema-permitted since migration 0036).
   6. Otherwise create a new Opinion row. When ``--keep-pdf`` is on
      (default), attach the source PDF as ``Opinion.pdf_file`` so the
      scan is downloadable from the public detail page.
@@ -165,14 +168,22 @@ class Command(BaseCommand):
 
             sha = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
 
-            # Dedup
+            # Dedup. Keyed on (court, case_number, release_date) since
+            # migration 0036: a docket keeps its number through the
+            # whole life of a case, so opinion + amended-opinion (same
+            # court, different date) is TWO real documents on ONE
+            # docket, not a duplicate. Before 0036 the second was
+            # SKIP'd here, silently losing ~0.4% of MN filings.
             existing = Opinion.objects.filter(
-                court=court_obj, case_number=parsed.case_number,
+                court=court_obj,
+                case_number=parsed.case_number,
+                release_date=parsed.release_date,
             ).first()
 
             if existing and not update:
                 self.stdout.write(
                     f"{label}  SKIP   {parsed.case_number}"
+                    f"  {parsed.release_date}"
                     f"  (already in DB as #{existing.pk})"
                 )
                 skipped += 1

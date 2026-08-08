@@ -766,6 +766,11 @@ def opinion_list(request):
 # links to the sibling; ``?court=appeals|supreme`` selects one explicitly, which
 # is what makes the other decision reachable at all. (Before this, .get() raised
 # MultipleObjectsReturned and 500'd all ~1,300 of those pages.)
+#
+# Migration 0036 relaxed uniqueness from (court, case_number) to
+# (court, case_number, release_date), so the SAME court can now carry
+# opinion + amended-opinion on one docket. Same disambiguation shape:
+# newest date supersedes, ``?on=YYYY-MM-DD`` selects one explicitly.
 _COURT_RANK = {Court.Level.SUPREME: 0, Court.Level.APPEALS: 1}
 
 
@@ -791,15 +796,43 @@ def _match_opinions(qs, case_number):
     return []
 
 
-def _pick_opinion(matches, want_court=""):
-    """Choose which opinion a shared case_number resolves to."""
-    want = (want_court or "").strip().lower()
-    if want:
+def _pick_opinion(matches, want_court="", want_on=""):
+    """Choose which opinion a shared case_number resolves to.
+
+    Precedence:
+      1. ?on=YYYY-MM-DD  -- exact release_date match (narrowed within
+         ?court= if BOTH are set).
+      2. ?court=appeals|supreme  -- level match; NEWEST date within
+         that level wins when multiple exist.
+      3. Default: highest court (Supreme supersedes COA), then NEWEST
+         release_date (amended/remanded decision supersedes), then id
+         as a stable tiebreak.
+    """
+    want_c = (want_court or "").strip().lower()
+    want_d = (want_on or "").strip()
+
+    if want_d:
         for o in matches:
-            if o.court.level_slug == want:
+            if str(o.release_date) == want_d and (
+                not want_c or o.court.level_slug == want_c
+            ):
                 return o
-    # Highest court first; stable tiebreak on id so the choice never drifts.
-    return sorted(matches, key=lambda o: (_COURT_RANK.get(o.court.level, 9), o.id))[0]
+        # Fall through: unknown date, treat as if not supplied.
+
+    if want_c:
+        by_level = [o for o in matches if o.court.level_slug == want_c]
+        if by_level:
+            return sorted(by_level, key=lambda o: (o.release_date, o.id), reverse=True)[0]
+
+    return sorted(
+        matches,
+        key=lambda o: (_COURT_RANK.get(o.court.level, 9), _neg_date(o.release_date), o.id),
+    )[0]
+
+
+def _neg_date(d):
+    """Sort helper: newer dates first inside a stable ascending sort."""
+    return (0, -d.toordinal()) if d is not None else (1, 0)
 
 
 @cache_control(public=True, max_age=86400)
@@ -821,7 +854,7 @@ def opinion_pdf(request, case_number):
     matches = _match_opinions(qs, case_number)
     if not matches:
         raise Http404("Opinion not found")
-    opinion = _pick_opinion(matches, request.GET.get("court"))
+    opinion = _pick_opinion(matches, request.GET.get("court"), request.GET.get("on"))
     if not opinion.pdf_file:
         raise Http404("No PDF available for this opinion.")
     filename = os.path.basename(opinion.pdf_file.name) or ("%s.pdf" % case_number)
@@ -843,7 +876,7 @@ def opinion_detail(request, case_number):
     matches = _match_opinions(qs, case_number)
     if not matches:
         raise Http404("Opinion not found")
-    opinion = _pick_opinion(matches, request.GET.get("court"))
+    opinion = _pick_opinion(matches, request.GET.get("court"), request.GET.get("on"))
     siblings = [o for o in matches if o.pk != opinion.pk]
 
     # Similar-opinions widget. One cosine-distance (VEC_DISTANCE_COSINE)
@@ -1013,7 +1046,7 @@ def opinion_cited_by(request, case_number):
     matches = _match_opinions(oqs, case_number)
     if not matches:
         raise Http404("Opinion not found")
-    opinion = _pick_opinion(matches, request.GET.get("court"))
+    opinion = _pick_opinion(matches, request.GET.get("court"), request.GET.get("on"))
 
     citing = (
         opinion.citations_received
