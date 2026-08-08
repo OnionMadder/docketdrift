@@ -194,6 +194,17 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, subset_dir, state, phase, limit, dry_run, batch_size, **options):
+        # Lift the 25s max_statement_time cap that settings.py puts on every
+        # connection. Right for web requests, wrong for a bulk load whose
+        # phase-1 preflight COUNT(*) on opinion-clusters.csv-derived queries
+        # can exceed that on the big states (LA at 343K clusters trips it).
+        # Same standard opener the other batch commands use (embed_opinions,
+        # extract_statutes, corpus_insights) -- see the CLAUDE.md gotcha.
+        from django.db import connection
+        if connection.vendor == "mysql":
+            with connection.cursor() as cur:
+                cur.execute("SET SESSION max_statement_time = 0")
+
         subset = Path(subset_dir)
         if not subset.exists():
             raise CommandError(f"--subset-dir does not exist: {subset}")
