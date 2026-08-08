@@ -203,6 +203,34 @@ The working tree is now clean and main is in sync with origin. What happened:
   the holdings panel link at it. Content task — the link is correctly generic
   until then, so this is polish, not a fix.
 
+## Court-level modeling — AZ divisions split (2026-08-07)
+
+- [x] **`Court.division` added; AZ COA split into Division One / Two.** Decided
+  while at 3 states so the model doesn't need repainting after growth. Court
+  identity is now `(state, level, division)` — empty for single-court levels
+  (any Supreme Court, MN's unified COA), populated for multi-panel systems
+  (AZ Div 1/2; ready for CA's 6 districts, TX's 14 COA). `assign_az_divisions`
+  (idempotent, dry-run default) made the combined `arizctapp` row Division One,
+  created Division Two (`arizctapp-2`), and reassigned by docket prefix:
+  **Div One 18,593 opinions / Div Two 5,717**, 37 genuinely-malformed dockets
+  (0.15%) left on Div 1 and reported, never guessed. Judges re-homed to their
+  majority division (10 → Div 2), with current Supreme justices who once sat on
+  the COA (Cruz/Beene/Timmer/Montgomery) correctly EXCLUDED. The slim embedding
+  table's `court_id` (part of its clustered key) was updated in lockstep — Div1
+  18,575=18,575, Div2 5,717=5,717 in sync. Opinions stay ONE unified searchable
+  corpus (court is a facet, not a fork); AZ state search still spans both.
+  **Run `assign_az_divisions` after any AZ COA ingest** — the CL feed keyed on
+  `arizctapp` lands new opinions on Div 1, and this re-homes the Div 2 ones.
+- [x] **AZ sitting justices corrected (8→7).** Lopez seated as Vice Chief (new
+  `Role.VICE_CHIEF_JUSTICE`); the 2 misflagged COA judges unseated; all 7 carry
+  self-hosted photos + `bio_url` (now rendered as an "Official bio ↗" link on
+  every judge card — it was in the DB but the template never output it).
+  Sourced from azcourts.gov/MeettheJustices (Akamai-walled to server fetches;
+  the in-app browser got through). Landing cache needed clearing to show 7.
+- [x] **AZ judge roster 247 → 194** across two cleanup tiers + the root
+  extractor fix (parenthetical-citation + non-name guards in `resolve_judges`,
+  so leaks/junk don't recur). See below + CLAUDE.md.
+
 ## Tier 1 — editorial polish (the honest asterisks on the dashboard)
 
 - [x] **AZ roster cleanup Tier 1 — DONE 2026-08-07 (247 -> 202).** Root of the
