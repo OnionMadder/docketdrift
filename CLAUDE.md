@@ -97,6 +97,132 @@ in indexed JSON-LD) was reverted — extractive holdings = "no generated text",
 the strong original posture, is correct. Migrations 0026 (holdings) + 0027
 (clustering) are on main and applied on prod.
 
+## Latest session (2026-08-07 → 08) — search cliff gone; cited-by fix; dup merge; MN 2026; AZ judges rebuilt end-to-end; NH re-pitch; IA published
+
+Very long multi-thread day. Everything below is committed + deployed + verified
+unless noted. Details live in the commit messages and `docs/TODO.md`.
+
+**Search concurrency — the #1 launch risk is GONE (re-measured 2026-08-07).**
+The 2026-08-02 "183s under 2 concurrent" cliff no longer reproduces. Measured
+against prod under live crawler load: 8 concurrent searches (all on the
+expensive semantic path) top out at **5.8s**, same as one solo search; 3
+sustained waves of 6 showed zero degradation; no errno 188/1969, no poison
+cascade. The slim-embedding-table fix (2026-08-05b) did it — cheap-enough
+cosine scans now interleave across the 8 threads instead of one dead 12s scan
+starving the rest. Tested to 8 (= thread count); past that requests queue,
+unmeasured. **Downgrade this from "#1 risk" to closed.** Method note: the
+capped path (200+ matches → no semantic/snippets) is NOT a failure; label
+detection by exact copy, not a guessed string.
+
+**cited-by hard-500'd 1,844 pages for 12 days — fixed.** `opinion_cited_by`
+used a bare `.get(case_number=...)`; a docket follows a case COA→Supreme, so
+1,844 shared dockets raised `MultipleObjectsReturned` → instant 500 (27ms, not
+load). It was **49% of ALL 500s** and burning GPTBot/Googlebot crawl budget on
+exactly the citation-graph pages that are the product's differentiator. Fix:
+the existing `_pick_opinion`/`_match_opinions` (never wired into this view) +
+`?court=` + `NoJoinCountPaginator` + `.defer(raw_text, html_content)` (the
+page dragged 1.4MB it never renders → the intermittent errno-2013 half). Found
+only because a crawler tripped it during the search probe — **nothing watches
+the 5xx rate**; a whole page-type 500'd through the Thursday audit unnoticed.
+
+**merge_duplicate_opinions — 605 duplicate pairs merged.** The
+two-spellings-of-one-docket rows `normalize_case_numbers` deliberately skipped.
+New idempotent command (dry-run default, 3 gates: same court, same date,
+token-containment title match; every refusal reported). **4,465+ inbound
+citation edges re-pointed** (a bare delete would have cascaded them away). The
+508 different-date pairs (opinion + amended/order) are never eligible. Verified
+after: corpus −605, **0 orphaned FKs across 7 tables, 0 self-edges, 0 dup
+keys.** GOTCHA baked in: the slim embedding table has no secondary index, so a
+DELETE `WHERE opinion_id=X` there LOCKS all 128K rows (errno 1206) — address
+its full clustered PK `(court_id, release_date, opinion_id)`. Also: shared-DB
+2013 drops mid-chunk are normal; per-pair transactions make a died chunk
+cleanly resumable.
+
+**cl-`<id>` case numbers — RESOLVED, and the plan on file was WRONG.** The
+TODO's `fetch_docket()` repair would have recovered ZERO: joining all 14,436
+rows against the LOCAL CL bulk dump (offline, no API) showed **CL's own dockets
+table is EMPTY for 14,416 of them** (live-API probe confirmed). AZ's 24 modern
+rows had the docket in their OWN caption text (extracted, court-aligned,
+collision-checked). MN/NH's are 1800s–1930s reporter OCR with no docket
+anywhere — but **MN 100% / NH 99% carry a `reporter_cite`**, the identifier a
+lawyer pastes for that era, so no reachability gap. Lesson: measure against the
+bulk dump BEFORE planning any CL API work.
+
+**tag-review hardened + a silent 20.6s regression caught.** `_slice_bound()`
+(12s cap + degrade-to-picker, mirrors `semantic.py`) — and its first test on a
+QUIET DB revealed `_resolve_state_opinions` had regressed to **20.6s**: the
+optimizer had flipped to a clustered-PK walk as the corpus grew (the July
+"~300ms" note was true then). Fixed with FORCE INDEX on `(court_id,
+case_number)` + per-court equality. Same pathology bit the sitemap chunks the
+day before — see the "One non-covered column beside a court_id filter" gotcha.
+
+**MN early-2026 backfill — 519 opinions, end to end.** Jan–Jul 2026 (the last
+thin span; weekly scraper only reaches ~mid-July). 747 swept → 746 fetched (0
+fail) → 519 created → statutes/holdings/judges/citations (6,451 edges) →
+reconciled. Finding worth keeping: **same-court second decisions on one docket
+are silently DROPPED at ingest** (the `(court, case_number)` key can't hold
+opinion + amended-opinion; the COA/Supreme pair only coexists because the court
+differs). 5 named 2026 docs affected; the weekly scraper shares the blind spot.
+New Tier-4 item — needs a schema call, not a `--update` bolt-on.
+
+**AZ judge roster REBUILT end to end — 247 → 194, then the current bench
+seated.** The "AZ has 2x the judges" mystery was three extraction defects:
+- **`cleanup_az_judges`** (one-shot, verified pk lists): 11 junk tokens
+  (And/Appel/Opinion/State/M…), 24 cross-court citation leaks (Kozinski/9th,
+  Dietzen/MN, Titone/NY, Sealia=Scalia…), 10 dist-1 OCR merges → 247→202.
+- **Tier-2 merges** (202→194): Flórez accent cluster, **Prade→Arthur Thornton
+  LaPrade** (125 votes onto the real 1940s Supreme justice), Pinney territorial
+  OCR cluster, Ppielps→Phelps, Arabian (a *California* justice) cull.
+- **Phantom-author cull**: the July cull left Connor/Souter/Burger recorded as
+  the AUTHOR of ~12 AZ opinions they're merely cited in; + DeConcini merge
+  ("Concini" split → the real Evo Anton DeConcini row).
+- **ROOT FIX in `resolve_judges`** so leaks/junk don't recur: `_inside_open_paren`
+  (a `(Name, J., concurring)` inside parens is a CITATION, not a panel signoff —
+  name-agnostic, catches circuit/state judges the SCOTUS-only stoplist can't;
+  KEEPS the bare-signoff 19th-c. Territorial justices) + `_valid_surname`/
+  `_NON_NAME_TOKENS`. Integration-tested: Tjoflat/Dietzen opinions now extract
+  nothing; real Vásquez byline + territorial Tweed signoff still extract.
+- **Sitting bench fully seated (35 across 3 courts).** Supreme corrected 8→7
+  (Lopez seated as Vice Chief, 2 misflagged COA judges unseated); COA split into
+  **Division One (19) / Division Two (9)** and both benches seated with full
+  names/roles/division/bio links. Sourced from the courts' OWN rosters
+  (azcourts.gov/MeettheJustices, coa1.azcourts.gov, appeals2.az.gov) — **the
+  in-app browser gets through the Akamai wall that 403s server fetches**; the
+  static image ASSETS are fetchable server-side even when the page isn't.
+- New roles `VICE_CHIEF_JUSTICE` + `VICE_CHIEF_JUDGE`; new `Judge.cl_absent`
+  (a terminal "confirmed real, not in CL" state so state judges CL will never
+  carry stop reading as unresolved); collapsible admin filter sidebar; the
+  judge card now renders `bio_url` as an "Official bio ↗" link (was in the DB,
+  never output).
+
+**`Court.division` added; AZ COA split into two real courts.** Court identity is
+now `(state, level, division)` — empty for single-court levels, "1"/"2" for AZ's
+divisions (ready for CA's 6 / TX's 14). `assign_az_divisions` (idempotent, run
+after AZ ingests) reassigned by docket prefix: **Div One 18,593 / Div Two
+5,717**, 37 malformed left on Div 1 + reported. Updated the slim embedding
+table's `court_id` in lockstep (part of its clustered key). Opinions stay ONE
+unified searchable corpus — court is a facet, not a fork (agreed with Onion).
+
+**NH landing re-pitched for the reader, not the analyst.** Shared
+`state_landing.html` (all 3 states, state-agnostic): hero leads "Free,
+searchable {state} case law — no account, no paywall"; a value trio
+(Free & open / Private by design / The court's own words) surfaces the
+free+privacy+no-generation posture that was buried in nav; "What you can do
+here" names the practitioner power-features (paste-a-cite, treatment, verbatim
+holdings, dossiers) in plain language; front-page jargon (MariaDB/voyage)
+dropped to /about/. Built to present to NH Legal Aid, kept broad.
+
+**MN opinion bundle PUBLISHED to Internet Archive** (10,137 opinions 2017–2026,
+`archive.org/details/minnesota-appellate-opinions-2017-2026`). Lesson learned
+the hard way: **10K individual files via `ia upload` is ~9.6h and fragile** —
+each file is a sequential ~3.6s API round-trip, and `--checksum` can't skip on a
+fresh item (IA hasn't derived checksums yet), so a resume re-uploads from the
+top. Switched to a single 1.63GB ZIP (internal paths match `manifest.csv`) +
+loose manifest/README — minutes, robust. IA had a 503 outage mid-session and
+rate-limits deletes (`bucket_tasks_queued`), so a patient background pass clears
+the leftover loose PDFs over hours. Verify a big IA upload by the download URL's
+Content-Length, not `ia list` (metadata lags commit by minutes).
+
 ## Latest session (2026-08-06) — Thursday audit; weekly scraper rebuilt; AZ graph; error reports; coverage audit; design sweep
 
 Long day, many threads; details live in the commit messages and the sections
@@ -1247,7 +1373,7 @@ identity decoupled; semantic/keyword alerts refused-by-design, not stored).
 
 ## Where things stand right now
 
-(Numbers pulled live from prod 2026-08-06 evening. **Re-measure before
+(Numbers pulled live from prod 2026-08-07/08. **Re-measure before
 quoting these anywhere public** — stale numbers on a public page are the
 exact class of problem the 2026-08-02 audit was cleaning up.)
 
@@ -1256,11 +1382,18 @@ Three states live, all on subdomains of `docketdrift.com`. MN is the
 
 | State | Subdomain | Opinions | Newest | Notes |
 |---|---|---|---|---|
-| MN (flagship) | `mn.docketdrift.com` | 69,292 | 2026-08-05 | **CONTINUOUS 2015-2025** (~970-1,435/yr); ~9,800 rebuilt from the State Law Library archive |
-| AZ (live) | `az.docketdrift.com` | 38,153 | current | CL feed healthy per coverage audit; our ONLY state with no independent pipeline |
+| MN (flagship) | `mn.docketdrift.com` | ~69,800 | 2026-08-05 | **CONTINUOUS 2015–2026** (~970-1,435/yr); ~9,800 rebuilt from the State Law Library archive + 519 early-2026 (2026-08-07) |
+| AZ (live) | `az.docketdrift.com` | 37,791 | current | COA now split **Div One 18,593 / Div Two 5,717**; Supreme 13,481. CL feed healthy; our ONLY state with no independent pipeline |
 | NH (live) | `nh.docketdrift.com` | 20,723 | current | proving ground; steady state |
 
-Corpus-wide: **128,168 opinions**, all embedded (slim table in exact sync).
+**AZ judge roster rebuilt 2026-08-07 (247 → 194).** Court split into Supreme +
+COA Division One + Division Two; the current bench is fully seated — **35
+judges** (Supreme 7, Div One 19, Div Two 9), each with full name / role /
+division / official-bio link, from the courts' own rosters. `Court.division`
+now models multi-panel systems. See the 2026-08-07→08 session block.
+
+Corpus-wide: **~127,563 opinions** (−605 from the 2026-08-07 duplicate merge),
+all embedded (slim table in exact sync).
 Citation graph **1,462,119 edges** — 605,353 CL bulk + **856,766
 text-extracted** (MN 468,595 / AZ 313,120 / NH 75,051) with context quotes;
 **5,188 non-default treatments** (was 0 in every state before 2026-08-04).
@@ -1271,9 +1404,12 @@ Caveats that stay load-bearing:
   (~83% COA vs control; ~53% Supreme — the archive carries no Supreme
   ORDERS), and they have no reporter cites until CL backfills. Disclosed on
   /about/; keep it that way.
-- **AZ judges 139 → 119 and NH 69 → 36 are CORRECTIONS, not losses.** The old
-  counts included citation false-positives and OCR/hyphenation duplicate rows.
+- **AZ judges 247 → 194 and NH 69 → 36 are CORRECTIONS, not losses.** The old
+  counts included citation false-positives (a whole class of parenthetical-cite
+  leaks fixed at the source 2026-08-07) and OCR/hyphenation duplicate rows.
   Same for AZ panel votes 142 → 29K+, which was a ReDoS bug, not a gap.
+- **IA publication is a ZIP, not 10K loose files** — individual-file upload is
+  ~9.6h and fragile on IA; the item holds one 1.63GB archive + manifest + README.
 
 (Opinion counts as of 2026-06-27: 119,159 total, all embedded. The 2026-06-27
 VECTOR-INDEX retry deleted 12 zero-`raw_text` metadata stubs — MN ids 2618,

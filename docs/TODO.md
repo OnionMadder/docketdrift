@@ -1,7 +1,22 @@
 # DocketDrift — working backlog
 
-Snapshot 2026-08-06. Prioritized. Each item says what it is, why it matters,
+Snapshot 2026-08-08. Prioritized. Each item says what it is, why it matters,
 and roughly how big. "Onion" items need the member panel or are editorial.
+
+**2026-08-07→08 session (full detail in CLAUDE.md's session block):** search
+concurrency cliff CLOSED (re-measured: 8 concurrent = 5.8s, was 183s);
+cited-by 500 fixed (1,844 pages, was 49% of all 5xx); `merge_duplicate_opinions`
+merged 605 dup pairs (−605 corpus, 4,465 inbound edges rescued); cl-`<id>`
+resolved (CL empty upstream — 24 AZ from captions, MN/NH covered by
+reporter_cite); tag-review hardened + a 20.6s FORCE-INDEX regression fixed;
+MN early-2026 backfilled (519); **AZ judges rebuilt 247→194 + root extractor
+fix + Court split into COA Div One/Two + 35-judge current bench seated across
+3 courts** (from the courts' own rosters via the in-app browser); NH landing
+re-pitched (free/private/verbatim) for the NH Legal Aid presentation; **MN
+2017–2026 corpus PUBLISHED to archive.org** as a zip. New open items surfaced:
+5xx-rate alerting (nothing watches it — cited-by 500'd for 12 days unseen),
+same-court-second-decision drop at ingest (Tier 4), IA loose-PDF cleanup
+finishing in a background pass.
 
 **SEARCH IS FIXED (2026-08-05b).** The concurrency cliff was dead cosine scans
 (MN/AZ needed 16-29s vs the 12s bound; every search burned 12 thread-seconds
