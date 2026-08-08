@@ -115,7 +115,12 @@ _DISP_VERB = (
     r"|MODIFIED|QUASHED|WITHDRAWN|RENDERED|LIFTED|DISSOLVED|RECALLED"
     r"|CONSIDERED|MOOT|REINSTATED|ISSUED"
 )
-_DISP_NOUN_OR_MOD = r"WRIT|STAY|INJUNCTION|REHEARING|SEE|PER|CURIAM|NOT"
+# PER and CURIAM deliberately NOT here -- they only appear in disposition
+# context inside "SEE PER CURIAM" (a pointer, not a disposition), and the
+# cover_cut logic handles that separately. Leaving them in the vocabulary
+# would cause the byline heading "PER CURIAM:" to match as a disposition
+# on truncated inputs.
+_DISP_NOUN_OR_MOD = r"WRIT|STAY|INJUNCTION|REHEARING|SEE|NOT"
 _DISP_CONNECTIVE = r"IN|PART|AND|OF|AS|TO|MODIFIED"
 
 # A disposition LINE is composed entirely of tokens from the vocabulary
