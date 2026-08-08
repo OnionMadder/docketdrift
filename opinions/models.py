@@ -156,6 +156,15 @@ class Judge(models.Model):
         ACTIVE = "ACTIVE", "Active"
         SENIOR = "SENIOR", "Senior"
         RETIRED = "RETIRED", "Retired"
+        # A lower-court judge (typically a state Superior Court judge) or a
+        # retired justice temporarily assigned to sit on this appellate
+        # court by supreme-court order. They're NOT a regular member of
+        # this court, but their opinions here are real. See the "Sitting
+        # by designation" footnote pattern in AZ COA opinions for the
+        # signal source. Distinguishes real designees from phantom OCR
+        # rows in the "no court + not seated" bucket -- both look the
+        # same otherwise.
+        DESIGNATED = "DESIGNATED", "Sitting by designation"
         UNKNOWN = "UNKNOWN", "Unknown"
 
     class Role(models.TextChoices):

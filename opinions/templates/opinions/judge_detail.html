@@ -69,6 +69,7 @@ stacked layout.
       {% if judge.is_currently_seated %}<span class="case-status">Currently Seated</span>{% endif %}
       {% if judge.status == 'SENIOR' %}<span class="role-chip court-admin">Senior</span>{% endif %}
       {% if judge.status == 'RETIRED' %}<span class="role-chip institution">Retired</span>{% endif %}
+      {% if judge.status == 'DESIGNATED' %}<span class="role-chip institution" title="A judge from another court, temporarily assigned to sit on this court by supreme-court order.">Sitting by designation</span>{% endif %}
     </div>
 
     <h1>{{ judge.full_name }}</h1>
