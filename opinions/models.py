@@ -15,6 +15,9 @@ Until then similarity is computed in Python on demand.
 from django.db import models
 
 
+_LA_CIRCUIT_ORDINAL = {"1": "1st", "2": "2d", "3": "3d", "4": "4th", "5": "5th"}
+
+
 class State(models.Model):
     """A US state we cover. USPS 2-letter code is the primary key."""
 
@@ -91,10 +94,18 @@ class Court(models.Model):
         Cal. vs Calif. -- legal Bluebook convention varies). Fall through
         to ``self.name`` for any unmapped court so nothing breaks if a row
         ships before its label is curated. A division suffix (e.g.
-        'Ariz. Ct. App. Div. 1') is appended when the court carries one.
+        'Ariz. Ct. App. Div. 1', or 'La. Ct. App. 1st Cir.' for LA)
+        is appended when the court carries one.
         """
         base = self._base_short_label()
         if self.division:
+            # LA calls its five appellate panels "circuits", not
+            # "divisions", so the Bluebook cite reads e.g.
+            # 'La. Ct. App. 1st Cir.' -- override the AZ-style
+            # "Div. N" suffix for LA only.
+            if self.state_id == "LA":
+                ord_ = _LA_CIRCUIT_ORDINAL.get(self.division, self.division)
+                return f"{base} {ord_} Cir."
             return f"{base} Div. {self.division}"
         return base
 
@@ -112,6 +123,11 @@ class Court(models.Model):
                 return "Ariz."
             if self.level == self.Level.APPEALS:
                 return "Ariz. Ct. App."
+        if self.state_id == "LA":
+            if self.level == self.Level.SUPREME:
+                return "La."
+            if self.level == self.Level.APPEALS:
+                return "La. Ct. App."
         return self.name
 
     @property
