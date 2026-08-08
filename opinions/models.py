@@ -124,6 +124,7 @@ class Judge(models.Model):
 
     class Role(models.TextChoices):
         CHIEF_JUSTICE = "CHIEF_JUSTICE", "Chief Justice"
+        VICE_CHIEF_JUSTICE = "VICE_CHIEF_JUSTICE", "Vice Chief Justice"
         ASSOCIATE_JUSTICE = "ASSOCIATE_JUSTICE", "Associate Justice"
         CHIEF_JUDGE = "CHIEF_JUDGE", "Chief Judge"
         JUDGE = "JUDGE", "Judge"

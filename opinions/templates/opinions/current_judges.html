@@ -91,7 +91,12 @@
             {% if judge.bio_summary %}
               <p class="cast-summary">{{ judge.bio_summary|truncatewords:30 }}</p>
             {% endif %}
-            <a class="inspect-link" href="{% url 'opinions:judge_detail' slug=judge.slug %}">View dossier &rarr;</a>
+            <div class="cast-links">
+              <a class="inspect-link" href="{% url 'opinions:judge_detail' slug=judge.slug %}">View dossier &rarr;</a>
+              {% if judge.bio_url %}
+                <a class="inspect-link" href="{{ judge.bio_url }}" target="_blank" rel="noopener">Official bio &#8599;</a>
+              {% endif %}
+            </div>
           </article>
         {% endfor %}
       </div>

@@ -980,8 +980,15 @@
   margin: 0.5rem 0 0.75rem;
 }
 
-.cast-grid .entity-tile .inspect-link {
+.cast-grid .entity-tile .cast-links {
   margin-top: auto;
+  display: flex;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+.cast-grid .entity-tile .inspect-link {
   font-size: 0.72rem;
 }
 
