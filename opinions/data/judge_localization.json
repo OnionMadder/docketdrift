@@ -21,6 +21,11 @@
   },
   {
     "state": "AZ",
+    "slug": "brearcliffe",
+    "photo": "opinions/judges/az/brearcliffe.jpg"
+  },
+  {
+    "state": "AZ",
     "slug": "clint-bolick",
     "photo": "opinions/judges/az/clint-bolick.png"
   },
@@ -43,6 +48,11 @@
     "state": "MN",
     "slug": "elizabeth-g-bentley",
     "photo": "opinions/judges/mn/elizabeth-g-bentley.jpg"
+  },
+  {
+    "state": "AZ",
+    "slug": "eppich",
+    "photo": "opinions/judges/az/eppich.webp"
   },
   {
     "state": "AZ",
@@ -103,6 +113,11 @@
     "state": "MN",
     "slug": "francis-j-connolly",
     "photo": "opinions/judges/mn/francis-j-connolly.jpg"
+  },
+  {
+    "state": "AZ",
+    "slug": "gard",
+    "photo": "opinions/judges/az/gard.jpg"
   },
   {
     "state": "AZ",
@@ -200,6 +215,11 @@
     "photo": "opinions/judges/az/perkins.jpg"
   },
   {
+    "state": "AZ",
+    "slug": "peter-eckerstrom",
+    "photo": "opinions/judges/az/peter-eckerstrom.webp"
+  },
+  {
     "state": "MN",
     "slug": "peter-m-reyes-jr",
     "photo": "opinions/judges/mn/peter-m-reyes-jr.jpg"
@@ -235,6 +255,16 @@
     "photo": "opinions/judges/mn/sarah-i-wheelock.jpg"
   },
   {
+    "state": "AZ",
+    "slug": "sklar",
+    "photo": "opinions/judges/az/sklar.jpg"
+  },
+  {
+    "state": "AZ",
+    "slug": "staring",
+    "photo": "opinions/judges/az/staring.jpg"
+  },
+  {
     "state": "MN",
     "slug": "theodora-karin-gaitas",
     "photo": "opinions/judges/mn/theodora-karin-gaitas.jpg"
@@ -243,6 +273,11 @@
     "state": "MN",
     "slug": "tracy-m-smith",
     "photo": "opinions/judges/mn/tracy-m-smith.jpg"
+  },
+  {
+    "state": "AZ",
+    "slug": "vasquez",
+    "photo": "opinions/judges/az/vasquez.jpg"
   },
   {
     "state": "AZ",
