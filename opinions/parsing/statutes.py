@@ -52,6 +52,7 @@ _REGISTRY: dict[str, str] = {
     "MN": "opinions.parsing.statutes_mn",
     "NH": "opinions.parsing.statutes_nh",
     "AZ": "opinions.parsing.statutes_az",
+    "LA": "opinions.parsing.statutes_la",
 }
 
 _cache: dict[str, object] = {}
