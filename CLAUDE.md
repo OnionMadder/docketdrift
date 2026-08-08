@@ -221,7 +221,22 @@ top. Switched to a single 1.63GB ZIP (internal paths match `manifest.csv`) +
 loose manifest/README — minutes, robust. IA had a 503 outage mid-session and
 rate-limits deletes (`bucket_tasks_queued`), so a patient background pass clears
 the leftover loose PDFs over hours. Verify a big IA upload by the download URL's
-Content-Length, not `ia list` (metadata lags commit by minutes).
+Content-Length, not `ia list` (metadata lags commit by minutes). Item is live +
+verified: `archive.org/details/minnesota-appellate-opinions-2017-2026` (the zip
+is the complete, correct dataset regardless of how many loose leftovers remain).
+
+**Louisiana is scoped — `docs/LA_BUILD_LIST.md` (new 2026-08-08).** The full
+LA-specific overlay on the 12-phase rollout: two-source Supreme ingest
+(lasc.gov for the CL-dead 2020+ gap), five COA circuits via `Court.division`,
+civil-law citation grammar. ~5–7 days, the lasc.gov backfill the swing.
+**NEXT SESSION = LA Phase 0 recon** (the queued work): probe lasc.gov
+(open vs Akamai-walled — decides whether the Supreme backfill is unattended or
+an MN-style CAPTCHA sweep) and find the circuit-assignment key (how a `lactapp`
+bulk row says which of the 5 circuits decided it). Those two answers size the
+whole build, and the recon doubles as FLP report #2. Also worth noting: MN
+2024–2025 turned out ALREADY DONE (live check: 1,161 / 1,130, matching the
+archive-sweep "done" figures) — a stale TODO detail item had implied otherwise;
+measure the gap before launching any attended sweep.
 
 ## Latest session (2026-08-06) — Thursday audit; weekly scraper rebuilt; AZ graph; error reports; coverage audit; design sweep
 
