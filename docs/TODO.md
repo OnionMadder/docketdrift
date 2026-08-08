@@ -793,6 +793,53 @@ must start with `/bin/sh`. Path alone is not enough.
   (misses included) for the worker's lifetime — no more per-request DB hit.
   Bounded key space, read-only instance (thread-safe), cleared on restart.
 
+## Researcher-grade standardization (queued behind LA landing, 2026-08-08)
+
+A practicing lawyer using DocketDrift for a real reply brief flagged the gap
+between our output and how top-tier research memos actually read. Their bar
+is: every reference is machine-findable, cites are pinpoint-precise, and the
+tool understands the researcher's mental model. Three items ranked by
+researcher-quality-gain-per-unit-of-work — pursue after LA is live, in this
+order:
+
+- [ ] **Inline cite hyperlinks in opinion body.** When an opinion cites
+  `902 So. 2d 373` (or any reporter cite in our extracted graph), and that
+  target opinion is in our corpus, render the cite as a link, not text.
+  Enables the researcher's core motion: read a paragraph, jump to the case
+  it cites, jump to the case that one cites. All infrastructure exists —
+  the extractor produces `OpinionCitation` rows, the resolver already runs.
+  Needs a template pass on `format_opinion_text` (templatetags/opinion_text)
+  to swap text spans for anchors at the offsets we already store.
+  ~1 day. **Highest gain per unit of work.**
+
+- [ ] **"Copy Bluebook cite" button in opinion header.** One click,
+  Bluebook-form string on clipboard, ready to paste into a brief. Trivial
+  UI (~2 hr) and immediate everyday value to anyone actually writing.
+  Format: `<Case Name>, <reporter_cite> (<court short_label> <YYYY>)`
+  — all fields we already have on the Opinion.
+
+- [ ] **PDF page anchors (`#page-N`) for pinpoint page cites.** Lets
+  `Reed at 236` links actually work — right now we only expose court-
+  assigned paragraph anchors (`#para-N`), which cover NH/AZ well but not
+  MN's opinions or PDF-page pinpoints. Requires extracting page-break
+  positions during `ingest_pdfs`/`load_cl_bulk` and rendering
+  `<span id="page-N">` markers in `format_opinion_text`. Structural but
+  bounded. ~1 day.
+
+**Deliberately NOT on this list** (either different tool or too big):
+
+- Westlaw-style Boolean+proximity search (`("Skinner" /s Rooker) & CTA8`).
+  Practitioners are trained on Westlaw's connector syntax, but adding it
+  reshapes the whole search story and puts us in competition with tools
+  they already pay for. Better to lean into our differentiator (semantic
+  + fulltext + privacy) than emulate Westlaw badly. If it comes up
+  repeatedly from real users, reconsider.
+- BibTeX/Zotero/EndNote exports. Nice-to-have polish; a "Copy Bluebook
+  cite" button gets 90% of the value at 5% of the work.
+- Verification metadata surfaced to readers (`source_url`, `sha256`). Fine
+  as-is on the admin side; not worth cluttering the reader view unless a
+  citation-integrity story ever needs to be public.
+
 ## Diminishing returns (only if a frequency scan shows a new cluster)
 
 - NH's remaining ~4,465 no-match dispositions (genuine 19th-c. prose).
