@@ -147,6 +147,7 @@ class Judge(models.Model):
         VICE_CHIEF_JUSTICE = "VICE_CHIEF_JUSTICE", "Vice Chief Justice"
         ASSOCIATE_JUSTICE = "ASSOCIATE_JUSTICE", "Associate Justice"
         CHIEF_JUDGE = "CHIEF_JUDGE", "Chief Judge"
+        VICE_CHIEF_JUDGE = "VICE_CHIEF_JUDGE", "Vice Chief Judge"
         JUDGE = "JUDGE", "Judge"
         UNKNOWN = "UNKNOWN", "Unknown"
 
