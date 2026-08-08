@@ -32,8 +32,8 @@ from django.db import connection
 
 from opinions.models import Court, Judge, Opinion, PanelVote
 
-_LEAD_NO = re.compile(r"^N[Oo][Ss]?\.?\s+")
-_DIV = re.compile(r"([12])\s+CA", re.I)
+_LEAD_NO = re.compile(r"^N[Oo][Ss]?\.?\s*")
+_DIV = re.compile(r"([12])\s*CA", re.I)
 
 
 def az_division(case_number: str) -> str | None:
@@ -140,8 +140,15 @@ class Command(BaseCommand):
         to_d1 = to_d2 = 0
         judge_updates = []
         for jid, cnt in jdiv.items():
+            # Only split judges whose HOME court is the combined COA. A judge
+            # who sat on the COA and was later elevated to the Supreme Court
+            # (Cruz, Beene, Timmer, Montgomery) is now court=Supreme and must
+            # NOT be dragged back to a COA division by their historical votes.
+            if jcourt.get(jid) != div1.id:
+                continue
             target = div1 if cnt.get("1", 0) >= cnt.get("2", 0) else div2
-            if target and target.id != jcourt.get(jid):
+            # Div 1 stays on the existing court row; only Div 2 judges move.
+            if target and target.id != div1.id:
                 judge_updates.append((jid, target.id))
             if target is div1:
                 to_d1 += 1
