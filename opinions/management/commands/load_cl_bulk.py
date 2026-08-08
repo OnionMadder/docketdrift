@@ -52,6 +52,12 @@ STATE_COURT_CL_IDS = {
     "MN": {"minn", "minnctapp"},
     "NH": {"nh"},
     "AZ": {"ariz", "arizctapp"},
+    # LA: la = Supreme, lactapp = all 5 COA circuits under one CL id.
+    # The bulk load lands every lactapp opinion on the First Circuit
+    # court row (Court.division="1", courtlistener_id="lactapp"); the
+    # per-circuit split happens later in assign_la_circuits (Phase 7c),
+    # which reads the PDF header + parish caption to re-home each row.
+    "LA": {"la", "lactapp"},
 }
 
 # Opinion-type preferences for picking which CL Opinion's text becomes the
