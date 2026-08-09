@@ -698,6 +698,25 @@ must start with `/bin/sh`. Path alone is not enough.
   make a died chunk cleanly resumable — chunk 5 picked up chunk 4's remainder
   exactly).
 
+- [ ] **Pre-1912 AZ OCR-failure sweep — recover Territorial-era hidden votes**
+  (queued 2026-08-08 after the Pokteb / Pobteb / Porter case). The byline
+  extractor gives up on badly-mangled Territorial-era OCR ("Pobteb" for
+  "Porter", "Pokteb" for the same person from a different scan). Cole v.
+  Bean (1878, cl-6597441) was silently missing Porter as a panel member;
+  we only caught it because Onion happened to eyeball the opinion. Same
+  failure mode almost certainly hides participation across other 1870s-
+  1890s AZ opinions — anywhere the OCR is bad enough to defeat the byline
+  regex but the actual role text (`J., concurred`, `J., dissented`,
+  `J., expressed no opinion`) is still parseable. Fix shape: scan pre-1912
+  AZ opinions (that era only) for unmatched-name-followed-by-role-text
+  patterns, compute nearest-Levenshtein-distance to existing Territorial
+  Judge slugs (Tweed/Porter/Sloan/Pinney/Barnes/Stilwell/Kibbey and the
+  handful of others), and either add a PanelVote to the matched judge
+  (for a high-confidence match) or emit a review candidate for manual
+  triage. Low-priority — the entire pre-1912 AZ corpus is small (a few
+  hundred opinions) and the votes are historic — but the fix pattern is
+  simple and reusable for MN early-territorial too.
+
 ## Tier 4 — throughput & hardening (lower priority)
 
 - [x] **Same-court second decisions on one docket — FIXED 2026-08-08
