@@ -227,16 +227,23 @@ def detect_circuit(text: str) -> tuple[str | None, str]:
             header_div = _ORDINAL_TO_DIV.get(fm.group(1).lower())
 
     # Enumerated parish lookup (longest name wins so 'east baton rouge'
-    # is tried before any of its sub-strings).
-    global _PARISH_PATTERNS
-    if not _PARISH_PATTERNS:
-        _PARISH_PATTERNS = _build_parish_patterns()
-    parish_head = head[:_HEAD_WINDOW]
-    for name, pattern in _PARISH_PATTERNS:
-        if pattern.search(parish_head):
-            parish_div = _PARISH_TO_CIRCUIT[name]
-            parish_name = name
-            break
+    # is tried before any of its sub-strings). ONLY runs when the header
+    # didn't yield a signal -- 64 pattern searches per row × 141K rows
+    # tripled the scan time in the fourth dry-run and got the process
+    # NFSN-culled mid-run. Header signals ~45% of opinions; skipping
+    # parish for those rows cuts parish work almost in half without
+    # losing coverage (conflict detection was informational only; a
+    # header hit is high-confidence on its own).
+    if header_div is None:
+        global _PARISH_PATTERNS
+        if not _PARISH_PATTERNS:
+            _PARISH_PATTERNS = _build_parish_patterns()
+        parish_head = head[:_HEAD_WINDOW]
+        for name, pattern in _PARISH_PATTERNS:
+            if pattern.search(parish_head):
+                parish_div = _PARISH_TO_CIRCUIT[name]
+                parish_name = name
+                break
 
     if header_div and parish_div and header_div != parish_div:
         return None, "conflict"
