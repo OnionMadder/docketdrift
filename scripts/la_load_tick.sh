@@ -7,12 +7,16 @@
 # loop on a residential machine, until Phase 2b reports 0 remaining
 # opinions to fill.
 #
-# Phase 2a (opinion metadata) and Phase 3 (panel votes) fit under a single
-# cull window (~10 min) at LA scale, so they run to completion on the
-# first tick that reaches them. This wrapper is idempotent -- re-running
-# after all phases finish is a fast no-op (Phase 1 skips existing, Phase
-# 2a skips existing courtlistener_ids, Phase 2b's SELECT finds 0 rows,
-# Phase 3 uses bulk_create ignore_conflicts).
+# Uses --phase opinions-text so each tick jumps straight to the Phase 2b
+# stream and doesn't burn 10 min re-running Phase 1 (judges) + Phase 2a
+# (opinion metadata) each iteration. Phases 1 + 2a should be run once
+# manually before starting the tick loop (they both fit under a single
+# cull window at LA scale -- see the initial load session for timings).
+# Phase 3 (panel votes) should be run once by hand after Phase 2b is
+# complete -- ~1-5 min, well under a single cull.
+#
+# This wrapper is idempotent for Phase 2b -- re-running after all rows
+# are filled is a fast no-op (the SELECT finds 0 rows and exits cleanly).
 #
 # NFSN scheduled task registration (member panel; not scriptable):
 #   Tag:      la-load-tick
@@ -50,6 +54,7 @@ echo "[$(date '+%F %T')] la_load_tick: starting (--max-runtime $MAX_RUNTIME)" >>
 python -u manage.py load_cl_bulk \
     --subset-dir "$SUBSET" \
     --state LA \
+    --phase opinions-text \
     --max-runtime "$MAX_RUNTIME" \
     >> "$LOG" 2>> "$ERR" \
     || {
