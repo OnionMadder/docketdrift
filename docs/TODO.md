@@ -717,6 +717,21 @@ must start with `/bin/sh`. Path alone is not enough.
   hundred opinions) and the votes are historic — but the fix pattern is
   simple and reusable for MN early-territorial too.
 
+
+- [ ] **Panel-byline circuit classifier for LA COA no-signal tail**
+  (queued 2026-08-09 after Phase 7c apply). assign_la_circuits' scan
+  caught 51%% of opinions via header + parish + JDC signals; the
+  remaining 48%% is mostly OCR-mangled writ dispositions where the
+  ONLY clean circuit signal is the panel byline (``BEFORE: WOLFE,
+  MILLER, GREENE, JJ.``). Fix pattern: compile a per-circuit
+  judge-surname map from LA COA rosters (~50 names across 5 circuits),
+  match ``BEFORE: X, Y, Z`` blocks, vote by majority-circuit of the
+  named panel. Risks: judges who moved between circuits over decades
+  pollute the map (need era-aware assignment); rosters aren't
+  cleanly listed on any single .gov page. Alternative: use CL's
+  people DB once resolve_judges (Phase 8) mints LA judges with
+  court FKs -- then this signal is free.
+
 ## Tier 4 — throughput & hardening (lower priority)
 
 - [x] **Same-court second decisions on one docket — FIXED 2026-08-08
