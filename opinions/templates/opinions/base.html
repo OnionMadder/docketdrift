@@ -169,6 +169,17 @@ crawlers see structured data for every opinion + judge.
   <main class="page-content">
     {% block content %}{% endblock %}
   </main>
+
+  {% comment %}
+  Site-wide footer. Deliberately narrow -- one Support link -- so it
+  reads as a subtle nudge, not a plea. The primary funding CTA lives
+  on /support/ itself (Ko-fi widget + itemized costs). This footer
+  is the discoverability path: every page has a quiet route to that
+  page for a reader who wants to help.
+  {% endcomment %}
+  <footer class="site-footer" role="contentinfo">
+    <a href="{% url 'opinions:support' %}" class="site-footer__support">Support DocketDrift</a>
+  </footer>
 </div>
 
 <script>

@@ -3374,3 +3374,35 @@ button.cta-primary {
     padding: 0.5rem 0.7rem;
   }
 }
+
+/* ============================================================
+   Site footer -- one Support link, quiet, centered
+   ============================================================
+   Same restraint as the justice-banner: the footer is a discovery
+   path to /support/, not a plea. Small type, subdued color, no
+   button-chrome by default; hover promotes to the accent for a
+   visible affordance.
+   ============================================================ */
+
+.site-footer {
+  margin-top: 3rem;
+  padding: 1.4rem 1rem 1.8rem;
+  text-align: center;
+  border-top: 1px solid rgba(148, 140, 161, 0.14);
+  font-size: 0.88rem;
+}
+
+.site-footer__support {
+  color: var(--muted, #948ca1);
+  text-decoration: underline;
+  text-decoration-color: rgba(148, 140, 161, 0.35);
+  text-underline-offset: 0.22em;
+  letter-spacing: 0.02em;
+  transition: color var(--transition), text-decoration-color var(--transition);
+}
+
+.site-footer__support:hover,
+.site-footer__support:focus-visible {
+  color: var(--neon-cyan);
+  text-decoration-color: var(--neon-cyan);
+}
