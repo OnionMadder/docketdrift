@@ -26,6 +26,11 @@
   },
   {
     "state": "AZ",
+    "slug": "catlett",
+    "photo": "opinions/judges/az/catlett.jpg"
+  },
+  {
+    "state": "AZ",
     "slug": "clint-bolick",
     "photo": "opinions/judges/az/clint-bolick.png"
   },
@@ -116,6 +121,16 @@
   },
   {
     "state": "AZ",
+    "slug": "furuya",
+    "photo": "opinions/judges/az/furuya.png"
+  },
+  {
+    "state": "AZ",
+    "slug": "gaona",
+    "photo": "opinions/judges/az/gaona.jpg"
+  },
+  {
+    "state": "AZ",
     "slug": "gard",
     "photo": "opinions/judges/az/gard.jpg"
   },
@@ -203,6 +218,11 @@
     "state": "MN",
     "slug": "natalie-e-hudson",
     "photo": "opinions/judges/mn/natalie-e-hudson.jpg"
+  },
+  {
+    "state": "AZ",
+    "slug": "paton",
+    "photo": "opinions/judges/az/paton.png"
   },
   {
     "state": "MN",
