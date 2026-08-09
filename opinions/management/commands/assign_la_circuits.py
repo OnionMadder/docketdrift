@@ -108,6 +108,56 @@ _ORDINAL_TO_DIV = {
 
 
 # ---------------------------------------------------------------------------
+# JDC (Judicial District Court) -> COA circuit map. Third fallback after
+# header regex + parish enumeration both fail.
+#
+# Louisiana has 43 numbered JDCs; 40 are single-circuit (all their parishes
+# appeal to the same COA). Three are multi-circuit and MUST be skipped:
+#   - 16th JDC (Iberia+St.Martin=3rd, St.Mary=1st)
+#   - 23rd JDC (Ascension+Assumption=1st, St.James=5th)
+#   - Orleans has "Civil District Court" (no JDC number) -- handled by
+#     the separate CDC_ORLEANS_RE below, unambiguously 4th Cir.
+# 41st and 43rd are not assigned (reserved).
+#
+# The In-Re/Appeal-From block that names the JDC is preserved through
+# OCR far better than the parish name (numbers survive better than
+# long multi-word proper nouns).
+# ---------------------------------------------------------------------------
+_JDC_TO_CIRCUIT: dict[str, str] = {
+    "1": "2", "2": "2", "3": "2", "4": "2", "5": "2", "6": "2", "7": "2",
+    "8": "2", "9": "3", "10": "3", "11": "2", "12": "3", "13": "3",
+    "14": "3", "15": "3",
+    # 16 SPLIT -- skip
+    "17": "1", "18": "1", "19": "1", "20": "1", "21": "1", "22": "1",
+    # 23 SPLIT -- skip
+    "24": "5", "25": "4", "26": "2", "27": "3", "28": "3", "29": "5",
+    "30": "3", "31": "3", "32": "1", "33": "3", "34": "4", "35": "3",
+    "36": "3", "37": "2", "38": "3", "39": "2", "40": "5",
+    # 41 unassigned
+    "42": "2",
+    # 43 unassigned
+}
+
+# "19th Judicial District Court" / "2 1st Judicial District" / "22nd JDC".
+# The permissive digit-run pattern (\d+(?:\s+\d+)*) tolerates OCR
+# broken-number cases where a two-digit number is split by whitespace
+# ("2 1 st" was seen in id=455014's raw_text). Normalize by removing
+# all whitespace before the map lookup.
+_JDC_RE = re.compile(
+    r"\b(\d+(?:\s+\d+)*)\s*(?:st|nd|rd|th)?\s+"
+    r"judicial\s+district\s+court\b",
+    re.IGNORECASE,
+)
+
+# Orleans Parish Civil District Court -> 4th Circuit (unambiguous).
+_CDC_ORLEANS_RE = re.compile(
+    r"\bcivil\s+district\s+court\b[\s\S]{0,80}?"
+    r"(?:parish\s+of\s+orleans|orleans\s+parish)",
+    re.IGNORECASE,
+)
+
+
+# ---------------------------------------------------------------------------
 # Parish caption match: LA appellate opinions carry either a
 # parenthetical "(Parish of X)" or a caption phrase "district court,
 # Parish of X, No. ..." or "district court for the parish of Orleans".
@@ -208,8 +258,11 @@ def detect_circuit(text: str) -> tuple[str | None, str]:
     Returns:
         ("1".."5", "header")  when the PDF header names the circuit.
         ("1".."5", "parish")  when the caption parish maps to a circuit.
-        (None,     "none")    when neither signal is legible.
-        (None,     "conflict") when both signals disagree.
+        ("1".."5", "jdc")     when a Judicial District Court number
+                              (or Orleans Civil District Court) is found
+                              and maps unambiguously to one circuit.
+        (None,     "none")    when no signal is legible.
+        (None,     "conflict") when header and parish disagree.
     """
     head = (text or "")[:2500]  # first ~2.5KB covers the caption block
     header_div: str | None = None
@@ -234,6 +287,7 @@ def detect_circuit(text: str) -> tuple[str | None, str]:
     # parish for those rows cuts parish work almost in half without
     # losing coverage (conflict detection was informational only; a
     # header hit is high-confidence on its own).
+    jdc_div: str | None = None
     if header_div is None:
         global _PARISH_PATTERNS
         if not _PARISH_PATTERNS:
@@ -245,11 +299,24 @@ def detect_circuit(text: str) -> tuple[str | None, str]:
                 parish_name = name
                 break
 
+        # Third fallback: JDC number. Only try if BOTH header and parish
+        # failed. Fast (one regex + one dict lookup).
+        if parish_div is None:
+            jdc_m = _JDC_RE.search(parish_head)
+            if jdc_m:
+                raw = jdc_m.group(1)
+                num = "".join(raw.split())  # "2 1" -> "21"
+                jdc_div = _JDC_TO_CIRCUIT.get(num)
+            if jdc_div is None and _CDC_ORLEANS_RE.search(parish_head):
+                jdc_div = "4"  # Civil District Court of Orleans
+
     if header_div and parish_div and header_div != parish_div:
         return None, "conflict"
-    return (header_div or parish_div), (
-        "header" if header_div else ("parish" if parish_div else "none")
-    )
+    div = header_div or parish_div or jdc_div
+    if div is None:
+        return None, "none"
+    src = "header" if header_div else ("parish" if parish_div else "jdc")
+    return div, src
 
 
 class Command(BaseCommand):
