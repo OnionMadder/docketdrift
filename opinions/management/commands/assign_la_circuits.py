@@ -52,17 +52,27 @@ from opinions.models import Court, Opinion
 
 
 # ---------------------------------------------------------------------------
-# PDF-header regex: LA COA opinions universally open with
-#   STATE OF LOUISIANA
-#   COURT OF APPEAL
-#   FIRST CIRCUIT   (or SECOND / THIRD / FOURTH / FIFTH)
+# PDF-header regex: LA COA opinions open with a two-column tabular block
+# where the LEFT column carries the caption (parties + asterisk column
+# separators) and the RIGHT column carries the court identity:
+#   LORA JOHNSON              *      NO. 2025-CA-0560
+#   VERSUS                    *      COURT OF APPEAL
+#   CITY COUNCIL              *      FOURTH CIRCUIT
+#                             *      STATE OF LOUISIANA
 #
-# Tolerates: extra whitespace, comma between "APPEAL" and the ordinal
-# ("COURT OF APPEAL, FIRST CIRCUIT"), and case (Bluebook uses lower
-# "First" in prose, but headers are usually all-caps).
+# pypdf extracts this row-by-row, so "COURT OF APPEAL" and the ordinal
+# "FOURTH CIRCUIT" are separated by 30-80 chars of interleaved caption
+# text ("CITY COUNCIL", the *  separator, etc). The first-pass regex
+# required them adjacent and missed 81% of opinions on the first
+# dry-run scan; the [\s\S]{0,150}? window covers up to ~2 caption lines
+# between APPEAL and the ordinal.
+#
+# Non-greedy so the FIRST subsequent ordinal wins -- if a citation
+# later in the head mentioned another circuit, it wouldn't be reached.
 # ---------------------------------------------------------------------------
 _HEADER_RE = re.compile(
-    r"court\s+of\s+appeal[,\s]+(first|second|third|fourth|fifth)\s+circuit",
+    r"court\s+of\s+appeal[\s\S]{0,150}?"
+    r"(first|second|third|fourth|fifth)\s+circuit",
     re.IGNORECASE,
 )
 
