@@ -47,6 +47,28 @@
     <p>
       <a class="cta-primary" href="{{ donate_url }}" target="_blank" rel="noopener noreferrer">Fund Louisiana &rarr;</a>
     </p>
+    {% comment %}
+    Ko-fi's official interactive widget. Loads third-party JS from
+    storage.ko-fi.com and renders a "Support me on Ko-fi" button that
+    opens the donation flow in a popup. Kept ALONGSIDE the plain-link
+    CTA above (not replacing it) so a reader with JS off, or if Ko-fi's
+    CDN is down, still has a working path.
+
+    Third-party JS on the site is a deliberate exception here: this is
+    the ONE page where a visitor has affirmatively signaled they want
+    to give the recipient (Ko-fi) money, so loading a script from the
+    same recipient's CDN is proportionate. Do NOT propagate this
+    pattern to other pages -- the "data is sacred" posture keeps
+    third-party scripts off every non-support surface (see the
+    goatcounter-only analytics note at the top of base.html).
+
+    The script is inline so kofiwidget2.draw() renders the button at
+    this exact position in the DOM, right under the plain CTA.
+    {% endcomment %}
+    <p class="kofi-widget-slot">
+      <script type="text/javascript" src="https://storage.ko-fi.com/cdn/widget/Widget_2.js"></script>
+      <script type="text/javascript">kofiwidget2.init('Support me on Ko-fi', '#72a4f2', 'I3I61DWT8H');kofiwidget2.draw();</script>
+    </p>
     <p class="subtle-note">Any amount helps &mdash; the bill is the same whether one person funds it or fifty. The live progress bar is on the donation page.</p>
   {% else %}
     <p>Donation link coming soon. In the meantime, tell someone who&rsquo;d find DocketDrift useful &mdash; that helps too.</p>
