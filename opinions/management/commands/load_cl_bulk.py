@@ -192,8 +192,22 @@ class Command(BaseCommand):
             default=500,
             help="Bulk insert/update batch size (default: 500).",
         )
+        parser.add_argument(
+            "--max-runtime",
+            type=int,
+            default=0,
+            help=(
+                "Self-exit after N seconds of Phase-2b streaming, cleanly at "
+                "the next batch boundary. 0 = unlimited (default). Set to "
+                "~480 for cull-safe operation on NFSN's ~10-minute wallclock "
+                "supervisor -- see scripts/la_load_tick.sh for the loop "
+                "wrapper. Only affects Phase 2b (the long one); Phase 2a "
+                "and Phase 3 already fit under a single cull window."
+            ),
+        )
 
-    def handle(self, *args, subset_dir, state, phase, limit, dry_run, batch_size, **options):
+    def handle(self, *args, subset_dir, state, phase, limit, dry_run,
+               batch_size, max_runtime, **options):
         # Lift the 25s max_statement_time cap that settings.py puts on every
         # connection. Right for web requests, wrong for a bulk load whose
         # phase-1 preflight COUNT(*) on opinion-clusters.csv-derived queries
@@ -235,7 +249,8 @@ class Command(BaseCommand):
         if phase in ("opinions", "all"):
             self._load_opinion_metadata(state_obj, subset, cl_court_ids, limit, dry_run, batch_size)
         if phase in ("opinions", "opinions-text", "all"):
-            self._load_opinion_text(state_obj, subset, limit, dry_run, batch_size)
+            self._load_opinion_text(state_obj, subset, limit, dry_run,
+                                    batch_size, max_runtime)
         if phase in ("panel", "all"):
             self._load_panel(state_obj, subset, limit, dry_run, batch_size)
 
@@ -500,9 +515,16 @@ class Command(BaseCommand):
 
     # --- Phase 2b: opinion text (streams 2.3 GB opinions.csv) ----------------
 
-    def _load_opinion_text(self, state, subset, limit, dry_run, batch_size):
+    def _load_opinion_text(self, state, subset, limit, dry_run, batch_size,
+                           max_runtime=0):
         self.stdout.write("\n=== Phase 2b: opinion text (streams 2.3 GB opinions.csv) ===")
         t0 = time.time()
+        # Poll cadence for --max-runtime: check the wall clock every N rows
+        # so a tight inner loop doesn't spend all its cycles on time.time().
+        # Chosen to be small relative to a batch (500) so the exit lag past
+        # the deadline is bounded to a few seconds.
+        RUNTIME_POLL_EVERY = 200
+        stopped_early = False
 
         # Pre-fetch all opinion PKs by courtlistener_id (= cluster_id) for fast lookup.
         # ~71K rows, small map, ~5MB.
@@ -569,6 +591,11 @@ class Command(BaseCommand):
 
                 if limit and updated >= limit:
                     break
+                if (max_runtime
+                        and scanned % RUNTIME_POLL_EVERY == 0
+                        and time.time() - t0 >= max_runtime):
+                    stopped_early = True
+                    break
         finally:
             fh.close()
 
@@ -576,8 +603,10 @@ class Command(BaseCommand):
             Opinion.objects.bulk_update(pending_updates, ["raw_text"])
             updated += len(pending_updates)
 
+        tag = " (stopped early on --max-runtime)" if stopped_early else ""
         self.stdout.write(self.style.SUCCESS(
-            f"  text-filled: {updated:,}  scanned: {scanned:,}  ({time.time()-t0:.1f}s)"
+            f"  text-filled: {updated:,}  scanned: {scanned:,}"
+            f"  ({time.time()-t0:.1f}s){tag}"
         ))
 
     # --- Phase 3: panel votes -----------------------------------------------
