@@ -46,6 +46,7 @@ from collections import Counter
 
 from django.core.management.base import BaseCommand
 from django.db import connection
+from django.db.models.functions import Substr
 
 from opinions.models import Court, Opinion
 
@@ -221,40 +222,41 @@ class Command(BaseCommand):
         moves: dict[int, dict[int, list[int]]] = {}
 
         scanned = 0
-        # Pull id + case_number + court_id + raw_text (bounded to first
-        # 2500 chars via Substr would be ideal, but Django ORM won't
-        # partial-fetch a MEDIUMTEXT cleanly; we accept a full raw_text
-        # read and let InnoDB serve it -- disk cache holds warmly for a
-        # large sequential scan of the landing court's clustered rows).
+        # Pull ONLY the first ~2500 chars of raw_text (all the header /
+        # caption / parish signals we need). raw_text is a MEDIUMTEXT
+        # averaging ~30KB per row on LA; pulling it in full via
+        # .only() + .iterator(chunk_size=2000) would build ~60MB per
+        # batch and get culled by NFSN in seconds. Substr trims at the
+        # SQL layer so each row's payload is <=2500 bytes over the wire.
         qs = (
             Opinion.objects
             .filter(court_id__in=landing_ids)
-            .only("id", "case_number", "court_id", "raw_text")
+            .annotate(head=Substr("raw_text", 1, 2500))
+            .values("id", "case_number", "court_id", "head")
             .iterator(chunk_size=chunk_size)
         )
         cull = False
         for op in qs:
             scanned += 1
-            div, src = detect_circuit(op.raw_text or "")
+            div, src = detect_circuit(op["head"] or "")
             counts_by_source[src] += 1
 
             if div is None:
                 bucket = conflicts if src == "conflict" else unresolved
-                bucket.append((op.id, op.case_number or ""))
+                bucket.append((op["id"], op["case_number"] or ""))
                 continue
 
             target = circuits.get(div)
-            if target is None or target.id == op.court_id:
+            if target is None or target.id == op["court_id"]:
                 # Correct circuit already; nothing to move
                 counts_by_target["no-op"] += 1
                 continue
 
-            moves.setdefault(op.court_id, {}).setdefault(target.id, []).append(op.id)
+            moves.setdefault(op["court_id"], {}).setdefault(target.id, []).append(op["id"])
             counts_by_target[div] += 1
 
-            # Cull-safe: periodic check so we self-exit under NFSN's ~10-min
-            # wallclock cap. 2000 rows / 60s scan = ~5-10s slack per cycle
-            # even on the slowest InnoDB behavior.
+            # Cull-safe: periodic check so we self-exit under NFSN's
+            # ~10-min wallclock cap.
             if max_runtime and scanned % 5000 == 0:
                 if time.time() - t0 > max_runtime:
                     cull = True
@@ -263,6 +265,11 @@ class Command(BaseCommand):
                         f"flushing partial batch and exiting."
                     )
                     break
+            # Occasional live-progress line so nohup+tail is watchable.
+            if scanned % 20000 == 0:
+                self.stdout.write(
+                    f"  scanned {scanned:,}  ({time.time()-t0:.0f}s)"
+                )
 
         # --- report --------------------------------------------------------
         elapsed = time.time() - t0
