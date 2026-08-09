@@ -76,12 +76,30 @@ _HEADER_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Fallback header regex: just the ordinal + "circuit", searched only in the
+# first 800 chars so body-prose references (e.g. "the Third Circuit held...")
+# can't false-match. Handles two failure modes the strict regex misses:
+#   (a) First Circuit's own template SKIPS the "COURT OF APPEAL" line and
+#       goes straight STATE OF LOUISIANA -> FIRST CIRCUIT (id=231046 shape).
+#   (b) OCR occasionally drops the FIRST LETTER of the ordinal ("IRST
+#       CIRCUIT" for id=400923). The optional-first-letter alternation
+#       (f?irst|s?econd|t?hird|f?ourth|f?ifth) catches both intact and
+#       broken forms; the stem lookup below maps either to the division.
+# The ordinal + " circuit" pairing this early in the doc is distinctive
+# to the header block (body citations use "La. App. N Cir." numeric form
+# and don't appear before ~char 1500 in typical opinions).
+_HEADER_FALLBACK_RE = re.compile(
+    r"\b(f?irst|s?econd|t?hird|f?ourth|f?ifth)\s+circuit\b",
+    re.IGNORECASE,
+)
+_HEAD_WINDOW = 800  # chars of raw_text scanned for the fallback
+
 _ORDINAL_TO_DIV = {
-    "first":  "1",
-    "second": "2",
-    "third":  "3",
-    "fourth": "4",
-    "fifth":  "5",
+    "first":  "1",  "irst":  "1",
+    "second": "2",  "econd": "2",
+    "third":  "3",  "hird":  "3",
+    "fourth": "4",  "ourth": "4",
+    "fifth":  "5",  "ifth":  "5",
 }
 
 
@@ -168,6 +186,12 @@ def detect_circuit(text: str) -> tuple[str | None, str]:
     m = _HEADER_RE.search(head)
     if m:
         header_div = _ORDINAL_TO_DIV.get(m.group(1).lower())
+    else:
+        # Fallback: bare ordinal + "circuit" in a bounded head window.
+        # See _HEADER_FALLBACK_RE docstring for why this is safe.
+        fm = _HEADER_FALLBACK_RE.search(head[:_HEAD_WINDOW])
+        if fm:
+            header_div = _ORDINAL_TO_DIV.get(fm.group(1).lower())
 
     pm = _PARISH_RE.search(head)
     if pm:
