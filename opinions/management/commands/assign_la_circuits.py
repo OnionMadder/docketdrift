@@ -92,7 +92,11 @@ _HEADER_FALLBACK_RE = re.compile(
     r"\b(f?irst|s?econd|t?hird|f?ourth|f?ifth)\s+circuit\b",
     re.IGNORECASE,
 )
-_HEAD_WINDOW = 800  # chars of raw_text scanned for the fallback
+# Widened 800 -> 2000 after third dry-run found First Circuit writs (short
+# "WRIT DENIED" dispositions) put the "COURT OF APPEAL, FIRST CIRCUIT"
+# stamp in the signature block at the END of the doc, around offset 850-950.
+# 2000 is still well below body-prose depth for typical opinions (~2500+).
+_HEAD_WINDOW = 2000
 
 _ORDINAL_TO_DIV = {
     "first":  "1",  "irst":  "1",
@@ -104,21 +108,26 @@ _ORDINAL_TO_DIV = {
 
 
 # ---------------------------------------------------------------------------
-# Parish caption regex: LA appellate opinions carry a parenthetical
-# "(Parish of X)" (Supreme review) or a caption noun phrase naming the
-# parish of origin. Common forms:
-#   "(Parish of East Baton Rouge)"
-#   "Twenty-Second Judicial District Court, Parish of St. Tammany"
-#   "district court for the parish of Orleans"
+# Parish caption match: LA appellate opinions carry either a
+# parenthetical "(Parish of X)" or a caption phrase "district court,
+# Parish of X, No. ..." or "district court for the parish of Orleans".
 #
-# The regex captures the parish name run following "Parish of ", up to
-# the next comma / closing paren / newline. Post-strip: leading "the",
-# trailing whitespace / punctuation, and case-fold for the map lookup.
+# The third dry-run's fuzzy regex kept mis-bounding multi-word parishes:
+#   - "Parish of East Baton\nRouge, No..." captured only "East Baton"
+#     (newline in the lookahead class closed the match too early).
+#   - "PARISH OF BATON ROUGE" (all-caps caption at doc top) captured
+#     "BATON ROUGE" -- but that isn't a parish; the actual parish is
+#     East Baton Rouge or West Baton Rouge, and the regex had no way
+#     to reach the "East"/"West" that appeared elsewhere in the doc.
+#   - "Parish of St. Tammany - State of Louisiana" captured the whole
+#     tail because " - " wasn't in the lookahead stop set.
+#
+# Cleaner: DIRECT ENUMERATED LOOKUP. Compile one pattern per parish name
+# and try them longest-first (so "east baton rouge" matches before "east"
+# would erroneously stop early). No fuzzy boundary detection needed --
+# each pattern is anchored to the specific parish, and only exact-name
+# hits count.
 # ---------------------------------------------------------------------------
-_PARISH_RE = re.compile(
-    r"parish\s+of\s+([A-Za-z][A-Za-z\s.'-]{2,40}?)(?=[,)\n]|\s+(?:and|through|in|from|for|by|to|the))",
-    re.IGNORECASE,
-)
 
 
 # ---------------------------------------------------------------------------
@@ -156,17 +165,41 @@ _PARISH_TO_CIRCUIT: dict[str, str] = {
 def _normalize_parish(raw: str) -> str:
     """Fold a captured parish string to the map key.
 
-    Handles: leading "the", "saint" vs "st." variants, extra whitespace,
-    trailing punctuation, and Bluebook capitalization.
+    Kept for reference / potential reuse. The enumerated-lookup path
+    below doesn't need it, but a caller might want to canonicalize a
+    parish name from another source.
     """
     s = (raw or "").strip().lower().rstrip(".,;: )")
     if s.startswith("the "):
         s = s[4:]
-    # "Saint X" -> "St. X" (map form)
     s = re.sub(r"^saint\s+", "st. ", s)
-    # Collapse runs of whitespace
     s = re.sub(r"\s+", " ", s).strip()
     return s
+
+
+def _build_parish_patterns() -> list[tuple[str, re.Pattern]]:
+    """Compile 'parish of <NAME>' patterns for each of the 64 LA parishes.
+
+    Sorted LONGEST parish name first so 'east baton rouge' matches
+    before 'east' (there is no 'East' parish, but if the head text
+    happens to be truncated to 'Parish of East' mid-caption, we want
+    to return None rather than match a nonexistent shorter form).
+
+    Whitespace inside the parish name matches flexibly: 'East    Baton\n
+    Rouge' matches 'East Baton Rouge' because ' ' in the name becomes
+    r'\s+' in the pattern. 'St.' escapes cleanly via re.escape.
+    """
+    out = []
+    for name in sorted(_PARISH_TO_CIRCUIT, key=lambda n: -len(n)):
+        pat_body = re.escape(name).replace(r"\ ", r"\s+")
+        out.append((
+            name,
+            re.compile(r"parish\s+of\s+" + pat_body, re.IGNORECASE),
+        ))
+    return out
+
+
+_PARISH_PATTERNS: list[tuple[str, re.Pattern]] = []  # lazy-init below
 
 
 def detect_circuit(text: str) -> tuple[str | None, str]:
@@ -193,10 +226,17 @@ def detect_circuit(text: str) -> tuple[str | None, str]:
         if fm:
             header_div = _ORDINAL_TO_DIV.get(fm.group(1).lower())
 
-    pm = _PARISH_RE.search(head)
-    if pm:
-        parish_name = _normalize_parish(pm.group(1))
-        parish_div = _PARISH_TO_CIRCUIT.get(parish_name)
+    # Enumerated parish lookup (longest name wins so 'east baton rouge'
+    # is tried before any of its sub-strings).
+    global _PARISH_PATTERNS
+    if not _PARISH_PATTERNS:
+        _PARISH_PATTERNS = _build_parish_patterns()
+    parish_head = head[:_HEAD_WINDOW]
+    for name, pattern in _PARISH_PATTERNS:
+        if pattern.search(parish_head):
+            parish_div = _PARISH_TO_CIRCUIT[name]
+            parish_name = name
+            break
 
     if header_div and parish_div and header_div != parish_div:
         return None, "conflict"
