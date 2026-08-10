@@ -287,6 +287,17 @@ class CourtListenerClient:
         """
         return self._get(f"dockets/{docket_id}/")
 
+    def fetch_cluster(self, cluster_id: str | int) -> dict:
+        """Return a single opinion CLUSTER by ID.
+
+        Distinct from ``fetch_opinion``: CL numbers clusters and opinions
+        in separate id spaces. Our ``Opinion.courtlistener_id`` holds the
+        CLUSTER id (matches the URL at ``/opinion/<id>/`` on the website),
+        so any code that needs sub_opinions / download URLs must fetch
+        the cluster first and then walk its ``sub_opinions`` list.
+        """
+        return self._get(f"clusters/{cluster_id}/")
+
     def fetch_opinion(self, opinion_id: str | int) -> dict:
         """Return a single opinion record by ID.
 
