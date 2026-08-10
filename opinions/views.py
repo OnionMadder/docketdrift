@@ -797,17 +797,30 @@ def _match_opinions(qs, case_number):
     # sentencing review / opinion on remand), and _pick_opinion +
     # the "Also decided on this docket" panel already handle N-way
     # siblings correctly.
-    variants = {case_number}
+    # Build the ordered variant list. We used to run this as one
+    # ``case_number__in=[...]`` query, but that flips the optimizer off
+    # the ``(court_id, case_number)`` composite index and 25s-times-out
+    # under ``court__state=state`` -- the same "one non-covered column
+    # beside a court_id filter" pathology documented in CLAUDE.md's
+    # gotcha section. Sequential single-value equality lookups each stay
+    # on the index (~1-2ms per key); at most 4 keys, so ~5-10ms total in
+    # the worst case, vs 25s KILL on the IN.
+    variants = [case_number]
+    seen = {case_number}
     canonical = canonical_case_number(case_number)
-    if canonical:
-        variants.add(canonical)
-    # If the URL is a clean docket, look also for the 'No. ' prefixed
-    # form CL sometimes stored. Cheap: one extra key in the IN list.
+    if canonical and canonical not in seen:
+        variants.append(canonical); seen.add(canonical)
     if not case_number.lstrip().lower().startswith("no."):
-        variants.add(f"No. {case_number}")
-        if canonical:
-            variants.add(f"No. {canonical}")
-    matches = list(qs.filter(case_number__in=list(variants)))
+        for v in (f"No. {case_number}", f"No. {canonical}" if canonical else None):
+            if v and v not in seen:
+                variants.append(v); seen.add(v)
+
+    matches: list = []
+    match_ids: set = set()
+    for v in variants:
+        for o in qs.filter(case_number=v):
+            if o.id not in match_ids:
+                matches.append(o); match_ids.add(o.id)
     return matches
 
 
