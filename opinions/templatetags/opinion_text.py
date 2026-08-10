@@ -242,54 +242,77 @@ def format_opinion_text(opinion, highlight: str = "") -> str:
 
         return cite_pattern.sub(_wrap, escaped_html)
 
-    # Chunks separated by blank lines (1+ blank lines = paragraph break)
-    chunks = re.split(r"\n\s*\n", raw_text)
+    # Page-break handling: pypdf writes a form-feed (U+000C) between
+    # pages of the source PDF. AZ opinions carry them reliably (~10/opinion),
+    # NH/MN/LA generally do not. When present, we split the body into pages
+    # FIRST, render each page's content with the existing blank-line chunk
+    # logic, and inject a page anchor between them so URLs can deep-link
+    # to `#page-N` (the same shape as `#para-N`). When absent (no \f in the
+    # source), the whole body is one page and this is a no-op.
+    pages = raw_text.split("\f")
 
     parts = []
-    for chunk in chunks:
-        chunk = chunk.strip()
-        if not chunk:
-            continue
-
-        if _is_heading(chunk):
-            parts.append(f'<h3 class="op-heading">{_highlight(escape(chunk))}</h3>')
-            continue
-
-        # Detect a leading paragraph marker like "[¶23]" so we can attach
-        # id="para-23" to the <p> for deep-linking and wrap the marker
-        # itself as an in-page self-link the user can right-click + copy.
-        para_match = _PARA_NUM_RE.match(chunk)
-        para_id_attr = ""
-        para_marker_html = ""
-        if para_match:
-            para_n = para_match.group(1)
-            para_id_attr = f' id="para-{para_n}"'
-            para_marker_html = (
-                f'<a class="op-para-anchor" href="#para-{para_n}"'
-                f' aria-label="Link to paragraph {para_n}">'
-                f'¶{para_n}</a> '
+    for page_num, page_text in enumerate(pages, start=1):
+        # Anchor + visible marker between pages. Page 1 = top of document,
+        # no marker needed; pages 2+ get an `<hr>`-style separator with a
+        # click-to-copy anchor that mirrors the ¶N pilcrow convention.
+        if page_num > 1:
+            parts.append(
+                f'<div class="op-page-break">'
+                f'<a class="op-page-anchor" href="#page-{page_num}"'
+                f' id="page-{page_num}"'
+                f' aria-label="Link to page {page_num}">'
+                f'p. {page_num}</a>'
+                f'</div>'
             )
-            chunk = chunk[para_match.end():]
 
-        # Body paragraph. Escape first, then inject statute links + case
-        # citation wrappers. Internal hard newlines become <br> so
-        # mid-paragraph line wraps from the source survive (e.g. case
-        # captions like "State of Minnesota,\n                Respondent,").
-        escaped = escape(chunk)
-        escaped = _STATUTE_RE.sub(_linkify_statute, escaped)
-        escaped = _CITATION_RE.sub(_wrap_citation, escaped)
-        # Case-citation wrappers above added <cite>...</cite> around
-        # "Name v. Name, cite" pairs; now turn the cite portion into a
-        # hyperlink if the graph has resolved it to a target opinion.
-        # Also linkifies BARE cites (no "Name v. Name" prefix) since
-        # the extractor stores them at the granularity of the cite
-        # string alone -- so a bare "160 N.H. 732" reference becomes
-        # clickable too.
-        escaped = _linkify_cites(escaped)
-        escaped = _highlight(escaped)
-        escaped = escaped.replace("\n", "<br>")
-        parts.append(
-            f'<p class="op-para"{para_id_attr}>{para_marker_html}{escaped}</p>'
-        )
+        # Chunks separated by blank lines (1+ blank lines = paragraph break)
+        chunks = re.split(r"\n\s*\n", page_text)
+
+        for chunk in chunks:
+            chunk = chunk.strip()
+            if not chunk:
+                continue
+
+            if _is_heading(chunk):
+                parts.append(f'<h3 class="op-heading">{_highlight(escape(chunk))}</h3>')
+                continue
+
+            # Detect a leading paragraph marker like "[¶23]" so we can attach
+            # id="para-23" to the <p> for deep-linking and wrap the marker
+            # itself as an in-page self-link the user can right-click + copy.
+            para_match = _PARA_NUM_RE.match(chunk)
+            para_id_attr = ""
+            para_marker_html = ""
+            if para_match:
+                para_n = para_match.group(1)
+                para_id_attr = f' id="para-{para_n}"'
+                para_marker_html = (
+                    f'<a class="op-para-anchor" href="#para-{para_n}"'
+                    f' aria-label="Link to paragraph {para_n}">'
+                    f'¶{para_n}</a> '
+                )
+                chunk = chunk[para_match.end():]
+
+            # Body paragraph. Escape first, then inject statute links + case
+            # citation wrappers. Internal hard newlines become <br> so
+            # mid-paragraph line wraps from the source survive (e.g. case
+            # captions like "State of Minnesota,\n                Respondent,").
+            escaped = escape(chunk)
+            escaped = _STATUTE_RE.sub(_linkify_statute, escaped)
+            escaped = _CITATION_RE.sub(_wrap_citation, escaped)
+            # Case-citation wrappers above added <cite>...</cite> around
+            # "Name v. Name, cite" pairs; now turn the cite portion into a
+            # hyperlink if the graph has resolved it to a target opinion.
+            # Also linkifies BARE cites (no "Name v. Name" prefix) since
+            # the extractor stores them at the granularity of the cite
+            # string alone -- so a bare "160 N.H. 732" reference becomes
+            # clickable too.
+            escaped = _linkify_cites(escaped)
+            escaped = _highlight(escaped)
+            escaped = escaped.replace("\n", "<br>")
+            parts.append(
+                f'<p class="op-para"{para_id_attr}>{para_marker_html}{escaped}</p>'
+            )
 
     return mark_safe("\n".join(parts))

@@ -2719,6 +2719,56 @@ button.cta-primary {
   z-index: 5;
 }
 
+/* Page-break markers. When the source PDF was extracted with pypdf's
+   form-feed page separator (AZ carries these reliably; NH/MN/LA generally
+   don't), format_opinion_text emits an <hr>-shaped divider with a
+   click-to-copy anchor at each page boundary. Same visual language as the
+   pilcrow para-anchor above, at page scale rather than paragraph. */
+.op-page-break {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.5rem 0;
+  color: var(--text-dim);
+  font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.op-page-break::before,
+.op-page-break::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right,
+    transparent,
+    rgba(var(--neon-cyan-rgb), 0.18),
+    transparent);
+}
+.op-page-anchor {
+  color: var(--text-dim);
+  text-decoration: none;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid rgba(var(--neon-cyan-rgb), 0.14);
+  border-radius: 2px;
+  background: rgba(var(--neon-cyan-rgb), 0.04);
+  user-select: none;
+}
+.op-page-anchor:hover,
+.op-page-anchor:focus-visible {
+  color: var(--neon-cyan);
+  background: rgba(var(--neon-cyan-rgb), 0.12);
+  border-color: rgba(var(--neon-cyan-rgb), 0.32);
+  outline: none;
+}
+/* When a page anchor is the URL-fragment target, keep it lit so the user
+   can see where the deep-link landed. Mirrors the .op-para :target style. */
+.op-page-anchor:target {
+  color: var(--neon-cyan);
+  background: rgba(var(--neon-cyan-rgb), 0.18);
+  border-color: var(--neon-cyan);
+}
+
 /* Marks inside the opinion body (from ?q= highlighting). */
 .opinion-body mark {
   background: rgba(var(--neon-pink-rgb), 0.32);
