@@ -186,12 +186,27 @@ class Command(BaseCommand):
 
             # Next pk-window as a fresh short query (lean: pk + raw_text only,
             # no model instances), with reconnect-on-drop.
+            #
+            # Exclude already-done opinions AT THE SQL LAYER, not just after
+            # fetching. The pre-fix version pulled raw_text for every opinion
+            # in the pk-window and skipped in Python via done_ids -- meaning
+            # for a corpus like LA (341K, ~half already have rows from a prior
+            # tick), each tick's 10-min NFSN cull hit before any new work got
+            # done. Every tick died at the same PK, permanently stuck.
+            # The subquery exclude uses the indexed FK on
+            # opinions_statutecitation.opinion_id, so it's a fast anti-join,
+            # not a full scan.
             def _fetch(_last=last_pk):
-                return list(
+                qs = (
                     Opinion.objects.filter(court_id__in=court_ids, pk__gt=_last)
                     .exclude(raw_text="")
-                    .order_by("pk")
-                    .values_list("pk", "raw_text")[:BATCH_SIZE]
+                )
+                if not force:
+                    qs = qs.exclude(
+                        pk__in=StatuteCitation.objects.values("opinion_id")
+                    )
+                return list(
+                    qs.order_by("pk").values_list("pk", "raw_text")[:BATCH_SIZE]
                 )
             batch = self._db_retry(_fetch)
             if not batch:
