@@ -284,7 +284,7 @@
   <p class="opinion-find-banner" id="opinion-find-banner" hidden></p>
   {% if opinion.raw_text %}
     <div class="opinion-body">
-      {{ opinion.raw_text|format_opinion_text }}
+      {{ opinion|format_opinion_text }}
     </div>
   {% else %}
     <p class="glitch-line">No opinion text available.</p>

@@ -13,6 +13,12 @@ into something a reader actually wants to spend time with:
   which itself deep-links out to revisor.mn.gov. Internal-first because
   the value-add is the per-statute opinion list, not the statute text.
 - ``Name v. Name, NNN Reporter NNN`` -> wrapped in ``<cite>``
+- **Reporter cites the graph has resolved** -> wrapped in ``<a>`` linking
+  to the target opinion's page. Uses OpinionCitation rows for THIS opinion
+  (only rows with a resolved ``cited_opinion`` FK; unresolved rows stay
+  as plain text). The lookup key is the whitespace-normalized cite string
+  the extractor stored in ``cited_reference``, so cites the extractor
+  found but that don't yet resolve to a target simply don't become links.
 
 The filter is HTML-safe -- it escapes the input before injecting
 structural tags. Citations and links use a small fixed allowlist of
@@ -25,6 +31,8 @@ import re
 from django import template
 from django.utils.html import escape
 from django.utils.safestring import mark_safe
+
+from opinions.models import OpinionCitation
 
 register = template.Library()
 
@@ -110,20 +118,89 @@ def _wrap_citation(match: re.Match) -> str:
     return f'<cite class="op-cite">{case_name}, {citation}</cite>'
 
 
+def _normalize_cite(s: str) -> str:
+    """Collapse runs of whitespace to a single space, strip ends.
+
+    The extractor's ``cited_reference`` values are normalized to a
+    canonical spaced form (e.g. ``"902 So. 2d 373"``) but real opinion
+    text can carry the same cite as ``"902 So.2d 373"`` (no space) or
+    with a linebreak in the middle. Normalizing both sides of the map
+    lookup makes the linker forgiving of the source spelling.
+    """
+    return " ".join((s or "").split())
+
+
+def _build_cite_pattern(cite_strings: list[str]) -> re.Pattern | None:
+    """Compile ONE regex that matches any of ``cite_strings`` verbatim
+    but tolerates arbitrary whitespace between tokens.
+
+    Sorting longest-first prevents e.g. ``"12 N.H. 34"`` from being
+    matched as a prefix of ``"12 N.H. 345"``. Empty list -> None so the
+    caller can skip the substitution pass entirely.
+    """
+    if not cite_strings:
+        return None
+    parts = []
+    for cite in sorted(set(cite_strings), key=len, reverse=True):
+        # Escape then relax whitespace: any run of whitespace in the
+        # canonical cite matches any whitespace run in the text (e.g.
+        # linebreak between "N.H." and the page number in a PDF extract).
+        p = re.escape(cite).replace(r"\ ", r"\s+")
+        parts.append(p)
+    return re.compile("(?:" + "|".join(parts) + ")")
+
+
 @register.filter(is_safe=True)
-def format_opinion_text(raw_text: str | None, highlight: str = "") -> str:
-    """Render opinion raw_text as structured HTML.
+def format_opinion_text(opinion, highlight: str = "") -> str:
+    """Render an Opinion's raw_text as structured HTML.
+
+    ``opinion`` can be an Opinion instance or -- for backwards
+    compatibility with earlier callers that only had the raw string --
+    a plain string. When an Opinion is passed, this filter also fetches
+    that opinion's resolved OpinionCitation rows and turns each cite
+    string in the body into a hyperlink to the target opinion's page.
+    Unresolved cites (extracted but with no ``cited_opinion`` FK) stay
+    as plain text -- we don't link to nothing.
 
     When ``highlight`` is a non-empty string (typically passed from the
     request query as ``?q=...``), every case-insensitive occurrence of
     the highlight phrase in the body gets wrapped in ``<mark>`` tags.
-    Used to land a user on the opinion page with their search term
-    already visually located -- complements the snippet preview in the
-    search results.
 
-    Returns an empty string when raw_text is empty/falsy, so the
+    Returns an empty string when the raw text is empty/falsy, so the
     "no body" branch in the template is just ``{% if formatted %}``.
     """
+    # Accept either an Opinion instance (preferred, gives us cite-linking)
+    # or a raw string (legacy call sites).
+    raw_text = ""
+    cite_targets: dict[str, object] = {}
+    if opinion is None:
+        return ""
+    if isinstance(opinion, str):
+        raw_text = opinion
+    else:
+        raw_text = opinion.raw_text or ""
+        if getattr(opinion, "pk", None):
+            # Fetch resolved outgoing citations for THIS opinion. Each row
+            # has a target opinion + the exact cite string as it was
+            # extracted. Multiple rows may share a cite string (e.g. the
+            # same cite appearing in different text_offsets); the map
+            # keeps the last-seen target, which is fine because all rows
+            # for the same cite string point at the same case anyway.
+            for oc in (OpinionCitation.objects
+                       .filter(citing_opinion=opinion,
+                               cited_opinion__isnull=False)
+                       .select_related("cited_opinion",
+                                       "cited_opinion__court",
+                                       "cited_opinion__court__state")
+                       .only("cited_reference",
+                             "cited_opinion__id",
+                             "cited_opinion__case_number",
+                             "cited_opinion__court__state_id",
+                             "cited_opinion__court__state__slug")):
+                key = _normalize_cite(oc.cited_reference)
+                if key:
+                    cite_targets[key] = oc.cited_opinion
+
     if not raw_text:
         return ""
 
@@ -143,6 +220,27 @@ def format_opinion_text(raw_text: str | None, highlight: str = "") -> str:
             lambda m: f"<mark>{m.group(0)}</mark>",
             escaped_html,
         )
+
+    # Build the cite-link substitution ONCE per opinion. Runs AFTER
+    # _CITATION_RE so a "Name v. Name, cite" match still gets its
+    # <cite> italic wrapper -- then this pass wraps just the cite
+    # portion (nested inside <cite>) in <a href>. Nesting is fine:
+    # <cite class="op-cite">Name v. Name, <a href="...">cite</a></cite>.
+    cite_pattern = _build_cite_pattern(list(cite_targets.keys()))
+
+    def _linkify_cites(escaped_html: str) -> str:
+        if cite_pattern is None:
+            return escaped_html
+
+        def _wrap(m: re.Match) -> str:
+            key = _normalize_cite(m.group(0))
+            target = cite_targets.get(key)
+            if target is None:
+                return m.group(0)
+            href = target.get_absolute_url()
+            return f'<a class="op-cite-link" href="{href}">{m.group(0)}</a>'
+
+        return cite_pattern.sub(_wrap, escaped_html)
 
     # Chunks separated by blank lines (1+ blank lines = paragraph break)
     chunks = re.split(r"\n\s*\n", raw_text)
@@ -180,6 +278,14 @@ def format_opinion_text(raw_text: str | None, highlight: str = "") -> str:
         escaped = escape(chunk)
         escaped = _STATUTE_RE.sub(_linkify_statute, escaped)
         escaped = _CITATION_RE.sub(_wrap_citation, escaped)
+        # Case-citation wrappers above added <cite>...</cite> around
+        # "Name v. Name, cite" pairs; now turn the cite portion into a
+        # hyperlink if the graph has resolved it to a target opinion.
+        # Also linkifies BARE cites (no "Name v. Name" prefix) since
+        # the extractor stores them at the granularity of the cite
+        # string alone -- so a bare "160 N.H. 732" reference becomes
+        # clickable too.
+        escaped = _linkify_cites(escaped)
         escaped = _highlight(escaped)
         escaped = escaped.replace("\n", "<br>")
         parts.append(
