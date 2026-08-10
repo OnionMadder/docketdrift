@@ -787,13 +787,28 @@ def _match_opinions(qs, case_number):
     the first miss happens. Do not replace this with a normalizing scan over
     case_number -- that can't use the index.
     """
-    matches = list(qs.filter(case_number=case_number))
-    if matches:
-        return matches
+    # Search ALL known-spelling variants at once (indexed IN lookup).
+    # Rationale: some CL bulk-loaded opinions carry the un-normalized
+    # 'No. <docket>' prefix and never got rewritten because a canonical
+    # sibling already existed (see normalize_case_numbers' "canonical
+    # exists" skip bucket). We want ``/opinion/2008-945/`` to find BOTH
+    # 'No. 2008-945' and '2008-945' rows as siblings -- they're often
+    # two REAL decisions on one docket (original opinion + amended /
+    # sentencing review / opinion on remand), and _pick_opinion +
+    # the "Also decided on this docket" panel already handle N-way
+    # siblings correctly.
+    variants = {case_number}
     canonical = canonical_case_number(case_number)
-    if canonical and canonical != case_number:
-        return list(qs.filter(case_number=canonical))
-    return []
+    if canonical:
+        variants.add(canonical)
+    # If the URL is a clean docket, look also for the 'No. ' prefixed
+    # form CL sometimes stored. Cheap: one extra key in the IN list.
+    if not case_number.lstrip().lower().startswith("no."):
+        variants.add(f"No. {case_number}")
+        if canonical:
+            variants.add(f"No. {canonical}")
+    matches = list(qs.filter(case_number__in=list(variants)))
+    return matches
 
 
 def _pick_opinion(matches, want_court="", want_on=""):
