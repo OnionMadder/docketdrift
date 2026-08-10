@@ -579,7 +579,13 @@ class Opinion(models.Model):
                 text = (page.extract_text() or "").strip()
                 if text:
                     chunks.append(text)
-            return "\n\n".join(chunks)
+            # Join with form-feed (\f, U+000C) so downstream renderers
+            # can split on page boundaries and mint #page-N deep-link
+            # anchors -- same convention CL's plain_text uses.
+            # format_opinion_text splits on \f BEFORE the blank-line
+            # chunk pass, so an admin-uploaded PDF gets page anchors
+            # for free without a separate ingest pass.
+            return "\n\f\n".join(chunks)
         except Exception:
             return ""
 

@@ -56,14 +56,20 @@ from opinions.parsing import parse as parse_opinion
 
 
 def _extract_pdf_text(path: Path) -> str:
-    """Pull text from every page of a PDF, concatenated with newlines."""
+    """Pull text from every page of a PDF, joined by form-feed (\\f).
+
+    The \\f separator is what CL's plain_text uses at page boundaries;
+    format_opinion_text splits on \\f BEFORE the blank-line chunk pass
+    so ingested PDFs get #page-N deep-link anchors for free (same
+    treatment as CL-ingested AZ opinions).
+    """
     # pypdf is the same dep used by ``Opinion.save()`` for admin-uploaded
     # PDFs; importing here keeps the module load light when the command
     # isn't being run.
     from pypdf import PdfReader
 
     reader = PdfReader(str(path))
-    return "\n".join((p.extract_text() or "") for p in reader.pages)
+    return "\n\f\n".join((p.extract_text() or "") for p in reader.pages)
 
 
 class Command(BaseCommand):
