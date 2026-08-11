@@ -9,7 +9,7 @@ while true; do
   LAST=$(grep "resume with:  --min-id" "$LOG" 2>/dev/null | tail -1 | sed -E "s/.*--min-id ([0-9]+).*/\1/")
   MIN_ID=${LAST:-0}
   echo "=== [$(date +%FT%T)] citations tick start min-id=$MIN_ID ===" >> "$LOG"
-  python -u manage.py extract_citations --state LA --min-id "$MIN_ID" >> "$LOG" 2>&1
+  python -u manage.py extract_citations --state LA --max-runtime 480 --min-id "$MIN_ID" >> "$LOG" 2>&1
   echo "=== [$(date +%FT%T)] citations tick end rc=$? ===" >> "$LOG"
   sleep 15
 done
