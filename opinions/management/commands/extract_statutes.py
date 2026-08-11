@@ -93,6 +93,17 @@ class Command(BaseCommand):
             action="store_true",
             help="Compute matches + counts but don't write or delete any rows.",
         )
+        parser.add_argument(
+            "--max-runtime",
+            type=int,
+            default=0,
+            help=(
+                "Self-exit after N seconds at the next pk-window boundary. "
+                "Cull-safe on NFSN when set to ~480 (~10-min wallclock cap). "
+                "0 = unlimited (default). Combined with the SQL-layer done-skip, "
+                "the next tick resumes at the same effective position."
+            ),
+        )
 
     # ---- DB resilience helpers -------------------------------------------
 
@@ -126,7 +137,7 @@ class Command(BaseCommand):
 
     # ---- main ------------------------------------------------------------
 
-    def handle(self, *args, state, limit, force, dry_run, **options):
+    def handle(self, *args, state, limit, force, dry_run, max_runtime, **options):
         state_code = state.upper()
         self._lift_timeout()
 
@@ -180,8 +191,14 @@ class Command(BaseCommand):
             rows_created += len(pending)
             pending.clear()
 
+        stopped_early = False
         while True:
             if limit and scanned >= limit:
+                break
+            if max_runtime and (time.time() - t0) >= max_runtime:
+                # Self-exit under the NFSN cull. Next tick's SQL-layer exclude
+                # picks up whatever this pass didn't reach.
+                stopped_early = True
                 break
 
             # Next pk-window as a fresh short query (lean: pk + raw_text only,
@@ -271,7 +288,8 @@ class Command(BaseCommand):
         elapsed = time.time() - t0
 
         self.stdout.write("")
-        self.stdout.write(self.style.SUCCESS(f"Done in {elapsed/60:.1f} min."))
+        tag = " (stopped early on --max-runtime)" if stopped_early else ""
+        self.stdout.write(self.style.SUCCESS(f"Done in {elapsed/60:.1f} min.{tag}"))
         self.stdout.write(
             f"  scanned:              {scanned:>7,}\n"
             f"  opinions with cites:  {opinions_with_hits:>7,}  "

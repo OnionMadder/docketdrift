@@ -9,7 +9,7 @@ cd /home/private/docketdrift
 . .venv/bin/activate
 while true; do
   echo "=== [$(date +%FT%T)] statutes tick start ===" >> "$LOG"
-  python -u manage.py extract_statutes --state LA >> "$LOG" 2>&1
+  python -u manage.py extract_statutes --state LA --max-runtime 480 >> "$LOG" 2>&1
   echo "=== [$(date +%FT%T)] statutes tick end rc=$? ===" >> "$LOG"
   sleep 15
 done
