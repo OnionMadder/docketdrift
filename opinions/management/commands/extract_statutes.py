@@ -100,8 +100,22 @@ class Command(BaseCommand):
             help=(
                 "Self-exit after N seconds at the next pk-window boundary. "
                 "Cull-safe on NFSN when set to ~480 (~10-min wallclock cap). "
-                "0 = unlimited (default). Combined with the SQL-layer done-skip, "
-                "the next tick resumes at the same effective position."
+                "0 = unlimited (default). Pair with --min-id in a wrapper "
+                "loop to progress across ticks."
+            ),
+        )
+        parser.add_argument(
+            "--min-id",
+            type=int,
+            default=0,
+            help=(
+                "Skip opinions with pk <= this value. The SQL-layer done-skip "
+                "handles opinions already extracted, but NOT opinions scanned-"
+                "then-found-empty (very common on LA, whose corpus is dense "
+                "with short per-curiam orders that carry no statute cites). "
+                "Without --min-id, every tick re-scans those same empties. "
+                "Wrapper loops should scrape the printed 'resume with: "
+                "--min-id N' line and feed it back."
             ),
         )
 
@@ -137,7 +151,7 @@ class Command(BaseCommand):
 
     # ---- main ------------------------------------------------------------
 
-    def handle(self, *args, state, limit, force, dry_run, max_runtime, **options):
+    def handle(self, *args, state, limit, force, dry_run, max_runtime, min_id, **options):
         state_code = state.upper()
         self._lift_timeout()
 
@@ -171,7 +185,7 @@ class Command(BaseCommand):
         rows_created = 0
         rows_deleted = 0
         pending: list[StatuteCitation] = []
-        last_pk = 0
+        last_pk = int(min_id or 0)
         next_report = 2_000
         t0 = time.time()
 
@@ -298,3 +312,9 @@ class Command(BaseCommand):
             + (f"\n  rows deleted (force): {rows_deleted:>7,}" if force else "")
             + ("\n  (DRY RUN -- nothing saved)" if dry_run else "")
         )
+        # Resume marker for wrapper loops: prints the highest pk touched so a
+        # next tick can pass --min-id and skip everything already scanned
+        # (including opinions with no statute cites, which the SQL-layer
+        # done-exclusion CAN'T mark as done).
+        if last_pk:
+            self.stdout.write(f"resume with: --min-id {last_pk}")
