@@ -317,4 +317,6 @@ class Command(BaseCommand):
         # (including opinions with no statute cites, which the SQL-layer
         # done-exclusion CAN'T mark as done).
         if last_pk:
-            self.stdout.write(f"resume with: --min-id {last_pk}")
+            # Double space after "with:" matches extract_citations' format
+            # so both wrappers can share the same grep pattern.
+            self.stdout.write(f"resume with:  --min-id {last_pk}")
