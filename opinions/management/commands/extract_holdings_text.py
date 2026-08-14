@@ -90,9 +90,31 @@ class Command(BaseCommand):
             default=500,
             help="bulk_update batch size (default 500).",
         )
+        parser.add_argument(
+            "--max-runtime",
+            type=int,
+            default=0,
+            help=(
+                "Self-exit after N seconds at the next opinion boundary. "
+                "Cull-safe on NFSN when set to ~480. 0 = unlimited (default)."
+            ),
+        )
+        parser.add_argument(
+            "--min-id",
+            type=int,
+            default=0,
+            help=(
+                "Skip opinions with pk <= this value. The holding_summary='' "
+                "filter re-scans the same empty rows every tick; without "
+                "--min-id, a wrapper loop makes zero forward progress on a "
+                "corpus like LA (dense with short per-curiam orders that "
+                "carry no holding). Wrapper loops should scrape the printed "
+                "'resume with:  --min-id N' line and feed it back."
+            ),
+        )
 
     def handle(self, *args, state, limit, dry_run, force, max_holdings,
-               batch_size, **options):
+               batch_size, max_runtime, min_id, **options):
         # Batch work: settings.py pins every connection to a 25s
         # max_statement_time, which is right for the web tier and wrong here --
         # the corpus-wide COUNT and the bulk_updates both cross it under
@@ -111,6 +133,10 @@ class Command(BaseCommand):
             )
         if state:
             qs = qs.filter(court__state__code=state.upper())
+        if min_id:
+            qs = qs.filter(pk__gt=min_id)
+        # Ordered scan so --min-id is a stable resume cursor.
+        qs = qs.order_by("pk")
 
         total = qs.count()
         if limit:
@@ -125,12 +151,18 @@ class Command(BaseCommand):
         to_update: list[Opinion] = []
         scanned = found = no_match = 0
         with_para = 0
+        last_pk = int(min_id or 0)
+        stopped_early = False
         t0 = time.time()
 
         for op in qs.iterator(chunk_size=500):
             if limit and scanned >= limit:
                 break
+            if max_runtime and (time.time() - t0) >= max_runtime:
+                stopped_early = True
+                break
             scanned += 1
+            last_pk = op.pk
 
             if scanned % 2_000 == 0:
                 elapsed = time.time() - t0
@@ -166,13 +198,18 @@ class Command(BaseCommand):
 
         elapsed = time.time() - t0
         pct = 100.0 * found / max(scanned, 1)
+        tag = " (stopped early on --max-runtime)" if stopped_early else ""
         self.stdout.write(self.style.SUCCESS(
-            f"\nDone in {elapsed/60:.1f} min. "
+            f"\nDone in {elapsed/60:.1f} min.{tag} "
             f"scanned={scanned:,} found={found:,} ({pct:.1f}%) "
             f"no-match={no_match:,}"
             f"\n  with a court-assigned ¶ anchor: {with_para:,}"
             + ("\n(dry-run; nothing saved)" if dry_run else "")
         ))
+        # Double space after "with:" matches statutes / citations conventions
+        # so the same shell wrapper grep pattern works.
+        if last_pk:
+            self.stdout.write(f"resume with:  --min-id {last_pk}")
 
     @staticmethod
     def _flush(rows: list[Opinion]) -> None:
