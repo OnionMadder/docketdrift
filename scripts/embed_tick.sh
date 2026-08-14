@@ -70,6 +70,18 @@ if [ -z "$STATE" ]; then
     exit 0
 fi
 
+# Optional date scope. If .embed_since exists and contains YYYY-MM-DD,
+# pass --since to bound the embedding spend by era. Used for LA where
+# the full corpus would cost ~$100 but 1980+ scoping runs ~$60-70.
+SINCE_ARG=""
+SINCE_FILE="$BASE/.embed_since"
+if [ -s "$SINCE_FILE" ]; then
+    SINCE=$(head -n 1 "$SINCE_FILE" | tr -d '[:space:]')
+    if [ -n "$SINCE" ]; then
+        SINCE_ARG="--since $SINCE"
+    fi
+fi
+
 # exec so embed_opinions becomes the process NFSN tracks (clean exit code,
 # no extra shell layer). Single-flight + resume are handled inside it.
-exec "$PYTHON" -u manage.py embed_opinions --state "$STATE" --max-runtime "$MAX_RUNTIME"
+exec "$PYTHON" -u manage.py embed_opinions --state "$STATE" --max-runtime "$MAX_RUNTIME" $SINCE_ARG

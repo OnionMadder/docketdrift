@@ -261,6 +261,17 @@ class Command(BaseCommand):
             ),
         )
         parser.add_argument(
+            "--since",
+            default=None,
+            help=(
+                "Restrict to opinions with release_date >= YYYY-MM-DD. "
+                "Useful for scoping a spend by era (e.g. 1980+ to skip "
+                "the pre-modern tail whose semantic quality is lower "
+                "anyway since voyage-law-2 was trained on modern legal "
+                "text)."
+            ),
+        )
+        parser.add_argument(
             "--max-runtime",
             type=int,
             default=DEFAULT_MAX_RUNTIME,
@@ -275,7 +286,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, limit, batch_size, max_batch_tokens, rpm, model,
-               state, max_runtime, **options):
+               state, since, max_runtime, **options):
         if connection.vendor != "mysql":
             raise CommandError(
                 f"Embedding requires MariaDB / MySQL (got {connection.vendor!r}). "
@@ -329,6 +340,17 @@ class Command(BaseCommand):
             self.stdout.write(
                 f"  [state filter] restricting to {state.upper()} "
                 f"({len(court_ids)} court(s))"
+            )
+
+        # Optional date-since filter: skip the pre-YYYY tail. Appended to
+        # the state_clause so the composite (embedding_pending, court_id)
+        # index still leads; release_date is a filtering predicate, not
+        # the driving key.
+        if since:
+            state_clause += " AND release_date >= %s"
+            state_params.append(since)
+            self.stdout.write(
+                f"  [date filter] release_date >= {since}"
             )
 
         # Count work remaining.
