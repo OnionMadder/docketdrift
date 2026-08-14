@@ -123,22 +123,31 @@ class Command(BaseCommand):
             with connection.cursor() as cur:
                 cur.execute("SET SESSION max_statement_time = 0")
 
-        qs = Opinion.objects.exclude(raw_text="").select_related("court__state")
+        # Base queryset filters (applied each pk-window). Do NOT use
+        # qs.iterator() -- Django's MySQL backend does NOT stream from the
+        # server; iterator() buffers the whole result client-side, and a
+        # 340K-row scan with 11KB avg raw_text is 3.7GB, which trips NFSN's
+        # memory cull (SIGKILL, rc=137). Use pk-windowed short queries
+        # instead (same pattern as extract_statutes).
+        base_qs = Opinion.objects.exclude(raw_text="")
         if not force:
-            qs = qs.filter(holding_summary="")
+            base_qs = base_qs.filter(holding_summary="")
         else:
-            # An editor's reviewed holding outranks the extractor -- always.
-            qs = qs.exclude(
+            base_qs = base_qs.exclude(
                 holding_review_status=Opinion.ReviewStatus.REVIEWED
             )
         if state:
-            qs = qs.filter(court__state__code=state.upper())
-        if min_id:
-            qs = qs.filter(pk__gt=min_id)
-        # Ordered scan so --min-id is a stable resume cursor.
-        qs = qs.order_by("pk")
+            # Resolve to court_id__in to skip the JOIN through court->state
+            # (CLAUDE.md gotcha: joined COUNT/aggregate on the 2.75GB
+            # opinions table trips max_statement_time).
+            from opinions.models import Court
+            court_ids = list(
+                Court.objects.filter(state__code=state.upper())
+                .values_list("id", flat=True)
+            )
+            base_qs = base_qs.filter(court_id__in=court_ids)
 
-        total = qs.count()
+        total = base_qs.count() if not min_id else base_qs.filter(pk__gt=min_id).count()
         if limit:
             total = min(total, limit)
 
@@ -154,17 +163,52 @@ class Command(BaseCommand):
         last_pk = int(min_id or 0)
         stopped_early = False
         t0 = time.time()
+        SCAN_BATCH = 500
 
-        for op in qs.iterator(chunk_size=500):
+        while True:
             if limit and scanned >= limit:
                 break
             if max_runtime and (time.time() - t0) >= max_runtime:
                 stopped_early = True
                 break
-            scanned += 1
-            last_pk = op.pk
 
-            if scanned % 2_000 == 0:
+            # One short, bounded query per window. Each returns at most
+            # SCAN_BATCH rows -- server-side memory is O(SCAN_BATCH), not
+            # O(corpus). No .iterator() -- see comment above.
+            batch = list(
+                base_qs.filter(pk__gt=last_pk)
+                .order_by("pk")
+                .only("id", "raw_text")[:SCAN_BATCH]
+            )
+            if not batch:
+                break
+
+            for op in batch:
+                if limit and scanned >= limit:
+                    break
+                scanned += 1
+                last_pk = op.pk
+
+                summary, paragraphs = summarize_holdings(
+                    op.raw_text, max_holdings=max_holdings
+                )
+                if not summary:
+                    no_match += 1
+                    continue
+
+                op.holding_summary = summary
+                op.holding_source_paras = paragraphs
+                op.holding_model = EXTRACTOR_VERSION
+                op.holding_extracted_at = timezone.now()
+                to_update.append(op)
+                found += 1
+                if paragraphs:
+                    with_para += 1
+
+                if len(to_update) >= batch_size and not dry_run:
+                    self._flush(to_update)
+
+            if scanned // 2_000 > (scanned - len(batch)) // 2_000:
                 elapsed = time.time() - t0
                 rate = scanned / max(elapsed, 0.001)
                 eta = (total - scanned) / max(rate, 0.001)
@@ -173,25 +217,6 @@ class Command(BaseCommand):
                     f"found {found:>5,}  no-match {no_match:>5,}  "
                     f"({rate:>3.0f}/s, eta {eta/60:.0f}min)"
                 )
-
-            summary, paragraphs = summarize_holdings(
-                op.raw_text, max_holdings=max_holdings
-            )
-            if not summary:
-                no_match += 1
-                continue
-
-            op.holding_summary = summary
-            op.holding_source_paras = paragraphs
-            op.holding_model = EXTRACTOR_VERSION
-            op.holding_extracted_at = timezone.now()
-            to_update.append(op)
-            found += 1
-            if paragraphs:
-                with_para += 1
-
-            if len(to_update) >= batch_size and not dry_run:
-                self._flush(to_update)
 
         if to_update and not dry_run:
             self._flush(to_update)
