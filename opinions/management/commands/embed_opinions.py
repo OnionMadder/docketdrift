@@ -409,11 +409,26 @@ class Command(BaseCommand):
 
             # Batch fetch uses embedding_pending (indexed) instead of
             # embedding IS NULL (full table scan). See migration 0023.
+            #
+            # DELIBERATELY NO ORDER BY. The composite index is
+            # (embedding_pending, court_id) -- if we add ORDER BY id the
+            # optimizer switches to a PRIMARY-key walk from id=1 upward,
+            # skipping through 100K+ rows of already-embedded / wrong-state
+            # opinions per batch before finding LIMIT-many pending rows.
+            # This was a 90-second-per-batch pathology on LA (whose opinion
+            # ids all live in the 131K-475K range while embed order was
+            # historically state-by-state; every batch re-walked the whole
+            # low-pk MN/NH/AZ tail). Same "one non-covered column beside
+            # court_id" gotcha documented in CLAUDE.md for the sitemap
+            # chunks + tag-review resolver.
+            #
+            # Order-of-processing doesn't matter for correctness because
+            # embedding_pending gets flipped to FALSE in the same batch's
+            # write, so the next fetch's index scan simply skips them.
             with connection.cursor() as cursor:
                 cursor.execute(
                     "SELECT id, raw_text FROM opinions_opinion "
                     "WHERE embedding_pending = TRUE AND raw_text != ''" + state_clause + " "
-                    "ORDER BY id "
                     "LIMIT %s",
                     state_params + [batch_size],
                 )
