@@ -1581,12 +1581,21 @@ def _cohort_with_heat(judge, top_n=10):
     Recusal/non-participation on either side excludes the opinion from
     the denominator (same as _concordance).
 
-    A single query pulls the primary judge's votes; a second query pulls
-    all OTHER PanelVote rows on those opinions. Grouping is done in
-    Python. Two queries total regardless of cohort size, so this stays
-    cheap even for judges with thousands of votes.
+    Three-query design (had to back off a two-query version that blew
+    the 25s web max_statement_time cap on high-vote judges like NH Hicks
+    at 2,622 votes -- opinion_id__in with 2K+ ids plus a JOIN was 2013):
+
+      1. Top-N co-panelist judges by shared-opinion count (indexed
+         subquery; the SQL the original cohort logic used).
+      2. Primary judge's PanelVote rows once (indexed by judge).
+      3. Those top-N judges' PanelVote rows scoped to shared opinions
+         only (bounded by top_n; small).
+
+    Total rows fetched grows with top_n * primary votes, NOT full
+    corpus. Fast even for the biggest dossiers.
     """
     from opinions.models import PanelVote
+    from django.db.models import Count
 
     BUCKETS = {
         PanelVote.Vote.MAJORITY_AUTHOR: "majority",
@@ -1599,30 +1608,43 @@ def _cohort_with_heat(judge, top_n=10):
         PanelVote.Vote.NOT_PARTICIPATING: "recused",
     }
 
+    # 1) Top N co-panelist judges. Same shape the old cohort query used
+    # (fast subquery-of-shared-opinions). Values() to keep it a plain
+    # rowset without hydrating Judge models.
+    top_judges = list(
+        Judge.objects.filter(
+            panel_votes__opinion__panel_votes__judge=judge,
+        )
+        .exclude(pk=judge.pk)
+        .annotate(shared_count=Count("panel_votes__opinion", distinct=True))
+        .order_by("-shared_count", "full_name")[:top_n]
+        .values("id", "slug", "full_name")
+    )
+    if not top_judges:
+        return []
+    top_ids = [j["id"] for j in top_judges]
+
+    # 2) Primary judge's votes -- one indexed query.
     primary_votes = dict(
         PanelVote.objects.filter(judge=judge)
         .values_list("opinion_id", "vote_type")
     )
     if not primary_votes:
         return []
+    shared_op_ids = list(primary_votes.keys())
 
-    # {(other_judge_id): {"aligned": n, "partial": n, "split": n, "shared": n,
-    #                     "full_name": ..., "slug": ...}}
+    # 3) Top-N judges' votes on the SHARED opinions only. Bounded by
+    # top_n * primary vote count -- small.
     from collections import defaultdict
     heat: dict[int, dict] = defaultdict(
         lambda: {"aligned": 0, "partial": 0, "split": 0, "shared": 0}
     )
-
     other_rows = (
         PanelVote.objects
-        .filter(opinion_id__in=list(primary_votes.keys()))
-        .exclude(judge=judge)
-        .select_related("judge")
-        .values_list("judge_id", "opinion_id", "vote_type",
-                     "judge__slug", "judge__full_name")
+        .filter(judge_id__in=top_ids, opinion_id__in=shared_op_ids)
+        .values_list("judge_id", "opinion_id", "vote_type")
     )
-
-    for other_jid, op_id, other_vt, other_slug, other_name in other_rows:
+    for other_jid, op_id, other_vt in other_rows:
         primary_vt = primary_votes.get(op_id)
         if primary_vt is None:
             continue
@@ -1632,8 +1654,6 @@ def _cohort_with_heat(judge, top_n=10):
             continue
         row = heat[other_jid]
         row["shared"] += 1
-        row["slug"] = other_slug
-        row["full_name"] = other_name
         if primary_bucket == other_bucket:
             row["aligned"] += 1
         elif {primary_bucket, other_bucket} == {"majority", "concurrence"}:
@@ -1641,14 +1661,19 @@ def _cohort_with_heat(judge, top_n=10):
         else:
             row["split"] += 1
 
-    # Rank by shared desc, then split desc as a secondary signal (a
-    # frequent co-panelist who disagrees a lot is more interesting than
-    # one who never does).
-    ranked = sorted(
-        heat.values(),
-        key=lambda r: (-r["shared"], -r["split"], r.get("full_name", "")),
-    )
-    return ranked[:top_n]
+    # Join heat back to name/slug in top_judges order (already ranked).
+    out = []
+    for j in top_judges:
+        h = heat.get(j["id"], {"aligned": 0, "partial": 0, "split": 0, "shared": 0})
+        out.append({
+            "slug": j["slug"],
+            "full_name": j["full_name"],
+            "shared": h["shared"],
+            "aligned": h["aligned"],
+            "partial": h["partial"],
+            "split": h["split"],
+        })
+    return out
 
 
 def _judge_stats(judge, recent_limit=15, cohort_limit=10):
