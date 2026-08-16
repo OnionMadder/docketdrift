@@ -258,12 +258,17 @@ stacked layout.
   {% if cohort %}
     <div class="glossy-frame">
       <h2>Most-frequent co-panelists</h2>
-      <p class="subtle-lead">Judges who appeared on the same opinions, ranked by overlap count. Click <em>compare</em> to overlay them on the chart above.</p>
-      <ul class="judge-cohort-list">
+      <p class="subtle-lead">Judges who appeared on the same opinions. <span class="chip chip--aligned">aligned</span> = same bucket (both majority, both dissent); <span class="chip chip--partial">partial</span> = concurred in result but wrote separately; <span class="chip chip--split">split</span> = the meaningful disagreement (majority vs dissent).</p>
+      <ul class="judge-cohort-list judge-cohort-list--heat">
         {% for c in cohort %}
-          <li>
-            <a href="{% url 'opinions:judge_detail' slug=c.slug %}">{{ c.full_name }}</a>
-            <span class="judge-cohort-count">{{ c.shared }} shared</span>
+          <li class="judge-cohort-row">
+            <a class="judge-cohort-name" href="{% url 'opinions:judge_detail' slug=c.slug %}">{{ c.full_name }}</a>
+            <span class="judge-cohort-heat">
+              <span class="chip chip--shared">{{ c.shared }} shared</span>
+              {% if c.aligned %}<span class="chip chip--aligned">{{ c.aligned }} aligned</span>{% endif %}
+              {% if c.partial %}<span class="chip chip--partial">{{ c.partial }} partial</span>{% endif %}
+              {% if c.split %}<span class="chip chip--split">{{ c.split }} split</span>{% endif %}
+            </span>
             <a class="judge-cohort-compare" href="{% url 'opinions:judge_detail' slug=judge.slug %}?vs={{ c.slug }}">compare</a>
           </li>
         {% endfor %}

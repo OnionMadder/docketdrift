@@ -1566,6 +1566,91 @@ def _yearly_panel_votes(judge_id):
     return [{"year": r["year"], "n": r["n"]} for r in rows]
 
 
+def _cohort_with_heat(judge, top_n=10):
+    """Top co-panelists ranked by shared opinions, enriched with a
+    per-relationship heat breakdown: aligned / partial / split.
+
+    Semantics mirror _concordance() for consistency:
+      aligned = both were in the same bucket (both majority, both dissent,
+                or both concurrence)
+      partial = one was majority, other was concurrence (agreed on outcome,
+                disagreed on reasoning)
+      split   = the meaningful disagreement -- one majority vs the other
+                dissent, or dissent vs concurrence
+
+    Recusal/non-participation on either side excludes the opinion from
+    the denominator (same as _concordance).
+
+    A single query pulls the primary judge's votes; a second query pulls
+    all OTHER PanelVote rows on those opinions. Grouping is done in
+    Python. Two queries total regardless of cohort size, so this stays
+    cheap even for judges with thousands of votes.
+    """
+    from opinions.models import PanelVote
+
+    BUCKETS = {
+        PanelVote.Vote.MAJORITY_AUTHOR: "majority",
+        PanelVote.Vote.MAJORITY_JOIN: "majority",
+        PanelVote.Vote.CONCURRENCE_AUTHOR: "concurrence",
+        PanelVote.Vote.CONCURRENCE_JOIN: "concurrence",
+        PanelVote.Vote.DISSENT_AUTHOR: "dissent",
+        PanelVote.Vote.DISSENT_JOIN: "dissent",
+        PanelVote.Vote.RECUSED: "recused",
+        PanelVote.Vote.NOT_PARTICIPATING: "recused",
+    }
+
+    primary_votes = dict(
+        PanelVote.objects.filter(judge=judge)
+        .values_list("opinion_id", "vote_type")
+    )
+    if not primary_votes:
+        return []
+
+    # {(other_judge_id): {"aligned": n, "partial": n, "split": n, "shared": n,
+    #                     "full_name": ..., "slug": ...}}
+    from collections import defaultdict
+    heat: dict[int, dict] = defaultdict(
+        lambda: {"aligned": 0, "partial": 0, "split": 0, "shared": 0}
+    )
+
+    other_rows = (
+        PanelVote.objects
+        .filter(opinion_id__in=list(primary_votes.keys()))
+        .exclude(judge=judge)
+        .select_related("judge")
+        .values_list("judge_id", "opinion_id", "vote_type",
+                     "judge__slug", "judge__full_name")
+    )
+
+    for other_jid, op_id, other_vt, other_slug, other_name in other_rows:
+        primary_vt = primary_votes.get(op_id)
+        if primary_vt is None:
+            continue
+        primary_bucket = BUCKETS.get(primary_vt, "recused")
+        other_bucket = BUCKETS.get(other_vt, "recused")
+        if primary_bucket == "recused" or other_bucket == "recused":
+            continue
+        row = heat[other_jid]
+        row["shared"] += 1
+        row["slug"] = other_slug
+        row["full_name"] = other_name
+        if primary_bucket == other_bucket:
+            row["aligned"] += 1
+        elif {primary_bucket, other_bucket} == {"majority", "concurrence"}:
+            row["partial"] += 1
+        else:
+            row["split"] += 1
+
+    # Rank by shared desc, then split desc as a secondary signal (a
+    # frequent co-panelist who disagrees a lot is more interesting than
+    # one who never does).
+    ranked = sorted(
+        heat.values(),
+        key=lambda r: (-r["shared"], -r["split"], r.get("full_name", "")),
+    )
+    return ranked[:top_n]
+
+
 def _judge_stats(judge, recent_limit=15, cohort_limit=10):
     """Compute the full per-judge dossier stat bundle.
 
@@ -1639,17 +1724,7 @@ def _judge_stats(judge, recent_limit=15, cohort_limit=10):
         .order_by("-release_date")[:recent_limit]
     )
 
-    cohort = []
-    if total_opinions > 0:
-        cohort = list(
-            Judge.objects.filter(
-                panel_votes__opinion__panel_votes__judge=judge,
-            )
-            .exclude(pk=judge.pk)
-            .annotate(shared=Count("panel_votes__opinion", distinct=True))
-            .order_by("-shared", "full_name")[:cohort_limit]
-            .values("slug", "full_name", "shared")
-        )
+    cohort = _cohort_with_heat(judge, top_n=cohort_limit) if total_opinions > 0 else []
 
     return {
         "judge": judge,
