@@ -97,7 +97,110 @@ in indexed JSON-LD) was reverted — extractive holdings = "no generated text",
 the strong original posture, is correct. Migrations 0026 (holdings) + 0027
 (clustering) are on main and applied on prod.
 
-## Latest session (2026-08-07 → 08) — search cliff gone; cited-by fix; dup merge; MN 2026; AZ judges rebuilt end-to-end; NH re-pitch; IA published
+## Latest session (2026-08-10 → 16) — page anchors; LA Phase 8; embed 100×; judge heat + real dissents
+
+Multi-day rolling session. Everything committed + deployed + live-verified
+unless noted. Chronology compressed; lessons inline.
+
+**PDF page anchors SHIPPED (`#page-N` deep links), AZ-first.**
+`format_opinion_text` splits raw_text on pypdf's `\f` form-feed BEFORE the
+blank-line chunk pass and emits an `<hr>`-style divider with `id="page-N"`
+(mirrors `#para-N`; `.op-page-break`/`.op-page-anchor` CSS). No per-state
+gating — absent `\f`, the split is a no-op. Coverage measured (modern 1980+):
+AZ 50%, NH 31% (2020s = 98%), MN 14%, LA 10%. **The gap is CL's upstream data,
+not ours** — verified three ways: CL's bulk CSV carries `\f` (5 in the probe
+row), MariaDB round-trips 0x0C perfectly, `load_cl_bulk._best_text` doesn't
+strip. Pre-2010 CL text comes from Harvard/Columbia scans with no page
+structure; no loader fix recovers what upstream doesn't have. A
+`backfill_pages_from_cl` command + wrapper exist (fetch cluster →
+sub_opinions → plain_text with `\f`) but were STOPPED as not worth CL's rate
+limits (~600 truly-fixable NH rows at <60/hr). **CL API GOTCHA for any future
+work: `Opinion.courtlistener_id` holds a CLUSTER id, not an opinion id — the
+website URL `/opinion/<id>/` is the cluster view. `fetch_opinion(cluster_id)`
+returns a random federal opinion. Walk `clusters/<id>/` → `sub_opinions` →
+opinion.** Also fixed while investigating: `Opinion.extract_text_from_pdf()`
+and `ingest_pdfs._extract_pdf_text()` were joining pypdf pages with plain
+newlines — both now `"\n\f\n".join` so admin uploads + scraper ingests get
+page anchors automatically.
+
+**`_match_opinions` regression: the 'No. X' sibling widening (8949e48) used
+`case_number__in=[...]`, which flipped the optimizer off the
+`(court_id, case_number)` composite index → 25s KILL on EVERY AZ/MN opinion
+page.** Fixed with sequential per-variant equality lookups (~1-2ms each, ≤4
+keys). The IN-list pathology is the same "one non-covered column beside a
+court_id filter" gotcha — now seen in a WHERE clause too.
+
+**embed_opinions was 100× slower than it should be — ORDER BY id.** Timing
+probe: 90s of each 99s batch cycle was the fetch; EXPLAIN showed `ORDER BY id
+LIMIT 30` walking PRIMARY from id=1 through ~130K already-embedded rows
+instead of using `(embedding_pending, court_id)`. Dropped the ORDER BY
+(ordering is irrelevant — the flag flip makes the next fetch skip done rows):
+fetch 96,060ms → 535ms cold / 2ms warm. LA embed now ~3.2 op/s (Voyage's ~8s
+per 90K-token batch is the ceiling), finishing in days not weeks. **Real
+measured cost: $0.15 per 500 LA opinions (~2,485 tok/op) → ~$100 full LA**;
+`--since` flag added for era-scoping the spend. `.embed_state=LA`, overnight
+window, in flight (~19K done at last check).
+
+**LA Phase 8a–d COMPLETE** (8e embed in flight, 8f tags blocked on it):
+statutes **252,375** rows / citations **1,543,411 edges (56% of opinions)** /
+judges **1,437** (172 seeded + ~1,265 byline-learned UNKNOWN awaiting
+editorial) with **74,222 panel votes** / holdings **34,624**. Hard-won loop
+lessons, each measured after days of silent zero progress:
+- **A wrapper without `--min-id` cannot advance past legitimately-empty
+  rows.** The SQL done-exclusion only marks opinions that GOT rows; LA's
+  dense per-curiam tail (200K+ opinions with no statute/holding language)
+  was re-scanned from pk=0 every tick until the cull hit. `extract_statutes`,
+  `extract_holdings_text` now take `--min-id`/`--max-runtime` and print the
+  shared `resume with:  --min-id N` trailer (DOUBLE space — the wrappers
+  grep that exact string; a single-space print cost a day of min-id=0 loops).
+- **rc=152 = SIGXCPU** (CPU cull, ~40s under contention): the command must
+  self-exit via `--max-runtime`, or it dies BEFORE printing its resume line
+  and the next tick replays the same range forever. **rc=137 = SIGKILL**
+  (memory cull): `qs.iterator()` on Django's MySQL backend buffers the WHOLE
+  result client-side — 341K × 11KB = 3.7GB. pk-windowed short queries
+  (`pk__gt=last ORDER BY pk LIMIT 500`), never iterator, for corpus scans.
+- **`nohup … & disown` does NOT survive ssh disconnect on NFSN; FreeBSD
+  `daemon -p pidfile cmd` does** (and even those get culled eventually —
+  check `ps` before trusting any loop, and prefer NFSN scheduled tasks for
+  anything that must outlive a session).
+
+**Judge co-panelist heat SHIPPED + the data to light it.** Dossier cohort now
+shows aligned/partial/split chips per co-panelist (green/cyan/pink from the
+`--dd-*` semantic key; `_cohort_with_heat` in views.py). First version
+2013'd on high-vote judges (2,622-id IN + JOIN past the 25s cap) → 3-query
+design: top-N judges first, then primary votes, then top-N votes on shared
+opinions. THEN the chips exposed a data hole: **every state read ~100%
+aligned because bulk-loaded panel votes were all MAJORITY_JOIN and dissent
+extraction only understood NH's footer.** Fixed per-state, measured-first
+(frequency-ranked the real conventions before writing regexes):
+- **NH:** footer re-sweep + `(dis)?senting` variants → 0 → **299 dissents**,
+  +240 author upgrades.
+- **MN caption lines** (`Dissenting, Harris, Judge` / multi-dissenter Supreme
+  lists / `Concurring in part, dissenting in part, X` / `Concurring
+  specially`): 0 → **294 dissents + 150 concurrences**, and the caption
+  extractor recovered **+14K total votes** (authors 5.6K → 10.1K) — MN was
+  broadly under-extracted, not just for dissents.
+- **AZ prose** (`Judge Eckerstrom dissented`, `concurred in part and
+  dissented in part`, `specially concurred`, paren-guard + SCOTUS stoplist
+  intact): 2 → **131 dissents + 43 concurrences**.
+- New **Pass 4** in resolve_judges mints CONCURRENCE_AUTHOR + upgrades
+  MAJORITY_JOIN in place (same shape as the dissent pass); `GenericByline`
+  gained `concurrer_last`. Sanity check that landed: AZ's most-split dossier
+  is **Bolick** (11 aligned/5 partial/10 split) — the court's famous
+  separate-opinion writer. MN's is Gildea. Compare-judges inherits it all.
+
+**Ops gotchas added this session:**
+- **Cold-cache stampede after gunicorn restart:** with the explore-tags
+  context-processor cache expired, crawler traffic re-runs ~20 corpus-scale
+  MATCH COUNTs per templated render through the 8MB buffer pool — the site
+  reads "down" for ~10 min while healthz (no template) stays instant. Run
+  `precompute_explore_tags` after restarts; diagnose with the in-process
+  Django test Client render (4.3s there vs 30s+ timeouts outside = queueing,
+  not code).
+- A backgrounded command piping to `| tail` holds its output until process
+  exit — an ssh drop loses it silently. Log to a file on the remote side.
+
+## Prior session (2026-08-07 → 08) — search cliff gone; cited-by fix; dup merge; MN 2026; AZ judges rebuilt end-to-end; NH re-pitch; IA published
 
 Very long multi-thread day. Everything below is committed + deployed + verified
 unless noted. Details live in the commit messages and `docs/TODO.md`.

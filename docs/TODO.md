@@ -1,7 +1,25 @@
 # DocketDrift — working backlog
 
-Snapshot 2026-08-08. Prioritized. Each item says what it is, why it matters,
+Snapshot 2026-08-16. Prioritized. Each item says what it is, why it matters,
 and roughly how big. "Onion" items need the member panel or are editorial.
+
+**2026-08-10→16 session (full detail in CLAUDE.md's session block):**
+**PDF page anchors live** (`#page-N` from pypdf `\f`; AZ 50% modern coverage,
+NH 2020s 98%; the rest is CL's upstream gap, not ours — pypdf paths fixed to
+emit `\f` going forward). **LA Phase 8a–d DONE**: statutes 252K rows /
+citations 1.54M edges (56%) / judges 1,437 rows + 74K votes / holdings 34.6K;
+**8e embed IN FLIGHT** (overnight window, ~$100 measured, days not weeks after
+the embed ORDER-BY fix — 100× fetch speedup); 8f tags blocked on 8e. **Judge
+co-panelist heat chips shipped** (aligned/partial/split on every dossier) —
+and the chips exposed that panel votes were ~100% MAJORITY_JOIN, so dissent/
+concurrence extraction was built per-state (NH footer re-sweep, MN caption
+lines, AZ byline prose + new CONCURRENCE_AUTHOR pass): NH 299 / MN 294+150 /
+AZ 131+43, plus +14K recovered MN votes. Two regressions caught + fixed:
+`_match_opinions` IN-list (25s KILL on every AZ/MN opinion page) and
+`_cohort_with_heat` v1 (2013 on high-vote judges). New ops gotchas in
+CLAUDE.md: rc=152/rc=137 wrapper deaths, `qs.iterator()` = client-side
+buffering, `daemon(8)` vs `nohup`, cold-cache stampede after restart
+(`precompute_explore_tags`), CL cluster-vs-opinion id spaces.
 
 **2026-08-07→08 session (full detail in CLAUDE.md's session block):** search
 concurrency cliff CLOSED (re-measured: 8 concurrent = 5.8s, was 183s);
@@ -481,15 +499,25 @@ must start with `/bin/sh`. Path alone is not enough.
 
 ## Tier 3 — coverage (bigger builds)
 
-- [ ] **Louisiana rollout + FLP report #2** (queued behind landing MN with
-  FLP — pacing is deliberate). The every-state audit
-  (`docs/cl_coverage_audit/FINDINGS.md`, 2026-08-06) found LA Supreme DEAD in
-  CL since 2020 (~12K missing, largest single-court hole in the country)
-  while LA COA is intact — so the COA foundation comes from CL bulk and the
-  Supreme needs a direct lasc.gov source from day one. Verification of the
-  hole for FLP doubles as rollout recon. 16 other courts are flagged in the
-  findings doc; Nevada carries the cleanest unpub-died signature if a
-  non-rollout report is ever wanted first.
+- [~] **Louisiana rollout — Phases 1–8d DONE (2026-08-08→16), remainder
+  below.** 341,064 opinions loaded (CL bulk), 5 COA circuits assigned via
+  `assign_la_circuits` (52,840 moves; 48% no-signal tail stays on 1st Cir —
+  Tier-3 panel-byline classifier is the follow-up), statutes 252,375 rows,
+  citations 1,543,411 edges, judges 1,437 (172 seeded + ~1,265 UNKNOWN for
+  editorial review), panel votes 74,222, holdings 34,624. What's left:
+  - [ ] **8e embed** — IN FLIGHT via `.embed_state=LA` overnight cron;
+    measured ~$100 total (~2,485 tok/op × $0.12/M); days-scale after the
+    ORDER-BY fix. Check `.embed_progress` / pending count.
+  - [ ] **8f suggest_tags** — $0 (pure MariaDB cosine), run after 8e.
+  - [ ] **7b lasc.org Supreme backfill** — the CL-dead 2020+ hole (~12K, the
+    audit's largest single-court gap; doubles as FLP report #2). Recon
+    first: open vs Akamai-walled decides unattended vs MN-style attended.
+  - [ ] **9–12: rosters, weekly cron, flip is_live** — seat the 5-circuit +
+    Supreme benches, register the weekly forward-fill, then LA goes on the
+    nav. `docs/LA_BUILD_LIST.md` has the full overlay.
+  Reporter/parallel cites: NOT COMING from CL (their citations.csv has zero
+  rows for LA's 10M+ cluster ids — verified against live API; permanent
+  upstream gap until CL backfills).
 
 
 - [~] **MN backfill — LARGELY DONE 2026-08-04. Two gaps left, both small.**
