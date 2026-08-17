@@ -1664,16 +1664,27 @@ Concrete, enforced rules:
   on the opinion page is driven by a **URL `#fragment`** (fragments are
   never sent to the server). Do NOT add a feature that puts a user's query
   text into a GET parameter.
-- **Analytics is goatcounter ONLY, and collects exactly TWO things.** GA4/
-  Google was removed — no visitor data goes to Google. The Author wants to
-  know only: (1) **what state** the visitor is from (→ which state to build
-  next) and (2) **what device** they're on (→ how much to weight mobile).
-  *That's the entire list.* goatcounter derives state/region + device/OS
-  server-side; in `base.html` the `path` callback is pinned to a **constant
-  `"/"`** and `referrer` to `""`, so we record NO behavior — not which
-  opinion/judge/search page was viewed (which pages you read is itself a
-  research trail), not the referrer, not the query. Do NOT re-add page-path,
-  referrer, event, or custom-dimension tracking without the Author's say-so.
+- **THERE IS NO ANALYTICS SCRIPT (as of 2026-08-18).** No Google, no
+  goatcounter, no third-party beacon — zero visitor JS leaves the site.
+  goatcounter had run with `path` pinned to a constant `"/"` and `referrer`
+  blanked (region + device only). It was **removed** when a UA-rotating,
+  resource-blocking scraper in a Singapore datacenter executed the beacon on
+  every fetch and made the region signal read **74% Singapore** — a number
+  about a bot, not readers. Lesson worth keeping: *an analytics signal a
+  crawler can forge is decoration, not measurement*, and this one was
+  shipping visitor data to a third party to produce it. Do NOT add an
+  analytics script back without the Author's say-so.
+- **Geography/device now come from our own access log, at NETWORK
+  granularity.** `docketdrift_site/gunicorn_logging.py:NetworkOnlyLogger`
+  adds a `{x-client-net}i` atom from `X-Forwarded-For` truncated to **/24
+  (IPv4) or /48 (IPv6)** — `%(h)s` behind NFSN's proxy is only the internal
+  `10.x` address, which is why the log couldn't tell reader from crawler.
+  **Never widen this to the full address, not even "temporarily."** A full
+  IP beside a path + timestamp is exactly the "who read this opinion?"
+  artifact the subpoena test forbids; a /24 fingerprints a datacenter range
+  and geolocates at country level (the only two questions we have) while
+  covering hundreds of shared, dynamically-reassigned residential addresses.
+  Malformed input degrades to `-`, never a raw value.
 - **The gunicorn access log is query-stripped.** `run.sh` uses a custom
   `--access-logformat` that logs `%(U)s` (path only) and omits the query
   string AND the referer. Keep it that way; the default format logs the
