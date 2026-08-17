@@ -499,6 +499,53 @@ must start with `/bin/sh`. Path alone is not enough.
 
 ## Tier 3 — coverage (bigger builds)
 
+- [ ] **MCP server — put DocketDrift inside Claude as a tool** (NEW
+  2026-08-17; supersedes ROADMAP Phase 21 "public read API" — MCP is the
+  modern shape of that feature). Context that motivates it: the 2026-08-17
+  AI-traffic readout showed ChatGPT-User at ~100 live fetches/day and
+  OAI-SearchBot/PerplexityBot actively indexing us, while Anthropic's
+  agents are absent (1 claude-user fetch, 0 Claude-SearchBot) — their
+  search stack discovers slowly and there is no submission console. The
+  crawler path to Claude is passive-only; the ACTIVE path is a connector.
+  A read-only MCP server makes DocketDrift a tool any Claude Desktop /
+  Claude Code / API user can attach — and the product pitch is exactly
+  MCP-shaped: "ground legal answers in verbatim official text;
+  hallucinated citations architecturally impossible."
+
+  **v1 scope (read-only, no auth):**
+  - `search_opinions(query, state, court?, year_range?)` — the existing
+    POST search path (keyword + semantic), returning docket/title/date/
+    court + canonical URL per hit
+  - `get_opinion(docket, state)` — full text + metadata + citation
+    treatment summary; the `_pick_opinion` sibling logic applies
+  - `lookup_citation(cite)` — reporter-cite / docket paste-through
+  - `get_judge(slug, state)` — dossier stats (role summary, alignment/
+    split cohort, disposition lean)
+  - `citing_opinions(docket, state)` — inbound edges w/ treatment +
+    verbatim citing passages
+  - `get_statute(slug, state)` — opinions citing a statute
+
+  **Constraints (product posture, non-negotiable):**
+  - Read-only, no accounts, no per-user state. MCP queries are exactly
+    the research trail the privacy promise protects: process in memory,
+    never log, never persist. The Privacy page must gain an MCP section
+    saying so BEFORE launch, not after.
+  - No generation anywhere — the server returns verbatim text +
+    structured metadata only, same as the site.
+  - Serve from the existing gunicorn app (a `/mcp` streamable-HTTP
+    endpoint) — no second daemon on NFSN. Rate-limit generously but
+    cap concurrent semantic searches (single-worker reality).
+  - Cost estimate before build: semantic search per MCP call hits the
+    same Voyage-embed + cosine path as the site; verify the process-
+    local query-embedding cache is enough at expected volumes.
+
+  **Distribution (the actual point):** submit to Anthropic's MCP
+  connector directory; README + llms.txt mention; a "Connect DocketDrift
+  to Claude" page on the site with the one-line config. Sizing: the
+  endpoints map ~1:1 onto existing views' query helpers, so v1 is
+  mostly plumbing + the directory submission — a focused 1-2 days,
+  worth doing after LA ships (four states in the connector beats three).
+
 - [~] **Louisiana rollout — Phases 1–8d DONE (2026-08-08→16), remainder
   below.** 341,064 opinions loaded (CL bulk), 5 COA circuits assigned via
   `assign_la_circuits` (52,840 moves; 48% no-signal tail stays on 1st Cir —

@@ -2189,18 +2189,33 @@ LLMS_TXT = """\
 
 ## What's covered
 
-Three states live as of June 2026:
+Three states live as of August 2026; a fourth (Louisiana, 341,000+
+opinions) is loaded and in preparation:
 
-- **Minnesota** (flagship): 60,000+ published opinions from the MN Supreme
-  Court and MN Court of Appeals, 1851-present. Full statute citation
-  graph (124K cites). Full-text indexed via MariaDB FULLTEXT; semantic
-  search via voyage-law-2 embeddings. Tag-suggestion review pipeline
-  with 21K candidates.
-- **New Hampshire** (live): 20,000+ opinions of the NH Supreme Court.
-  Byline-extracted judicial panel graph. Semantic search and
-  tag-suggestion pipelines running.
-- **Arizona** (live): 38,000+ opinions of the AZ Supreme Court and
-  Court of Appeals. Byline extraction live for both courts.
+- **Minnesota** (flagship): 69,000+ published opinions from the MN
+  Supreme Court and MN Court of Appeals, 1851-present, continuous
+  year-by-year coverage through the current week.
+- **New Hampshire** (live): 20,700+ opinions of the NH Supreme Court,
+  1849-present.
+- **Arizona** (live): 37,800+ opinions of the AZ Supreme Court and
+  Court of Appeals (Divisions One and Two).
+
+Cross-cutting layers on every live state:
+
+- **Citation graph**: 1.4M+ opinion-to-opinion edges with verbatim
+  citing passages and treatment classification (followed /
+  distinguished / criticized / overruled). In-text reporter cites are
+  hyperlinked to the cited opinion's page.
+- **Statute citation graph**: 320,000+ extracted statute references,
+  each linked to a per-statute aggregation page.
+- **Verbatim holdings**: 41,000+ opinions carry the court's own holding
+  sentence, quoted exactly -- never paraphrased or generated.
+- **Judicial panel graph**: byline-extracted authorship, panel
+  composition, dissents, and concurrences; per-judge dossiers with
+  co-panelist alignment/split breakdowns.
+- Full-text search (MariaDB FULLTEXT) + semantic search
+  (voyage-law-2 embeddings). Paste a reporter cite or docket number
+  into search to jump straight to the opinion.
 
 New states are added one at a time. See https://docketdrift.com/ for
 the apex picker; each state lives on its own subdomain.
@@ -2225,6 +2240,13 @@ the apex picker; each state lives on its own subdomain.
 - `https://<state>.docketdrift.com/tag/<slug>/` -- every opinion bearing
   an editorial doctrine tag
 - `https://<state>.docketdrift.com/?q=<query>` -- search results
+
+Deep-link anchors on opinion pages (cite these for pinpoint references):
+
+- `#para-N` -- court-assigned paragraph N (only where the court itself
+  numbered paragraphs; we never invent paragraph numbers)
+- `#page-N` -- page N of the source PDF (where page boundaries survive
+  in the source text)
 
 State codes in use: `mn`, `nh`, `az`.
 
