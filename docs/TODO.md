@@ -955,3 +955,22 @@ order:
 - AZ's ~12K no-match dispositions (genuinely historic AZ text).
 - These are the pre-modern tail; not worth a pass unless a scan finds a
   matchable cluster.
+
+## Session close 2026-08-18 — LA launch state (NEXT SESSION START HERE)
+
+- **OPEN BUG: la.docketdrift.com hangs (30s+, then 000).** Alias + TLS cert
+  are DONE (Onion, member panel; ny.docketdrift.com also parked for later).
+  The hang is OURS: `_state_landing_stats` / landing render for the 341K-row
+  LA corpus blows the 25s cap on cold cache (in-process Client render → errno
+  1969). Same family as the 2026-06-16 apex outage — audit the landing-stats
+  queries for LA-scale (COUNT/aggregate over court_id__in) and precompute/
+  cache them. FIX BEFORE FLIPPING is_live.
+- Dispositions backfill loop RUNNING (daemon, resumes via min-id; restart with:
+  `daemon -p ~/.la_dispositions.pid ~/scripts/la_dispositions_tick.sh`).
+  14.5K/341K filled at close; tail tier ~69% fill on reporter-era rows; scan is
+  fetch-bound (~2.6/s — likely window-query plan pathology, optimize or wait
+  ~35h of ticks). Wrapper self-exits at end of corpus.
+- Embed 26K (8%); overnight cron armed (.embed_state=LA); ~7K/night observed —
+  investigate why below post-fix projection when convenient.
+- MCP server LIVE + dark at /mcp; .mcp.json committed (tools work in-session).
+  Privacy section + load test + connector directory still gated on LA launch.
