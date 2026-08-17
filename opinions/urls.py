@@ -2,6 +2,7 @@
 from django.urls import path
 
 from opinions import views
+from opinions.mcp import mcp_endpoint
 
 app_name = "opinions"
 
@@ -42,6 +43,8 @@ urlpatterns = [
     path("healthz", views.healthz, name="healthz"),
     path("robots.txt", views.robots_txt, name="robots_txt"),
     path("llms.txt", views.llms_txt, name="llms_txt"),
+    # MCP endpoint (dark-deployed: live but unlisted; see opinions/mcp.py).
+    path("mcp", mcp_endpoint, name="mcp"),
     path("sitemap.xml", views.sitemap_index, name="sitemap_index"),
     path("sitemap-static.xml", views.sitemap_static, name="sitemap_static"),
     path("sitemap-judges.xml", views.sitemap_judges, name="sitemap_judges"),
