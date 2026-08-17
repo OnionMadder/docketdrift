@@ -1639,11 +1639,20 @@ def _cohort_with_heat(judge, top_n=10):
     heat: dict[int, dict] = defaultdict(
         lambda: {"aligned": 0, "partial": 0, "split": 0, "shared": 0}
     )
-    other_rows = (
-        PanelVote.objects
-        .filter(judge_id__in=top_ids, opinion_id__in=shared_op_ids)
-        .values_list("judge_id", "opinion_id", "vote_type")
-    )
+    # Chunk the shared_op_ids IN clause. A 2,600+ item IN combined with
+    # judge_id__in can trip the 25s web max_statement_time (errno 2013) on
+    # a busy connection -- happened on Hicks (2,643 shared opinions) after
+    # the NH re-sweep added dissents. 500-id chunks keep each query small
+    # enough to stay well under the cap.
+    IN_CHUNK = 500
+    other_rows: list[tuple[int, int, str]] = []
+    for cstart in range(0, len(shared_op_ids), IN_CHUNK):
+        chunk_ids = shared_op_ids[cstart:cstart + IN_CHUNK]
+        other_rows.extend(
+            PanelVote.objects
+            .filter(judge_id__in=top_ids, opinion_id__in=chunk_ids)
+            .values_list("judge_id", "opinion_id", "vote_type")
+        )
     for other_jid, op_id, other_vt in other_rows:
         primary_vt = primary_votes.get(op_id)
         if primary_vt is None:
