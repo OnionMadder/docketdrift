@@ -2054,6 +2054,27 @@ def judge_compare(request):
 ROBOTS_TXT = """\
 # DocketDrift -- public records, treated as public.
 # Welcome crawlers. Be considerate. Honor Crawl-delay.
+#
+# ---------------------------------------------------------------------
+# BUILDING A DATASET? PLEASE DOWNLOAD, DON'T CRAWL.
+#
+# These are public-domain court opinions and we WANT them redistributed
+# -- that is why we published the corpus ourselves:
+#
+#   https://archive.org/details/minnesota-appellate-opinions-2017-2026
+#
+# One 1.6GB zip, with a manifest, complete and correct. It will take you
+# minutes instead of days, it will not miss pages, and it costs us
+# nothing. Crawling the same content page-by-page takes hundreds of
+# thousands of requests through a single web worker and slows the site
+# for the lawyers reading it.
+#
+# Want a state we haven't published a dump for yet, or a different cut
+# (citation graph, statute index, judge panel data)? Email
+# hello@docketdrift.com and we will get it to you. That offer is real
+# and it is free -- you do not need to disguise a crawler to get this
+# data. Automated tools can also read it live over MCP; see /llms.txt.
+# ---------------------------------------------------------------------
 
 User-agent: Googlebot
 Allow: /
@@ -2249,6 +2270,23 @@ Deep-link anchors on opinion pages (cite these for pinpoint references):
   in the source text)
 
 State codes in use: `mn`, `nh`, `az`.
+
+## Bulk access -- please don't crawl the whole corpus
+
+If you want the corpus rather than a page, take it directly. These are
+public-domain court opinions; redistribution is the point, and we
+published a dump ourselves so nobody has to scrape one:
+
+- **Minnesota, 2017-2026** (~10,100 opinions, one 1.6GB zip with a
+  manifest): https://archive.org/details/minnesota-appellate-opinions-2017-2026
+
+A download is complete, correct, and finishes in minutes. Page-by-page
+crawling of the same material takes hundreds of thousands of requests
+through a single web worker and degrades the site for people reading
+it. If you need a state we haven't dumped yet, or a different cut of
+the data (citation graph, statute index, judge panel votes), email
+hello@docketdrift.com -- we will send it, at no cost. There is no need
+to disguise a crawler as a browser to obtain any of this.
 
 ## Structured data
 
