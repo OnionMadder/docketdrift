@@ -8,31 +8,28 @@
 <meta name="theme-color" content="#0a0011">
 
 {% comment %}
-Analytics posture (2026-06-25): goatcounter ONLY -- no Google. The Author wants
-to know exactly TWO things, and nothing else:
-  1. What STATE is the visitor from  -> which state to build next.
-  2. What DEVICE are they on          -> how heavily to factor in mobile.
-That's the whole list. goatcounter derives location (state/region) and
-device/browser/OS server-side from the request; we deliberately collect NO
-behavior:
-  - path is pinned to a CONSTANT ("/"), so goatcounter never learns which
-    opinion/judge/search page a visitor viewed (no page-path tracking, even
-    query-stripped -- which opinions you read is itself a research trail).
-  - referrer is dropped (always "").
-No Google, no search terms (search is POSTed -- query in the body, never a URL;
-access log is query-stripped too). Lawyers fear discovery of their research
-trail; we cannot produce what we never stored. Do NOT re-add path/referrer/
-event tracking without the Author's say-so. See CLAUDE.md "Data is sacred."
+Analytics posture (2026-08-18): THERE IS NO ANALYTICS SCRIPT. No goatcounter,
+no Google, no third-party beacon of any kind. Zero visitor JavaScript leaves
+this site.
+
+History, so nobody "restores" this: we ran goatcounter (never Google) with
+path pinned to a constant "/" and referrer blanked, collecting only
+region + device. It was removed when a UA-rotating, resource-blocking
+scraper in a Singapore datacenter executed the beacon on every fetch and
+made the region signal read 74% Singapore -- a number about a bot, not
+about readers. An analytics tool that a crawler can forge is not
+measurement, it is decoration, and it was sending visitor data to a third
+party to produce it.
+
+What replaced it costs visitors nothing: gunicorn's own access log now
+records the client NETWORK BLOCK (/24 or /48, never the full address) via
+docketdrift_site/gunicorn_logging.py. Country-level geography and
+datacenter-vs-residential both fall out of that, server-side, with no
+script, no cookie, and nothing shared with anyone.
+
+Do NOT add an analytics script back without the Author's say-so. See
+CLAUDE.md "Data is sacred."
 {% endcomment %}
-<script>
-  window.goatcounter = {
-    // Constant path: record only THAT a visit happened (with its server-side
-    // state + device), never WHICH page. No behavior, no research trail.
-    path: function () { return "/"; },
-    // No referrer at all.
-    referrer: function () { return ""; }
-  };
-</script>
 
 {% comment %}
 Canonical + Open Graph + Twitter cards. Pages override the og_title /
@@ -243,8 +240,5 @@ because no href ever contains the query.
   });
 })();
 </script>
-
-<script data-goatcounter="https://stats.docketdrift.com/count"
-        async src="//gc.zgo.at/count.js"></script>
 </body>
 </html>

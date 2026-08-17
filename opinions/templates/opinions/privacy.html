@@ -17,15 +17,19 @@
 
   <p>We do not log search queries. We do not record what opinions you read, which judges you look up, or how you navigate the site. There are no user accounts. There are no cookies that identify you across visits. There is nothing on our side that could reconstruct your research history.</p>
 
-  <p>The only analytics on the site is GoatCounter, a privacy-friendly counter that records:</p>
+  <p><strong>There is no analytics script on this site.</strong> No Google Analytics, no third-party counter, no tracking pixel, no beacon of any kind. We removed the last one (GoatCounter) in August 2026. Nothing about your visit is sent to any other company.</p>
+
+  <p>What remains is the web server's own log, which every web server keeps in order to run. Ours is deliberately narrowed. It records:</p>
 
   <ul>
-    <li>Aggregate page views (not who viewed them)</li>
-    <li>Your browser's language setting</li>
-    <li>Your country (not your city, not your IP address)</li>
+    <li>The page path you requested &mdash; <em>without</em> the query string, so a search term never reaches it (search is submitted in the request body, never in a URL)</li>
+    <li>Your browser's user-agent string (browser and device type)</li>
+    <li>The <em>network block</em> your request came from &mdash; the first three groups of an IPv4 address, so <code>203.0.113.47</code> is written down as <code>203.0.113.0/24</code></li>
   </ul>
 
-  <p>GoatCounter does not set tracking cookies, does not identify you individually, and does not share data with third parties. You can opt out entirely by enabling Do Not Track or any standard tracking-protection extension in your browser.</p>
+  <p>That last one is a deliberate compromise, and we would rather explain it than hide it. We need to tell a data-center crawler apart from a person, and to know roughly which parts of the country are reading, so we know which state to add next. A network block answers both. Your full address is never written down, so the log cannot point at you: a block covers hundreds of addresses, and on home internet connections it is shared and reassigned constantly.</p>
+
+  <p>We do not set tracking cookies, do not build profiles, and do not share logs with anyone.</p>
 
   <p>Whatever you search, whoever you read about, whichever cases you bookmark &mdash; that's yours. We don't see it, we don't save it, and we have nothing to hand over if anyone asks.</p>
 

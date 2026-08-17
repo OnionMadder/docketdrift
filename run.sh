@@ -49,6 +49,17 @@
 #   the query string and the referer. The query never touches our log. The
 #   companion change moves search itself to POST so the query isn't in the
 #   URL in the first place (see views/templates). Keep these in lockstep.
+#
+# - logger-class + {x-client-net}i (2026-08-18): %(h)s behind NFSN's proxy is
+#   the internal 10.x address, so the log could not tell a real reader from a
+#   datacenter crawler (which is how a UA-rotating scraper passed for "74%
+#   Singapore" in analytics for a week). NetworkOnlyLogger adds the client's
+#   NETWORK BLOCK from X-Forwarded-For -- /24 for IPv4, /48 for IPv6 -- and
+#   deliberately NOT the full address. A full IP beside a path + timestamp is
+#   the "who read this opinion?" artifact the subpoena test forbids; a shared,
+#   dynamically-reassigned /24 fingerprints a datacenter range and geolocates
+#   at country level without singling out a reader. Do not "temporarily"
+#   widen it to the full address. See docketdrift_site/gunicorn_logging.py.
 
 cd /home/private/docketdrift
 exec ./.venv/bin/gunicorn docketdrift_site.wsgi:application \
@@ -62,4 +73,5 @@ exec ./.venv/bin/gunicorn docketdrift_site.wsgi:application \
     --preload \
     --access-logfile - \
     --error-logfile - \
-    --access-logformat '%(h)s %(t)s "%(m)s %(U)s %(H)s" %(s)s %(b)s "%(a)s"'
+    --logger-class docketdrift_site.gunicorn_logging.NetworkOnlyLogger \
+    --access-logformat '%(h)s %({x-client-net}i)s %(t)s "%(m)s %(U)s %(H)s" %(s)s %(b)s "%(a)s"'
