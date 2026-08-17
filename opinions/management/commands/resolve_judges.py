@@ -271,6 +271,82 @@ _AZ_NAMED_PLURAL_RE = re.compile(
     re.IGNORECASE,
 )
 
+# MN caption-style separate-opinion attributions. MN opinions carry the
+# panel split in caption lines right under the disposition line:
+#     Segal, Judge∗
+#     Dissenting, Harris, Judge
+#     Concurring in part, dissenting in part, Bratvold, Judge
+#     Dissenting, Moore, III, McKeig, Hennesy, Justices    (Supreme, multi)
+#     Concurring specially, Ross, Judge
+# Measured 2026-08-16 across post-2015 opinions containing "dissent":
+# the Dissenting caption appears in 34%, concur-in-part in 10%, plain
+# Concurring in 4%; body headers ("HARRIS, Judge (dissenting)") reach the
+# caption zone in <1% -- so the caption lines are the extraction surface.
+# Alternation order matters: the longest form must be tried before the
+# "Concurring" prefix that is its substring.
+_MN_SEPARATE_CAPTION_RE = re.compile(
+    r"^[ \t]*(?P<kind>Concurring in part, dissenting in part"
+    r"|Dissenting"
+    r"|Concurring(?: specially)?)"
+    r",[ \t]*(?P<names>[A-ZÀ-ß][^\n]*)$",
+    re.MULTILINE,
+)
+# Tokens to drop when splitting an MN caption name list: role words +
+# generational suffixes (the caption lists surnames with occasional
+# "III" suffixes and a trailing "Judge"/"Justices" role tag).
+_MN_CAPTION_DROP = frozenset({
+    "judge", "judges", "justice", "justices", "chief",
+    "jr", "sr", "ii", "iii", "iv",
+})
+
+
+def _mn_caption_names(blob: str) -> list[str]:
+    """Parse an MN caption name list ("Harris, Judge" / "Moore, III,
+    McKeig, Hennesy, Justices") into lowercased surnames."""
+    out: list[str] = []
+    for tok in blob.split(","):
+        t = tok.strip().strip(".∗* \t")
+        if not t:
+            continue
+        if t.lower().rstrip(".") in _MN_CAPTION_DROP:
+            continue
+        # Caption entries are bare surnames; keep the last word so a stray
+        # "Moore III" (unsplit suffix) still resolves to "moore".
+        last = t.split()[-1].rstrip(",.;'")
+        if last.lower() in _MN_CAPTION_DROP:
+            continue
+        if _valid_surname(last):
+            out.append(last.lower())
+    return out
+
+
+# AZ prose-style separate-opinion attributions, adjacent to the byline
+# block at the top of the opinion:
+#     ... in which Presiding Judge Brearcliffe concurred and Judge
+#     Eckerstrom dissented.
+#     Judge Anni Hill Foster concurred in part and dissented in part.
+#     * CHIEF JUSTICE TIMMER dissented, joined by JUSTICE KING.
+#     Justice Bolick specially concurred.
+# Measured frequencies (post-2015 opinions containing "dissent"):
+# "<role> <name> dissented" 21%, concur-in-part 9%, specially-concurred
+# 2%, "dissented, joined by" once (the joiner is picked up by nothing --
+# accepted miss at n=1). The plain "dissented" pattern cannot swallow the
+# concur-in-part form: the strict-caps name capture stops at the
+# lowercase "concurred", which then fails the required "dissented" verb.
+_AZ_PART_DISSENT_RE = re.compile(
+    rf"\b{_AZ_ROLE_PREFIX_CI}\s+((?-i:{_AZ_NAME_STRICT}))\s+concurred\s+in\s+part\s+and\s+dissented\s+in\s+part",
+    re.IGNORECASE,
+)
+_AZ_DISSENTED_RE = re.compile(
+    rf"\b{_AZ_ROLE_PREFIX_CI}\s+((?-i:{_AZ_NAME_STRICT}))\s+dissented\b",
+    re.IGNORECASE,
+)
+_AZ_SPECIAL_CONCUR_RE = re.compile(
+    rf"\b{_AZ_ROLE_PREFIX_CI}\s+((?-i:{_AZ_NAME_STRICT}))\s+"
+    rf"(?:specially\s+concurred|concurred\s+specially|concurred\s+in\s+part\b(?!\s+and\s+dissented))",
+    re.IGNORECASE,
+)
+
 
 @dataclass(frozen=True)
 class GenericByline:
@@ -278,6 +354,7 @@ class GenericByline:
     author_last: str | None
     panel_last: list[str]
     dissenter_last: list[str]
+    concurrer_last: list[str]
     raw_matches: list[str]  # for debug / log inspection
 
 
@@ -295,11 +372,12 @@ def _extract_generic_byline(raw_text: str) -> GenericByline:
       the FIRST ~4KB of raw_text.
     """
     if not raw_text:
-        return GenericByline(None, [], [], [])
+        return GenericByline(None, [], [], [], [])
 
     author_last: str | None = None
     all_panel: list[str] = []
     dissenter_lasts: list[str] = []
+    concurrer_lasts: list[str] = []
     raw_matches: list[str] = []
 
     # --- AZ-style top-of-opinion byline ---
@@ -355,6 +433,46 @@ def _extract_generic_byline(raw_text: str) -> GenericByline:
             author_last = ordered[0]
         for nm in ordered[1:]:
             all_panel.append(nm)
+
+    # --- AZ prose-style dissent / special concurrence (same head) ---
+    # These sentences sit adjacent to the byline block ("...concurred and
+    # Judge Eckerstrom dissented." / "* CHIEF JUSTICE TIMMER dissented,
+    # joined by JUSTICE KING."). Paren guard + cross-court stoplist keep
+    # cited out-of-court judges ("...(Hurwitz, J., dissenting)") and body
+    # prose about OTHER courts' dissents out. Order matters: the
+    # concur-in-part pattern must be collected before the plain
+    # "dissented" scan runs, but the two cannot double-capture one name
+    # (the strict-caps name capture stops at the lowercase verb).
+    def _collect_az(pattern: re.Pattern, dest: list[str]) -> None:
+        for m in pattern.finditer(head):
+            if _inside_open_paren(head, m.start()):
+                continue
+            last = _last(m.group(1))
+            if last and last not in _CROSS_COURT_JUSTICES and last not in dest:
+                dest.append(last)
+                raw_matches.append(m.group(0)[:120])
+
+    _collect_az(_AZ_PART_DISSENT_RE, dissenter_lasts)
+    _collect_az(_AZ_DISSENTED_RE, dissenter_lasts)
+    _collect_az(_AZ_SPECIAL_CONCUR_RE, concurrer_lasts)
+
+    # --- MN caption-style separate opinions (same head) ---
+    # Caption lines under the disposition: "Dissenting, Harris, Judge" /
+    # "Concurring in part, dissenting in part, Bratvold, Judge" /
+    # "Dissenting, Moore, III, McKeig, Hennesy, Justices". A partial
+    # dissent counts as a dissent (the judge broke with part of the
+    # judgment and wrote separately); a plain/special concurrence is a
+    # concurrence.
+    for m in _MN_SEPARATE_CAPTION_RE.finditer(head):
+        kind = m.group("kind")
+        names = _mn_caption_names(m.group("names"))
+        if not names:
+            continue
+        raw_matches.append(m.group(0)[:120])
+        dest = dissenter_lasts if "issent" in kind else concurrer_lasts
+        for ln in names:
+            if ln not in _CROSS_COURT_JUSTICES and ln not in dest:
+                dest.append(ln)
 
     # --- NH-style footer concurrence ---
     # Concentrate the search on the last 8KB -- panel lists are at the
@@ -416,7 +534,10 @@ def _extract_generic_byline(raw_text: str) -> GenericByline:
     # vote -- they wrote a separate dissenting opinion. Dedupe across
     # matches (defensive: the same name shouldn't appear twice in a
     # single footer, but be safe).
-    seen_dissenters: set[str] = set()
+    # Seed with any AZ/MN-path dissenters collected above so the panel
+    # filter below drops them too (they're separate-opinion writers, not
+    # majority joiners), then extend with the NH footer matches.
+    seen_dissenters: set[str] = set(dissenter_lasts)
     for m in _DISSENT_FOOTER_RE.finditer(tail):
         # Same parenthetical guard: "(Bassett, J., dissented)" in a citation
         # is not this opinion's dissenter.
@@ -439,13 +560,18 @@ def _extract_generic_byline(raw_text: str) -> GenericByline:
             continue
         seen.add(n)
         panel.append(n)
-    # Also drop any name appearing both in panel and dissenters --
-    # they're dissenters, not majority-joiners.
-    panel = [n for n in panel if n not in seen_dissenters]
+    # Also drop any name appearing both in panel and dissenters/concurrers --
+    # they wrote (or joined) a separate opinion, not the majority.
+    separate = seen_dissenters | set(concurrer_lasts)
+    panel = [n for n in panel if n not in separate]
+    # A name in BOTH lists (e.g. "concurred in part and dissented in part"
+    # matched by two patterns) counts as a dissenter -- the stronger signal.
+    concurrer_lasts = [n for n in concurrer_lasts if n not in seen_dissenters]
     return GenericByline(
         author_last=author_last,
         panel_last=panel,
         dissenter_last=dissenter_lasts,
+        concurrer_last=concurrer_lasts,
         raw_matches=raw_matches,
     )
 
@@ -669,6 +795,7 @@ class Command(BaseCommand):
         author_ambiguous = panel_ambiguous = 0
         new_author_votes = new_join_votes = upgraded_votes = 0
         new_dissent_votes = dissent_ambiguous = 0
+        new_concur_votes = concur_ambiguous = 0
         last_id = min_id
         timed_out = False
         t0 = time.time()
@@ -763,9 +890,10 @@ class Command(BaseCommand):
             # excludes dissenters from its panel output, but a state parser
             # may not have).
             dissenter_lasts = list(generic.dissenter_last)
-            if dissenter_lasts:
-                dissenter_set = set(dissenter_lasts)
-                panel_lasts = [p for p in panel_lasts if p not in dissenter_set]
+            concurrer_lasts = list(generic.concurrer_last)
+            if dissenter_lasts or concurrer_lasts:
+                separate_set = set(dissenter_lasts) | set(concurrer_lasts)
+                panel_lasts = [p for p in panel_lasts if p not in separate_set]
 
             # ---- Pass 1: Author ----
             author_judge: Judge | None = None
@@ -848,6 +976,38 @@ class Command(BaseCommand):
                         pv.save(update_fields=["vote_type"])
                         upgraded_votes += 1
 
+            # ---- Pass 4: Concurrers (special / separate concurrences) ----
+            # Same shape as Pass 3. A "Concurring, X, Judge" caption (MN)
+            # or "Justice X specially concurred" (AZ) is a separate
+            # concurring opinion -- CONCURRENCE_AUTHOR. A bulk-loaded
+            # MAJORITY_JOIN row for the same judge gets upgraded: they
+            # agreed with the outcome but wrote separately, and the
+            # concordance/heat features bucket that as "partial".
+            for concurrer_last in concurrer_lasts:
+                pre_existing = last_name_map.get(concurrer_last, [])
+                if len(pre_existing) > 1:
+                    concur_ambiguous += 1
+                    continue
+
+                concur_judge = _get_or_create_byline_judge(concurrer_last)
+                if concur_judge is None:
+                    continue
+                if author_judge is not None and concur_judge.pk == author_judge.pk:
+                    continue
+
+                if not dry_run:
+                    pv, created = PanelVote.objects.get_or_create(
+                        opinion=opinion,
+                        judge=concur_judge,
+                        defaults={"vote_type": PanelVote.Vote.CONCURRENCE_AUTHOR},
+                    )
+                    if created:
+                        new_concur_votes += 1
+                    elif pv.vote_type == PanelVote.Vote.MAJORITY_JOIN:
+                        pv.vote_type = PanelVote.Vote.CONCURRENCE_AUTHOR
+                        pv.save(update_fields=["vote_type"])
+                        upgraded_votes += 1
+
         elapsed = time.time() - t0
         # More work remains if we stopped on the clock or only saw a capped
         # slice of ids. Either way we hand back a cursor; only a run that
@@ -874,7 +1034,9 @@ class Command(BaseCommand):
             f"  new joined votes:    {new_join_votes:>7,}\n"
             f"  new dissent votes:   {new_dissent_votes:>7,}  "
             f"(ambiguous skipped: {dissent_ambiguous})\n"
-            f"  upgraded (J->A/D):   {upgraded_votes:>7,}"
+            f"  new concur votes:    {new_concur_votes:>7,}  "
+            f"(ambiguous skipped: {concur_ambiguous})\n"
+            f"  upgraded (J->A/D/C): {upgraded_votes:>7,}"
             + (
                 f"\n  byline-learned judges (status=UNKNOWN): {forged_judges:>7,}"
                 if create_missing else ""
