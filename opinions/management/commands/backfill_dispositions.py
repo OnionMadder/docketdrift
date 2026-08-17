@@ -95,9 +95,30 @@ class Command(BaseCommand):
                 "is cleared."
             ),
         )
+        parser.add_argument(
+            "--max-runtime",
+            type=int,
+            default=0,
+            help=(
+                "Self-exit after N seconds at the next pk-window boundary. "
+                "Cull-safe on NFSN when set to ~480. 0 = unlimited."
+            ),
+        )
+        parser.add_argument(
+            "--min-id",
+            type=int,
+            default=0,
+            help=(
+                "Skip opinions with pk <= this value. The disposition=''"
+                " filter can't mark no-match rows as done, so without "
+                "--min-id a wrapper loop re-scans the same no-match tail "
+                "every tick (the LA statutes/holdings lesson). Wrappers "
+                "scrape the printed 'resume with:  --min-id N' trailer."
+            ),
+        )
 
     def handle(self, *args, state, limit, dry_run, batch_size,
-               recompute, min_confidence, **options):
+               recompute, min_confidence, max_runtime, min_id, **options):
         # Local import: parse module loads the registry of state parsers
         # which has its own state model dependency. Importing inside the
         # command avoids a circular import at app load time.
@@ -111,13 +132,27 @@ class Command(BaseCommand):
             with connection.cursor() as cur:
                 cur.execute("SET SESSION max_statement_time = 0")
 
-        qs = Opinion.objects.exclude(raw_text="").select_related("court__state")
+        # Base queryset filters, re-applied per pk-window. Do NOT use
+        # qs.iterator() -- on Django's MySQL backend it buffers the whole
+        # result client-side; a 341K-row LA scan at ~11KB avg raw_text is
+        # ~3.7GB and trips NFSN's memory cull (rc=137). The original
+        # comment here said "iterator() so we don't load 49K rows into
+        # memory at once" -- it did exactly that anyway, just on the
+        # client. pk-windowed short queries keep memory O(window).
+        base_qs = Opinion.objects.exclude(raw_text="")
         if not recompute:
-            qs = qs.filter(disposition="")
+            base_qs = base_qs.filter(disposition="")
         if state:
-            qs = qs.filter(court__state__code=state.upper())
+            # Pre-resolve court ids to skip the JOIN through court->state
+            # on the 2.75GB table (CLAUDE.md gotcha).
+            from opinions.models import Court
+            court_ids = list(
+                Court.objects.filter(state__code=state.upper())
+                .values_list("id", flat=True)
+            )
+            base_qs = base_qs.filter(court_id__in=court_ids)
 
-        total = qs.count()
+        total = (base_qs.filter(pk__gt=min_id) if min_id else base_qs).count()
         if limit:
             total = min(total, limit)
 
@@ -130,15 +165,76 @@ class Command(BaseCommand):
         to_update: list[Opinion] = []
         scanned = filled = no_match = 0
         corrected = cleared = unchanged = 0
+        last_pk = int(min_id or 0)
+        stopped_early = False
         t0 = time.time()
+        SCAN_BATCH = 500
 
-        # iterator() so we don't load 49K rows into memory at once
-        for op in qs.iterator(chunk_size=500):
+        while True:
             if limit and scanned >= limit:
                 break
-            scanned += 1
+            if max_runtime and (time.time() - t0) >= max_runtime:
+                stopped_early = True
+                break
 
-            if scanned % 2_000 == 0:
+            batch = list(
+                base_qs.filter(pk__gt=last_pk)
+                .order_by("pk")
+                .select_related("court")
+                .only("id", "raw_text", "disposition", "court__state")[:SCAN_BATCH]
+            )
+            if not batch:
+                break
+
+            for op in batch:
+                if limit and scanned >= limit:
+                    break
+                scanned += 1
+                last_pk = op.pk
+
+                state_code = op.court.state_id
+                result = parse_opinion(state_code, op.raw_text)
+                confidence = (
+                    result.confidence.get("disposition", 0.0) if result else 0.0
+                )
+                found = result.disposition if result else None
+                # A parse we don't stand behind is treated as no parse at all.
+                if found and confidence < min_confidence:
+                    found = None
+
+                if not found:
+                    no_match += 1
+                    # Under --recompute an existing value the parser can no
+                    # longer justify is CLEARED. Blank is honest; a stale
+                    # wrong disposition misstates what the court did.
+                    if recompute and op.disposition:
+                        op.disposition = ""
+                        op.disposition_bucket = ""
+                        to_update.append(op)
+                        cleared += 1
+                    else:
+                        continue
+                else:
+                    new_disposition = found[:128]
+                    if op.disposition == new_disposition:
+                        unchanged += 1
+                        continue
+                    if op.disposition:
+                        corrected += 1
+                    else:
+                        filled += 1
+                    op.disposition = new_disposition
+                    op.disposition_bucket = compute_disposition_bucket(new_disposition)
+                    to_update.append(op)
+
+                if len(to_update) >= batch_size and not dry_run:
+                    Opinion.objects.bulk_update(
+                        to_update,
+                        ["disposition", "disposition_bucket"],
+                    )
+                    to_update.clear()
+
+            if scanned // 2_000 > (scanned - len(batch)) // 2_000:
                 elapsed = time.time() - t0
                 rate = scanned / max(elapsed, 0.001)
                 eta = (total - scanned) / max(rate, 0.001)
@@ -149,48 +245,6 @@ class Command(BaseCommand):
                     ending="\n",
                 )
 
-            state_code = op.court.state_id
-            result = parse_opinion(state_code, op.raw_text)
-            confidence = (
-                result.confidence.get("disposition", 0.0) if result else 0.0
-            )
-            found = result.disposition if result else None
-            # A parse we don't stand behind is treated as no parse at all.
-            if found and confidence < min_confidence:
-                found = None
-
-            if not found:
-                no_match += 1
-                # Under --recompute an existing value the parser can no
-                # longer justify is CLEARED. Blank is honest; a stale
-                # wrong disposition misstates what the court did.
-                if recompute and op.disposition:
-                    op.disposition = ""
-                    op.disposition_bucket = ""
-                    to_update.append(op)
-                    cleared += 1
-                else:
-                    continue
-            else:
-                new_disposition = found[:128]
-                if op.disposition == new_disposition:
-                    unchanged += 1
-                    continue
-                if op.disposition:
-                    corrected += 1
-                else:
-                    filled += 1
-                op.disposition = new_disposition
-                op.disposition_bucket = compute_disposition_bucket(new_disposition)
-                to_update.append(op)
-
-            if len(to_update) >= batch_size and not dry_run:
-                Opinion.objects.bulk_update(
-                    to_update,
-                    ["disposition", "disposition_bucket"],
-                )
-                to_update.clear()
-
         if to_update and not dry_run:
             Opinion.objects.bulk_update(
                 to_update,
@@ -198,8 +252,9 @@ class Command(BaseCommand):
             )
 
         elapsed = time.time() - t0
+        tag = " (stopped early on --max-runtime)" if stopped_early else ""
         summary = (
-            f"\nDone in {elapsed/60:.1f} min. "
+            f"\nDone in {elapsed/60:.1f} min.{tag} "
             f"scanned={scanned:,} filled={filled:,} no-match={no_match:,}"
         )
         if recompute:
@@ -211,3 +266,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(
             summary + (" (dry-run; nothing saved)" if dry_run else "")
         ))
+        # Resume marker for wrapper loops -- double space after "with:"
+        # matches the statutes/holdings/citations wrapper grep convention.
+        if last_pk:
+            self.stdout.write(f"resume with:  --min-id {last_pk}")
