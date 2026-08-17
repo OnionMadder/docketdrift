@@ -164,6 +164,52 @@ SUPREME_DISP_BLOCK_RE = re.compile(
     re.MULTILINE,
 )
 
+# ---- Tail fallback tier (reporter-style CL bulk texts) ------------------
+#
+# The head-zone patterns above were built against the modern lasc.gov /
+# COA PDF layouts. The CL bulk corpus is West-reporter OCR with different
+# conventions, measured 2026-08-18 on a 1,200-row sample of the
+# disposition='' corpus:
+#   - ALLCAPS disposition at the TAIL ("AFFIRMED IN PART; REVERSED IN
+#     PART; AND REMANDED WITH INSTRUCTIONS." often followed by page-number
+#     junk like "31 32")  -- ~10%+
+#   - LA Supreme writ-table entries ending in a bare sentence "Denied." /
+#     "Granted." after a docket recitation ("...applying for writ of
+#     certiorari...; No. 654-79. Denied."), sometimes followed by a short
+#     citation reason  -- the dominant unmatched class
+#   - WRIT GRANTED/DENIED phrases in the tail  -- ~6%
+# Both patterns are ANCHORED (whole-sentence / end-of-document), never
+# substring prose matches -- the NH 2026-07-19 lesson: an unanchored body
+# fallback writes dispositions the court never entered.
+
+# Extended connectives for tail phrases: reporter tails carry trailing
+# qualifiers ("WITH INSTRUCTIONS", "WITHOUT PREJUDICE") the head-zone
+# vocabulary deliberately omits.
+_TAIL_CONNECT = (
+    _DISP_CONNECTIVE
+    + r"|WITH|WITHOUT|INSTRUCTIONS|PREJUDICE|COSTS|FURTHER|PROCEEDINGS"
+    + r"|ORDERS|OPINION|CONVICTION|SENTENCE|JUDGMENT"
+)
+_TAIL_PHRASE = (
+    r"(?:" + _DISP_VERB + r"|" + _DISP_NOUN_OR_MOD + r")"
+    r"(?:[ \t,;.]+(?:" + _DISP_VERB + r"|" + _DISP_NOUN_OR_MOD
+    + r"|" + _TAIL_CONNECT + r"))*"
+)
+# All-caps disposition phrase at document end, tolerating trailing
+# page-number OCR junk ("... REMANDED WITH INSTRUCTIONS. 31 32").
+TAIL_ALLCAPS_DISP_RE = re.compile(
+    r"(" + _TAIL_PHRASE + r")[.;]?\s*(?:\d[\d\s]*)?\Z",
+)
+# Bare writ-table disposition sentence near the tail. Exact capitalized
+# sentence forms only -- "was denied." in prose can never match.
+TAIL_WRIT_SENTENCE_RE = re.compile(
+    r"(?:^|[.;]\s+)"
+    r"(Writ\s+[Dd]enied|Writ\s+[Gg]ranted|Writ\s+[Rr]ecalled"
+    r"|Denied|Granted|Stay\s+[Dd]enied|Stay\s+[Gg]ranted"
+    r"|Reconsideration\s+[Dd]enied)"
+    r"\.(?!\w)",
+)
+
 
 # ---------- Author byline ------------------------------------------------
 
@@ -363,6 +409,32 @@ class LouisianaParser(StateParser):
                 result.disposition = (
                     phrase[:1].upper() + phrase[1:].lower())
                 result.confidence["disposition"] = 0.85
+
+        # Tail fallback (both courts): reporter-style CL bulk texts put
+        # the disposition at the END, not in a header zone. Only fires
+        # when the head passes found nothing, so modern-layout parses
+        # are untouched. See the tail-tier comment above the regexes.
+        if not result.disposition:
+            tail = raw_text.rstrip()[-600:]
+            tm = TAIL_ALLCAPS_DISP_RE.search(tail)
+            if tm:
+                phrase = " ".join(tm.group(1).split()).rstrip(" ,;.")
+                # Two+ chars and at least one full vocabulary verb --
+                # rejects a stray "SEE" or "NOT" surviving the phrase.
+                if re.search(_DISP_VERB, phrase):
+                    result.disposition = (
+                        phrase[:1].upper() + phrase[1:].lower())
+                    result.confidence["disposition"] = 0.8
+            if not result.disposition and re.search(
+                    r"\b(writ|applying|application)\b", tail, re.IGNORECASE):
+                last = None
+                for m in TAIL_WRIT_SENTENCE_RE.finditer(tail[-300:]):
+                    last = m
+                if last:
+                    phrase = " ".join(last.group(1).split())
+                    result.disposition = (
+                        phrase[:1].upper() + phrase[1:].lower())
+                    result.confidence["disposition"] = 0.8
 
         # --- Author byline ---------------------------------------------
         if is_supreme:
