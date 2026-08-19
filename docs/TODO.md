@@ -958,13 +958,25 @@ order:
 
 ## Session close 2026-08-18 — LA launch state (NEXT SESSION START HERE)
 
-- **OPEN BUG: la.docketdrift.com hangs (30s+, then 000).** Alias + TLS cert
-  are DONE (Onion, member panel; ny.docketdrift.com also parked for later).
-  The hang is OURS: `_state_landing_stats` / landing render for the 341K-row
-  LA corpus blows the 25s cap on cold cache (in-process Client render → errno
-  1969). Same family as the 2026-06-16 apex outage — audit the landing-stats
-  queries for LA-scale (COUNT/aggregate over court_id__in) and precompute/
-  cache them. FIX BEFORE FLIPPING is_live.
+- [x] **FIXED 2026-08-18 (`06a3e6f`): la.docketdrift.com hang.** Alias + TLS
+  cert done by Onion; the hang was ours. My earlier guess (`_state_landing_stats`)
+  was WRONG — profiling showed the whole landing view is ~3s including the
+  stats bundle. The real cause was the **explore-tags context processor**,
+  which runs on every templated response and computed ~20 corpus-scale
+  FULLTEXT MATCH-COUNTs inline on a cold cache; at LA's 341K rows each blows
+  the 25s cap, so one request spent ~500s running queries that were each
+  KILLed (poisoning a pooled connection every time, since the bare
+  `except Exception` never closed them). Fix: the context processor is now
+  cache-READ-ONLY (`compute=False` default) so a cold cache costs a missing
+  tag cloud, never a dead page; only `precompute_explore_tags` computes, and
+  its counts are bounded (per-tag 10s SET STATEMENT, 120s per-state budget,
+  connection close on failure, 15min TTL on partial results).
+  **This also permanently kills the documented "cold-cache stampede after
+  gunicorn restart" gotcha — same bug at smaller corpus size.**
+  Verified: LA landing 200 in 3.3s cold / 0.37s warm, MN/NH/AZ unaffected.
+- Cosmetic, site-wide, unfixed: landing stat tiles render counts without
+  thousands separators (`341064`, `69605`). One `intcomma` in
+  state_landing.html; do before LA goes public.
 - Dispositions backfill loop RUNNING (daemon, resumes via min-id; restart with:
   `daemon -p ~/.la_dispositions.pid ~/scripts/la_dispositions_tick.sh`).
   14.5K/341K filled at close; tail tier ~69% fill on reporter-era rows; scan is
