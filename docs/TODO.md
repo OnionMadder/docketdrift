@@ -974,9 +974,32 @@ order:
   **This also permanently kills the documented "cold-cache stampede after
   gunicorn restart" gotcha — same bug at smaller corpus size.**
   Verified: LA landing 200 in 3.3s cold / 0.37s warm, MN/NH/AZ unaffected.
-- Cosmetic, site-wide, unfixed: landing stat tiles render counts without
-  thousands separators (`341064`, `69605`). One `intcomma` in
-  state_landing.html; do before LA goes public.
+- [x] Cosmetic thousands separators — DONE (`c3065e0`), humanize + intcomma
+  on landing + apex counts, all four states verified, JSON-LD still valid.
+- [~] **LA CL freshness catch-up — Supreme DONE, COA running overnight
+  (2026-08-19).**
+  - **Supreme (`la`) DONE:** 199,109 → 199,124 opinions, newest
+    **2026-03-06 → 2026-07-31**.
+  - **CORRECTION to the coverage audit:** it recorded "LA Supreme DEAD in CL
+    since 2020 (~12K missing)". CL's live API has 27 Supreme clusters since
+    2026-03-01 with newest 2026-07-31, and our bulk load already held 199K
+    Supreme rows through 2026-03. The feed is NOT dead. Re-verify the
+    audit's LA claim before using it as the FLP report #2 premise.
+  - **COA (`lactapp`) IN FLIGHT:** 742 clusters since 2026-03-01, CL's
+    newest is 2026-08-19 (same-day). Running via
+    `scripts/la_catchup_tick.sh` (daemon; 24 passes, 30-min spacing).
+    CL groups ALL FIVE circuits under `lactapp` — our lactapp-2..5 court
+    rows are synthetic — so this single feed carries every circuit.
+  - **CL IS THROTTLING HARD.** Concurrent probes + two simultaneous ingests
+    earned a **2,630-second (44 min) Retry-After**. Hence 30-min inter-pass
+    sleep: the client sleeps the full Retry-After *within* a pass, and
+    restarting sooner just burns retries against a cooling limiter. Do not
+    run other CL work alongside this.
+  - **AFTER COA lands:** run `assign_la_circuits` (sorts new rows into the
+    5 divisions), then `backfill_dispositions` / `extract_statutes` /
+    `extract_holdings_text` / `resolve_judges` for the new rows.
+  - Note `lactapp-5` (Fifth Circuit) was already the stalest at
+    2025-10-17 even before this — check it specifically after catch-up.
 - Dispositions backfill loop RUNNING (daemon, resumes via min-id; restart with:
   `daemon -p ~/.la_dispositions.pid ~/scripts/la_dispositions_tick.sh`).
   14.5K/341K filled at close; tail tier ~69% fill on reporter-era rows; scan is
