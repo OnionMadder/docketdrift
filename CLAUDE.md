@@ -1788,6 +1788,29 @@ Not a database column. You CANNOT `.values("court__short_label")` or
 `.annotate(...)` against it. Group by `court_id` and resolve to Court
 instances in Python.
 
+### Long sleeps get EINTR'd on NFSN — including CL's 429 backoffs
+
+Any `time.sleep()` long enough to matter in an NFSN background process
+will eventually be interrupted by a signal, which Python surfaces as
+**`KeyboardInterrupt`**. This is why batch commands catch bare
+`BaseException` around sleeps (see the next gotcha).
+
+The trap bit a NEW place on 2026-08-19: `CourtListenerClient`'s own retry
+sleeps. CL handed out a **2,075-second** Retry-After during the LA
+catch-up; the sleep was interrupted and killed the whole run — process
+and wrapper. The failure mode is backwards from what you want: **the
+harder CL throttles, the longer the sleep, and the likelier the ingest
+dies before it can recover.** Every weekly `cron-ingest` task rides this
+path, so it was a latent break in ALL CL ingestion under load, not one
+unlucky run.
+
+Fixed by `courtlistener.resilient_sleep()` (now the client's default
+`sleep_fn`): sleeps in ≤30s slices against a **monotonic deadline**, so an
+absorbed interrupt costs at most one slice and can't drift the total wait.
+Absorbs only `KeyboardInterrupt` — SIGTERM still terminates, so `kill` and
+NFSN's supervisor keep working. If you add another long-sleep path, use
+this helper rather than bare `time.sleep`.
+
 ### MariaDB drops idle connections during long sleeps
 
 Any management command that does a 30-60s `time.sleep()` between DB writes
