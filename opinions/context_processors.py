@@ -177,18 +177,34 @@ def _get_sized_tags(state, compute: bool = False) -> list[tuple[str, int, str]]:
         cache.set(cache_key, [], _CACHE_TTL_SECONDS)
         return []
 
+    # Counts ACCUMULATE across warm runs, resuming from a stored cursor.
+    #
+    # Without this, a state too big to count inside one budget would be
+    # stuck forever: every run starts at EXPLORE_TAGS[0], burns the whole
+    # budget on the same first few tags, and the cloud never grows past
+    # them. (Measured on LA: 2 of 20 tags per 120s run.) Resuming means
+    # each run advances through the list and the cloud fills in over
+    # successive runs, wrapping around to refresh the oldest counts.
+    counts_key = f"explore_tags_counts:{state.code}"
+    cursor_key = f"explore_tags_cursor:{state.code}"
+    known: dict[str, int] = dict(cache.get(counts_key) or {})
+    start = int(cache.get(cursor_key) or 0) % len(EXPLORE_TAGS)
+
     started = time.monotonic()
     degraded = False
-    raw_counts: list[tuple[str, int]] = []
-    for tag in EXPLORE_TAGS:
+    processed = 0
+    idx = start
+    for _ in range(len(EXPLORE_TAGS)):
         if time.monotonic() - started > _WARM_TOTAL_BUDGET_SECONDS:
             logger.warning(
-                "explore_tags: %s hit the %ss warm budget after %d/%d tags",
-                state.code, _WARM_TOTAL_BUDGET_SECONDS,
-                len(raw_counts), len(EXPLORE_TAGS),
+                "explore_tags: %s hit the %ss warm budget after %d/%d tags "
+                "this run (resuming at index %d next run; %d tags known)",
+                state.code, _WARM_TOTAL_BUDGET_SECONDS, processed,
+                len(EXPLORE_TAGS), idx, len(known),
             )
             degraded = True
             break
+        tag = EXPLORE_TAGS[idx]
         n = _count_tag_bounded(tag, court_ids, _WARM_PER_TAG_TIMEOUT_SECONDS)
         if n is None:
             logger.warning(
@@ -196,9 +212,21 @@ def _get_sized_tags(state, compute: bool = False) -> list[tuple[str, int, str]]:
                 tag, state.code,
             )
             degraded = True
-            continue
-        if n > 0:
-            raw_counts.append((tag, n))
+        else:
+            # Record zeros too, so a genuinely-absent tag isn't retried
+            # every run; it's filtered out of the cloud below.
+            known[tag] = n
+        processed += 1
+        idx = (idx + 1) % len(EXPLORE_TAGS)
+
+    # Persist accumulated counts + where to resume. Long TTL on the raw
+    # counts so progress survives even when the built cloud expires.
+    cache.set(counts_key, known, _CACHE_TTL_SECONDS * 12)
+    cache.set(cursor_key, idx, _CACHE_TTL_SECONDS * 12)
+
+    raw_counts: list[tuple[str, int]] = [
+        (tag, n) for tag, n in known.items() if n > 0
+    ]
 
     if not raw_counts:
         # Cache the empty result briefly so a degraded state retries next
