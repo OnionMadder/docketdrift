@@ -89,7 +89,11 @@ class Command(BaseCommand):
             cache.delete(f"explore_tags_sized:{s.code}")
             cache.delete(f"state_landing_stats:{s.code}")
             t0 = time.time()
-            sized = _get_sized_tags(s)
+            # compute=True is what makes this the ONLY place the expensive
+            # FULLTEXT sizing runs. The context processor is cache-read-only
+            # (see _get_sized_tags' docstring) precisely so a cold cache can
+            # never turn a page request into 20 corpus-scale COUNTs.
+            sized = _get_sized_tags(s, compute=True)
             _state_landing_stats(s, _state_court_ids(s))
             elapsed = time.time() - t0
             self.stdout.write(

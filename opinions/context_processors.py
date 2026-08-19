@@ -7,6 +7,7 @@ have to thread it through every view. Registered in
 from __future__ import annotations
 
 import logging
+import time
 
 from django.conf import settings
 from django.core.cache import cache
@@ -76,76 +77,136 @@ _CACHE_TTL_SECONDS = 60 * 60 * 2  # 2 hr -- tag counts change slowly; the
 # state-landing first hits.
 
 
-def _get_sized_tags(state) -> list[tuple[str, int, str]]:
+# Per-tag self-bound for the WARMER's FULLTEXT counts. Generous (this is
+# background work) but finite, so one pathological tag on a huge corpus
+# can't stall the whole warm run.
+_WARM_PER_TAG_TIMEOUT_SECONDS = 10
+# Whole-state budget for the warmer. LA (341K rows) can't finish 20
+# corpus-scale MATCH-COUNTs in any reasonable time; past this we keep
+# whatever counts we got and move on to the next state rather than
+# letting one state starve the others.
+_WARM_TOTAL_BUDGET_SECONDS = 120
+# Short TTL for a partial/empty result, so a degraded state retries on the
+# next warm run instead of being stuck with an empty cloud for 2 hours.
+_PARTIAL_CACHE_TTL_SECONDS = 15 * 60
+
+
+def _count_tag_bounded(tag, court_ids, timeout_seconds):
+    """One FULLTEXT phrase COUNT, self-bounded, degrading to None.
+
+    Returns the count, or ``None`` if the query was killed / errored.
+
+    Self-binding matters for the same reason it does in
+    ``semantic._run_vector_query`` and ``views._fulltext_candidate_ids``:
+    a query KILLed at the statement timeout leaves the POOLED connection
+    interrupted (errno 188/1969), and the next request to reuse it 500s on
+    whatever it runs. So on any failure we close the connection rather
+    than hand a poisoned one back to the pool. ``BaseException`` (not
+    ``Exception``) because NFSN's SSL socket surfaces an EINTR'd read as
+    ``KeyboardInterrupt``.
+    """
+    if connection.vendor != "mysql":
+        from opinions.models import Opinion
+        return Opinion.objects.filter(
+            court_id__in=court_ids, raw_text__icontains=tag
+        ).count()
+
+    placeholders = ",".join(["%s"] * len(court_ids))
+    # BOOLEAN MODE + quoted phrase = exact-phrase match against the
+    # FULLTEXT index; the quoting is what makes multi-word tags like
+    # "Fourth Amendment" match precisely. Raw SQL (not .extra()) so the
+    # SET STATEMENT prefix rides on the same statement.
+    sql = (
+        f"SET STATEMENT max_statement_time={int(timeout_seconds)} FOR "
+        f"SELECT COUNT(*) FROM opinions_opinion "
+        f"WHERE court_id IN ({placeholders}) "
+        f"AND MATCH(raw_text, title) AGAINST (%s IN BOOLEAN MODE)"
+    )
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(sql, list(court_ids) + [f'"{tag}"'])
+            row = cursor.fetchone()
+        return row[0] if row else 0
+    except BaseException:
+        try:
+            connection.close()
+        except BaseException:
+            pass
+        return None
+
+
+def _get_sized_tags(state, compute: bool = False) -> list[tuple[str, int, str]]:
     """Return ``(tag, count, size_bucket)`` for the current state's corpus.
 
-    Uses MariaDB's FULLTEXT index (added by migration 0012) when available
-    -- each per-tag count returns in milliseconds against the 60K-row
-    corpus. Falls back to ``raw_text__icontains`` on SQLite / other
-    backends; slow on big corpora but fine for local dev with small data.
+    **Read-only from the request path.** ``compute`` defaults to False, so
+    a cold cache returns ``[]`` immediately and the page renders without a
+    tag cloud. ONLY ``precompute_explore_tags`` passes ``compute=True``.
 
-    Cached per-state for 15 minutes since the cron only changes the corpus
-    a couple of times per week. The whole computation is wrapped in
-    try/except: if any per-tag query fails for any reason (e.g. FULLTEXT
-    stopword-only tag, transient DB error), we log + skip and continue;
-    if the entire computation explodes, we return an empty cloud rather
-    than crash the page.
+    This split is the fix for a whole class of outage (2026-08-18). The
+    sizing needs ~20 corpus-scale FULLTEXT MATCH-COUNTs, and this function
+    runs in a CONTEXT PROCESSOR -- i.e. on every templated response. When
+    the cache went cold (TTL expiry, gunicorn restart, a newly-added
+    state), the next request would try to compute all 20 inline. On a
+    341K-row corpus like Louisiana each count exceeds the 25s web cap, so
+    the request spent ~500 seconds running queries that were each KILLed
+    in turn, poisoning a pooled connection every time, while the caller
+    saw only a hang. That presented as "the whole subdomain is down."
+
+    Computing this in a request was never safe -- it was merely fast
+    enough to hide on a 20-60K corpus. Now the request path cannot do it
+    at all: warm cache or no cloud. The cloud is a browse affordance, not
+    load-bearing content, so degrading it is strictly better than
+    degrading the page.
     """
     cache_key = f"explore_tags_sized:{state.code}"
     cached = cache.get(cache_key)
     if cached is not None:
         return cached
+    if not compute:
+        # Cold cache in a request: render without the cloud. The hourly
+        # precompute_explore_tags task fills it. Do NOT "just this once"
+        # compute here -- see the docstring.
+        return []
 
-    # Local import: this module is loaded at template-context build time,
-    # before Django apps are guaranteed-ready in some startup paths.
-    from opinions.models import Opinion
-
-    use_fulltext = connection.vendor == "mysql"
-
-    # Pre-resolve court_ids once per call. Without this every per-tag
-    # MATCH-AGAINST COUNT JOINed opinions -> courts -> states and N tags
-    # * full-corpus FULLTEXT scan was THE single biggest source of state-
-    # landing slowness -- this runs on every templated response, so a
-    # crawler hammering /tag/ + /opinions/ + state landings could pile
-    # 60+ JOIN-COUNTs on the workers concurrently. Pre-resolved court
-    # IDs let MariaDB use the FULLTEXT index AND the court_id index
-    # without dragging in the multi-table join plan.
+    # ---- Warmer path only, from here down. ----
+    # Pre-resolve court_ids once. Without this every per-tag count JOINs
+    # opinions -> courts -> states; pre-resolved IDs let MariaDB use the
+    # FULLTEXT index AND the court_id index without the multi-table plan.
     court_ids = list(state.courts.values_list("id", flat=True))
+    if not court_ids:
+        cache.set(cache_key, [], _CACHE_TTL_SECONDS)
+        return []
 
+    started = time.monotonic()
+    degraded = False
     raw_counts: list[tuple[str, int]] = []
     for tag in EXPLORE_TAGS:
-        try:
-            if use_fulltext:
-                # BOOLEAN MODE + quoted phrase = exact-phrase match against
-                # the FULLTEXT index. Phrase quoting (" ... ") is what makes
-                # multi-word tags like "Fourth Amendment" match precisely.
-                # extra() is the cleanest way to inject MATCH AGAINST in
-                # Django -- there's no native ORM lookup for MySQL FULLTEXT.
-                n = (
-                    Opinion.objects.filter(court_id__in=court_ids)
-                    .extra(
-                        where=[
-                            "MATCH(opinions_opinion.raw_text, opinions_opinion.title) "
-                            "AGAINST (%s IN BOOLEAN MODE)"
-                        ],
-                        params=[f'"{tag}"'],
-                    )
-                    .values("pk")
-                    .count()
-                )
-            else:
-                n = Opinion.objects.filter(
-                    court_id__in=court_ids,
-                    raw_text__icontains=tag,
-                ).count()
-        except Exception:
-            logger.warning("explore_tags: per-tag count failed for %r", tag, exc_info=True)
+        if time.monotonic() - started > _WARM_TOTAL_BUDGET_SECONDS:
+            logger.warning(
+                "explore_tags: %s hit the %ss warm budget after %d/%d tags",
+                state.code, _WARM_TOTAL_BUDGET_SECONDS,
+                len(raw_counts), len(EXPLORE_TAGS),
+            )
+            degraded = True
+            break
+        n = _count_tag_bounded(tag, court_ids, _WARM_PER_TAG_TIMEOUT_SECONDS)
+        if n is None:
+            logger.warning(
+                "explore_tags: count for %r timed out/failed on %s",
+                tag, state.code,
+            )
+            degraded = True
             continue
         if n > 0:
             raw_counts.append((tag, n))
 
     if not raw_counts:
-        cache.set(cache_key, [], _CACHE_TTL_SECONDS)
+        # Cache the empty result briefly so a degraded state retries next
+        # run rather than serving an empty cloud for the full TTL.
+        cache.set(
+            cache_key, [],
+            _PARTIAL_CACHE_TTL_SECONDS if degraded else _CACHE_TTL_SECONDS,
+        )
         return []
 
     counts_only = [n for _, n in raw_counts]
@@ -162,7 +223,12 @@ def _get_sized_tags(state) -> list[tuple[str, int, str]]:
     # Sort largest-first so the cloud reads "most common at the top".
     sized.sort(key=lambda x: (-x[1], x[0].lower()))
 
-    cache.set(cache_key, sized, _CACHE_TTL_SECONDS)
+    # A partial result gets the short TTL so the next warm run retries the
+    # tags that timed out, instead of freezing a half-built cloud for 2hr.
+    cache.set(
+        cache_key, sized,
+        _PARTIAL_CACHE_TTL_SECONDS if degraded else _CACHE_TTL_SECONDS,
+    )
     return sized
 
 
