@@ -109,6 +109,10 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    # humanize: template filters only (intcomma on the landing stat tiles --
+    # "341,064" not "341064"). No models, no migrations, no runtime cost
+    # beyond the filter itself.
+    "django.contrib.humanize",
     "opinions",
 ]
 

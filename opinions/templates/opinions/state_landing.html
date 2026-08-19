@@ -1,9 +1,10 @@
 {% extends "opinions/base.html" %}
+{% load humanize %}
 {% block title %}{{ state.name }} appellate opinions &middot; DocketDrift{% endblock %}
-{% block description %}{{ total_opinions }} {{ state.name }} appellate opinions{% if date_range.first %} from {{ date_range.first|date:"Y" }} to present{% endif %}, indexed and searchable. {{ total_judges }} judge dossier{{ total_judges|pluralize }}. Public-records analysis of the {{ state.name }} appellate courts.{% endblock %}
+{% block description %}{{ total_opinions|intcomma }} {{ state.name }} appellate opinions{% if date_range.first %} from {{ date_range.first|date:"Y" }} to present{% endif %}, indexed and searchable. {{ total_judges|intcomma }} judge dossier{{ total_judges|pluralize }}. Public-records analysis of the {{ state.name }} appellate courts.{% endblock %}
 
 {% block og_title %}{{ state.name }} appellate opinions &middot; DocketDrift{% endblock %}
-{% block og_description %}{{ total_opinions }} {{ state.name }} appellate opinions{% if date_range.first %} from {{ date_range.first|date:"Y" }} to present{% endif %} with judge dossiers, outcome categorization, and full-text + semantic search.{% endblock %}
+{% block og_description %}{{ total_opinions|intcomma }} {{ state.name }} appellate opinions{% if date_range.first %} from {{ date_range.first|date:"Y" }} to present{% endif %} with judge dossiers, outcome categorization, and full-text + semantic search.{% endblock %}
 
 {% block jsonld %}
 <script type="application/ld+json">
@@ -35,7 +36,7 @@
   "@type": "Dataset",
   "name": "{{ state.name|escapejs }} appellate court opinions",
   "alternateName": "DocketDrift {{ state.name|escapejs }} corpus",
-  "description": "Published opinions of the {{ state.name|escapejs }} appellate courts, normalized into a structured, searchable archive. {{ total_opinions }} opinion{{ total_opinions|pluralize }}{% if date_range.first %} from {{ date_range.first|date:'Y-m-d' }} to {{ date_range.last|date:'Y-m-d' }}{% endif %}.",
+  "description": "Published opinions of the {{ state.name|escapejs }} appellate courts, normalized into a structured, searchable archive. {{ total_opinions|intcomma }} opinion{{ total_opinions|pluralize }}{% if date_range.first %} from {{ date_range.first|date:'Y-m-d' }} to {{ date_range.last|date:'Y-m-d' }}{% endif %}.",
   "url": "https://{{ request.get_host }}/",
   "keywords": "{{ state.name|escapejs }}, appellate courts, judicial opinions, case law, public records",
   "license": "https://creativecommons.org/publicdomain/mark/1.0/",
@@ -127,11 +128,11 @@
 <div class="glossy-frame landing-stats-frame">
   <ul class="landing-stats">
     <li>
-      <strong>{{ total_opinions }}</strong>
+      <strong>{{ total_opinions|intcomma }}</strong>
       <span>opinion{{ total_opinions|pluralize }} indexed</span>
     </li>
     <li>
-      <strong>{{ total_judges }}</strong>
+      <strong>{{ total_judges|intcomma }}</strong>
       <span>judge{{ total_judges|pluralize }} ({{ currently_seated }} currently seated)</span>
     </li>
     {% if date_range.first %}
@@ -201,7 +202,7 @@
   <div class="landing-browse-grid">
     <a href="{% url 'opinions:opinion_list' %}" class="landing-browse-card">
       <strong>Opinions</strong>
-      <span>Search and filter all {{ total_opinions }} opinions in the corpus &mdash; by keyword, concept, outcome, and court.</span>
+      <span>Search and filter all {{ total_opinions|intcomma }} opinions in the corpus &mdash; by keyword, concept, outcome, and court.</span>
     </a>
     <a href="{% url 'opinions:current_judges' %}" class="landing-browse-card">
       <strong>Judges</strong>

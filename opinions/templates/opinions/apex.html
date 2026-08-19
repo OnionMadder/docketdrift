@@ -1,4 +1,5 @@
 {% extends "opinions/base.html" %}
+{% load humanize %}
 {% block title %}DocketDrift &middot; State appellate opinions, organized for human review{% endblock %}
 {% block description %}A navigator for U.S. state appellate court opinions. Real opinions from official sources, organized for human review. {{ states|length }} state{{ states|length|pluralize }} live: {% for state in states %}{{ state.name }}{% if not forloop.last %}, {% endif %}{% endfor %}. Explicitly not an AI legal assistant.{% endblock %}
 
@@ -91,7 +92,7 @@
         <article class="entity-tile judicial">
           <span class="role-chip judicial">Appellate Courts</span>
           <h3><a href="https://{{ state.slug }}.docketdrift.com/">{{ state.name }}</a></h3>
-          <p class="affiliation"><strong>{{ state.opinion_count }}</strong> opinion{{ state.opinion_count|pluralize }} indexed</p>
+          <p class="affiliation"><strong>{{ state.opinion_count|intcomma }}</strong> opinion{{ state.opinion_count|pluralize }} indexed</p>
           <a class="inspect-link" href="https://{{ state.slug }}.docketdrift.com/">Inspect &rarr;</a>
         </article>
       {% endfor %}
