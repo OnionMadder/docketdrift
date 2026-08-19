@@ -115,6 +115,42 @@ def _has_sane_date_filed(cluster: dict) -> bool:
     return filed <= datetime.date.today() + datetime.timedelta(days=1)
 
 
+def resilient_sleep(seconds: float) -> None:
+    """``time.sleep`` that survives NFSN's EINTR-driven KeyboardInterrupt.
+
+    A long sleep in a background process on NFSN gets interrupted by a
+    signal, which Python surfaces as ``KeyboardInterrupt`` -- the same
+    trap CLAUDE.md documents for embed_opinions and extract_statutes
+    ("use bare BaseException, NFSN's SSL socket raises KeyboardInterrupt
+    on EINTR during long sleeps"). The CL client had never applied it to
+    its OWN retry sleeps, so on 2026-08-19 a 2,075-second 429 backoff was
+    interrupted and killed the entire LA catch-up run mid-cooldown.
+
+    That mattered more than one run: CL hands out multi-minute (and, when
+    annoyed, 40+ minute) Retry-After values, so the longer the throttle,
+    the likelier the ingest dies -- exactly backwards from what you want.
+    Every weekly cron-ingest task shares this path.
+
+    Sleeps in short slices so an interrupt costs at most one slice, and
+    tracks the deadline on the monotonic clock so absorbed interrupts
+    can't extend or shorten the total wait. Only KeyboardInterrupt is
+    absorbed; SIGTERM still terminates normally, so `kill` works.
+    """
+    deadline = time.monotonic() + max(0.0, seconds)
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        try:
+            time.sleep(min(remaining, 30.0))
+        except KeyboardInterrupt:
+            logger.debug(
+                "courtlistener: sleep interrupted (EINTR), %.0fs remaining",
+                max(0.0, deadline - time.monotonic()),
+            )
+            continue
+
+
 class CourtListenerClient:
     """Thin REST client. Token is passed in -- callers pull it from env."""
 
@@ -123,7 +159,7 @@ class CourtListenerClient:
         token: str,
         base_url: str = BASE_URL,
         session: Optional[requests.Session] = None,
-        sleep_fn=time.sleep,
+        sleep_fn=resilient_sleep,
     ):
         if not token:
             raise ValueError(
