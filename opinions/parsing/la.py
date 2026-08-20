@@ -339,7 +339,16 @@ def _prose_disposition(tail: str) -> str | None:
     best = None
     for m in PROSE_SENTENCE_RE.finditer(tail):
         sentence = m.group(1)
-        if PROSE_CITATION_VETO_RE.search(sentence):
+        # Check the citation veto against PRECEDING CONTEXT too, not just
+        # the parsed sentence. The splitter breaks on any period, including
+        # the one inside "v." -- so "In Smith v. Jones the judgment was
+        # affirmed by our brethren" arrives as a fragment starting at
+        # "Jones the judgment was affirmed...", with the citation orphaned
+        # into the previous fragment and the veto blind to it. Widening the
+        # window to the 120 chars before the sentence puts the citation back
+        # in view. (Found by a false-positive test, not by reading code.)
+        ctx = tail[max(0, m.start(1) - 120):m.end(1)]
+        if PROSE_CITATION_VETO_RE.search(ctx):
             continue
         if not PROSE_DECRETAL_RE.search(sentence):
             continue
