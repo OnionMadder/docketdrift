@@ -189,19 +189,135 @@ _TAIL_CONNECT = (
     _DISP_CONNECTIVE
     + r"|WITH|WITHOUT|INSTRUCTIONS|PREJUDICE|COSTS|FURTHER|PROCEEDINGS"
     + r"|ORDERS|OPINION|CONVICTION|SENTENCE|JUDGMENT|IMPOSED|AMENDED"
+    # Louisiana appellate-procedure vocabulary. A LA court disposes of the
+    # APPEAL as well as the judgment, and those compound sentences read
+    # "AFFIRMED. SUSPENSIVE APPEAL DISMISSED, APPEAL MAINTAINED AS A
+    # DEVOLUTIVE APPEAL." Without these tokens the phrase run breaks at
+    # the first unknown word and the disposition is lost (measured: this
+    # class was ~1 in 6 of the all-caps misses).
+    + r"|SUSPENSIVE|DEVOLUTIVE|APPEAL|APPEALS|MAINTAINED|ANNULLED"
+    + r"|SET|ASIDE|REINSTATED|RENDERED|DECREE|RULING|VERDICT|PART"
+    + r"|REHEARING|REMANDED|TRIAL|COURT|BELOW|ASSESSED"
 )
 _TAIL_PHRASE = (
     r"(?:" + _DISP_VERB + r"|" + _DISP_NOUN_OR_MOD + r")"
     r"(?:[ \t,;.]+(?:" + _DISP_VERB + r"|" + _DISP_NOUN_OR_MOD
     + r"|" + _TAIL_CONNECT + r"))*"
 )
-# All-caps disposition phrase at document end, tolerating trailing
-# page-number OCR junk ("... REMANDED WITH INSTRUCTIONS. 31 32").
+# All-caps disposition phrase as a STANDALONE SENTENCE anywhere in the
+# tail -- not pinned to end-of-document.
+#
+# The original \Z anchor (phrase + optional trailing digits + end) was too
+# strict and cost ~30% of rows that plainly state their disposition.
+# Real Louisiana tails keep going after the disposition: a footnote
+# ("AFFIRMED. 1 . This court, in docket number 10-615, ..."), a recusal
+# note ("AFFIRMED. GUIDRY, J., recused."), a rules citation ("...been
+# DENIED. Uniform Rules - Courts of Appeal, Rule 2-18.7"), or a cc: line.
+#
+# Still anchored, just to the SENTENCE rather than the document: the
+# phrase must start at a line start or after sentence-ending punctuation,
+# and must be followed by a period/semicolon or end. That keeps the
+# safety property that matters -- an all-caps word inside ordinary prose
+# can never match -- while tolerating whatever trails it. Callers take
+# the LAST match, which is the operative disposition when a court
+# disposes of several things in sequence.
 TAIL_ALLCAPS_DISP_RE = re.compile(
-    r"(" + _TAIL_PHRASE + r")[.;]?\s*(?:\d[\d\s]*)?\Z",
+    r"(?:^|(?<=[.;!?])|(?<=\n))\s*"
+    r"(" + _TAIL_PHRASE + r")"
+    r"\s*[.;]",
+    re.MULTILINE,
 )
 # Bare writ-table disposition sentence near the tail. Exact capitalized
 # sentence forms only -- "was denied." in prose can never match.
+# ---- Prose disposition tier -------------------------------------------
+#
+# Measured on a 700-row sample of the unfilled corpus (2026-08-19): 12%
+# of opinions state their disposition ONLY as prose, with no all-caps
+# line anywhere -- dominant in the pre-1980 material but present in every
+# era:
+#
+#   "The judgment is therefore affirmed at defendant's cost."
+#   "the judgment appealed from is affirmed; the defendant to pay all
+#    the costs of both courts."
+#   "it is ordered, adjudged, and decreed that the judgment of the lower
+#    court be affirmed, with all costs."
+#
+# This is the same shape NH's historic tier handles, and it carries the
+# same hazard, so it follows the same rules (CLAUDE.md, 2026-07-19):
+#
+#   1. ANCHORED TO THE FINAL SENTENCE, never a substring search. An
+#      unanchored hunt for "affirmed" matches the body's discussion of
+#      some OTHER case's outcome and mints a disposition the court never
+#      entered -- the exact bug that wrote wrong values on NH.
+#   2. Requires JUDGMENT CONTEXT (judgment/decree/ruling/verdict/
+#      conviction/sentence/appeal) in the same sentence, so ordinary
+#      narrative prose can't qualify.
+#   3. TRANSCRIBED, NOT MAPPED. We record the operative verb the court
+#      itself used ("affirmed" -> "Affirmed"). That is reading the word
+#      on the page, not deciding what an unfamiliar phrase means -- the
+#      line NH drew when it refused to map "exceptions overruled" onto
+#      "affirmed". If a LA opinion disposes in vocabulary we don't
+#      recognize, we leave it blank rather than guess.
+_PROSE_CONTEXT = (
+    r"judgment|decree|ruling|verdict|conviction|sentence|appeal"
+    r"|order|writ|application|judgments"
+)
+_PROSE_VERB = (
+    r"affirmed|reversed|vacated|annulled|amended|remanded|dismissed"
+    r"|modified|reinstated|recalled|denied|granted|set aside|quashed"
+)
+# Split the tail into sentences, then require BOTH context and verb in
+# the same one. Sentence-splitting is deliberately crude (period +
+# whitespace + capital OR end) because these tails are OCR of century-old
+# reporters; precision comes from the two-signal requirement, not from
+# perfect segmentation.
+PROSE_SENTENCE_RE = re.compile(
+    r"(?:^|(?<=[.;!?])\s)\s*([^.;!?]{15,400}?[.;!?])",
+    re.MULTILINE,
+)
+PROSE_CONTEXT_RE = re.compile(r"\b(?:" + _PROSE_CONTEXT + r")\b", re.IGNORECASE)
+PROSE_VERB_RE = re.compile(r"\b(" + _PROSE_VERB + r")\b", re.IGNORECASE)
+# "in part" qualifiers turn a simple disposition into a compound one
+# ("affirmed in part and reversed in part").
+PROSE_IN_PART_RE = re.compile(r"\bin\s+part\b", re.IGNORECASE)
+
+
+def _prose_disposition(tail: str) -> str | None:
+    """Extract a disposition from the LAST qualifying prose sentence.
+
+    Returns the transcribed disposition (e.g. ``"Affirmed"``,
+    ``"Affirmed in part, reversed in part"``) or None.
+
+    Takes the LAST qualifying sentence, and within it the LAST operative
+    verb: Louisiana opinions routinely recite subsidiary rulings before
+    the operative one ("the exception is overruled ... the judgment is
+    affirmed"), so earlier verbs describe steps, not the outcome. This is
+    the same correction AZ's tail fallback needed when a subsidiary
+    "we dismiss ... otherwise affirm" was storing "Dismissed".
+    """
+    best = None
+    for m in PROSE_SENTENCE_RE.finditer(tail):
+        sentence = m.group(1)
+        if not PROSE_CONTEXT_RE.search(sentence):
+            continue
+        verbs = PROSE_VERB_RE.findall(sentence)
+        if not verbs:
+            continue
+        best = (sentence, verbs)
+    if best is None:
+        return None
+
+    sentence, verbs = best
+    # Compound: two DIFFERENT verbs plus an "in part" qualifier.
+    lowered = [v.lower() for v in verbs]
+    unique = list(dict.fromkeys(lowered))
+    if len(unique) >= 2 and PROSE_IN_PART_RE.search(sentence):
+        a, b = unique[0], unique[1]
+        return f"{a.capitalize()} in part, {b} in part"
+    # Otherwise the LAST verb is the operative one.
+    return unique[-1].capitalize()
+
+
 TAIL_WRIT_SENTENCE_RE = re.compile(
     r"(?:^|[.;]\s+)"
     r"(Writ\s+[Dd]enied|Writ\s+[Gg]ranted|Writ\s+[Rr]ecalled"
@@ -415,18 +531,36 @@ class LouisianaParser(StateParser):
         # when the head passes found nothing, so modern-layout parses
         # are untouched. See the tail-tier comment above the regexes.
         if not result.disposition:
-            tail = raw_text.rstrip()[-600:]
-            tm = TAIL_ALLCAPS_DISP_RE.search(tail)
-            if tm:
-                phrase = " ".join(tm.group(1).split()).rstrip(" ,;.")
-                # Two+ chars and at least one full vocabulary verb --
-                # rejects a stray "SEE" or "NOT" surviving the phrase.
+            stripped = raw_text.rstrip()
+            tail = stripped[-600:]
+
+            # Tier A (0.80): all-caps disposition sentence. Take the LAST
+            # match -- a court that disposes of several things in sequence
+            # ("AFFIRMED. SUSPENSIVE APPEAL DISMISSED, APPEAL MAINTAINED
+            # ...") states the operative one last, and the sentence anchor
+            # means trailing footnotes/recusals/cc: lines no longer hide it.
+            last_caps = None
+            for m in TAIL_ALLCAPS_DISP_RE.finditer(tail):
+                last_caps = m
+            if last_caps:
+                phrase = " ".join(last_caps.group(1).split()).rstrip(" ,;.")
+                # Require a real vocabulary VERB -- rejects a stray "SEE",
+                # "NOT", or a lone connective surviving the phrase run.
                 if re.search(_DISP_VERB, phrase):
                     result.disposition = (
                         phrase[:1].upper() + phrase[1:].lower())
                     result.confidence["disposition"] = 0.8
+
+            # Tier B (0.80): writ-table entry ending in a bare "Denied." /
+            # "Granted." sentence. The writ-context gate is checked against
+            # a MUCH wider window than the sentence search: a long per
+            # curiam pushes the "applying for writs" recitation thousands
+            # of characters above the disposition, and a 600-char gate
+            # silently skipped every one of those (LA Supreme is ~199K
+            # rows, mostly writ dispositions, so this class is large).
             if not result.disposition and re.search(
-                    r"\b(writ|applying|application)\b", tail, re.IGNORECASE):
+                    r"\b(writ|writs|applying|application)\b",
+                    stripped[-6000:], re.IGNORECASE):
                 last = None
                 for m in TAIL_WRIT_SENTENCE_RE.finditer(tail[-300:]):
                     last = m
@@ -435,6 +569,16 @@ class LouisianaParser(StateParser):
                     result.disposition = (
                         phrase[:1].upper() + phrase[1:].lower())
                     result.confidence["disposition"] = 0.8
+
+            # Tier C (0.75): prose. Lowest tier and last resort, because
+            # it reads ordinary sentences rather than a formatted line --
+            # see _prose_disposition for the anchoring + transcription
+            # rules that keep it honest.
+            if not result.disposition:
+                prose = _prose_disposition(stripped[-900:])
+                if prose:
+                    result.disposition = prose
+                    result.confidence["disposition"] = 0.75
 
         # --- Author byline ---------------------------------------------
         if is_supreme:
