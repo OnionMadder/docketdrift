@@ -334,8 +334,22 @@ class Command(BaseCommand):
                             help="Rows per fetch/UPDATE batch.")
         parser.add_argument("--report-limit", type=int, default=25,
                             help="How many unresolved / conflict rows to name.")
+        parser.add_argument("--since", default=None,
+                            help=(
+                                "Only examine opinions with release_date >= "
+                                "YYYY-MM-DD. This is what makes a post-ingest "
+                                "run cheap: every CL ingest lands ALL five "
+                                "circuits' opinions in the landing court "
+                                "(First Circuit, the only one with a real CL "
+                                "id), so circuits 2-5 stay frozen until this "
+                                "command re-homes them. Chained into "
+                                "cron-ingest.sh with a 30-day window it "
+                                "examines a few dozen rows instead of "
+                                "re-scanning 341K."
+                            ))
 
-    def handle(self, *args, apply, max_runtime, chunk_size, report_limit, **options):
+    def handle(self, *args, apply, max_runtime, chunk_size, report_limit,
+               since, **options):
         if connection.vendor == "mysql":
             with connection.cursor() as cur:
                 cur.execute("SET SESSION max_statement_time = 0")
@@ -376,9 +390,12 @@ class Command(BaseCommand):
         # .only() + .iterator(chunk_size=2000) would build ~60MB per
         # batch and get culled by NFSN in seconds. Substr trims at the
         # SQL layer so each row's payload is <=2500 bytes over the wire.
+        base_qs = Opinion.objects.filter(court_id__in=landing_ids)
+        if since:
+            base_qs = base_qs.filter(release_date__gte=since)
+            self.stdout.write(f"  scoped to release_date >= {since}")
         qs = (
-            Opinion.objects
-            .filter(court_id__in=landing_ids)
+            base_qs
             .annotate(head=Substr("raw_text", 1, 2500))
             .values("id", "case_number", "court_id", "head")
             .iterator(chunk_size=chunk_size)
