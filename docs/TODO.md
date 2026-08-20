@@ -974,6 +974,33 @@ order:
   **This also permanently kills the documented "cold-cache stampede after
   gunicorn restart" gotcha — same bug at smaller corpus size.**
   Verified: LA landing 200 in 3.3s cold / 0.37s warm, MN/NH/AZ unaffected.
+- [x] **LA dispositions 4% → ~66% (2026-08-20).** "Parser is right, loop is
+  just slow" was WRONG — measurement found three defects + a missing tier.
+  What LA taught, none of which MN/NH/AZ surfaced:
+  1. **A `\Z` end-of-document anchor is wrong for reporter text.** LA tails
+     keep going after the disposition — footnotes (`AFFIRMED. 1 . This
+     court, in docket 10-615...`), recusals (`GUIDRY, J., recused.`), rules
+     cites, `cc:` lines. Cost ~30% of rows that plainly stated their
+     disposition. Anchor to the SENTENCE, take the LAST match.
+  2. **Civil-law procedure has its own disposition vocabulary.** LA disposes
+     of the APPEAL as well as the judgment: `AFFIRMED. SUSPENSIVE APPEAL
+     DISMISSED, APPEAL MAINTAINED AS A DEVOLUTIVE APPEAL.` Unknown words
+     break the phrase run mid-sentence.
+  3. **A context gate sized for one court starves another.** The writ-table
+     `Denied.` tier gated on "writ|applying" within 600 chars; a long per
+     curiam pushes that recitation thousands of chars above the
+     disposition. LA Supreme is ~199K rows, nearly all writ dispositions,
+     so this one gate suppressed the single largest class in the state.
+  4. **Prose tier** (NH's historic recipe): 12% state the disposition only
+     as prose. Requires DECRETAL form (subject ordered BEFORE the verb) —
+     "context word + verb somewhere in the sentence" leaked twice on real
+     text, storing another court's ruling as ours. Plus a case-citation
+     veto checked against PRECEDING CONTEXT, because the sentence splitter
+     breaks on the period inside "v." and orphans the citation.
+  Both leaks were caught by false-positive tests, not by reading code —
+  the NH 2026-07-19 lesson holds: fuzzy fallback tiers are where the
+  wrong-data bugs live, so test what must NOT match. Loop restarted from
+  pk 0 to re-scan with the new tiers (~37h of ticks; daemon needs restarts).
 - [x] Cosmetic thousands separators — DONE (`c3065e0`), humanize + intcomma
   on landing + apex counts, all four states verified, JSON-LD still valid.
 - [~] **LA CL freshness catch-up — Supreme DONE, COA running overnight
