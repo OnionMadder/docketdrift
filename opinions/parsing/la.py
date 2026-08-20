@@ -275,8 +275,49 @@ PROSE_SENTENCE_RE = re.compile(
     r"(?:^|(?<=[.;!?])\s)\s*([^.;!?]{15,400}?[.;!?])",
     re.MULTILINE,
 )
-PROSE_CONTEXT_RE = re.compile(r"\b(?:" + _PROSE_CONTEXT + r")\b", re.IGNORECASE)
 PROSE_VERB_RE = re.compile(r"\b(" + _PROSE_VERB + r")\b", re.IGNORECASE)
+
+# DECRETAL forms only. "Context word somewhere + disposition verb
+# somewhere" is NOT enough -- tested against real text it leaked twice:
+#
+#   "In Smith v. Jones the judgment was affirmed by our brethren, but
+#    that case is distinguishable..."          -> stored "Affirmed"
+#   "The motion to continue was denied by the trial court, and appellant
+#    assigns that ruling as error on appeal."  -> stored "Denied"
+#
+# Both describe SOMEONE ELSE'S ruling. Storing them would misstate the
+# record, which is the precise failure NH's 0.4-confidence body fallback
+# produced before it was removed.
+#
+# So the noun must be the thing being disposed of, ORDERED before the
+# verb ("the judgment ... is affirmed"), which drops the second leak --
+# there "ruling" appears only AFTER "denied". Two decretal alternatives
+# cover the rest: first-person ("we affirm") and the formal Louisiana
+# decree ("it is ordered, adjudged, and decreed that ... affirmed").
+_PROSE_SUBJECT = r"judgment|judgments|decree|ruling|verdict|conviction|sentence|appeal"
+PROSE_DECRETAL_RE = re.compile(
+    r"(?:"
+    # "the judgment [of the lower court] is/be/was ... affirmed"
+    r"\b(?:" + _PROSE_SUBJECT + r")\b[^.;!?]{0,90}?"
+    r"\b(?:is|are|be|was|were|stands?)\b[^.;!?]{0,50}?"
+    r"\b(?:" + _PROSE_VERB + r")\b"
+    r"|"
+    # "we affirm" / "we hereby reverse"
+    r"\bwe\s+(?:hereby\s+|therefore\s+|accordingly\s+)*"
+    r"(?:affirm|reverse|vacate|annul|amend|remand|dismiss|modify|reinstate|recall|deny|grant|quash)\b"
+    r"|"
+    # "it is ordered, adjudged and decreed that ... affirmed"
+    r"\bit\s+is\s+(?:hereby\s+)?(?:ordered|adjudged|decreed)\b[^.;!?]{0,200}?"
+    r"\b(?:" + _PROSE_VERB + r")\b"
+    r")",
+    re.IGNORECASE,
+)
+# A sentence carrying a case citation is discussing OTHER law, not
+# disposing of this appeal. Cheap, high-precision veto.
+PROSE_CITATION_VETO_RE = re.compile(
+    r"\bv\.\s|\bv\s+[A-Z]|So\.\s?\d|La\.\s?App|\bsupra\b|\bid\.\b",
+    re.IGNORECASE,
+)
 # "in part" qualifiers turn a simple disposition into a compound one
 # ("affirmed in part and reversed in part").
 PROSE_IN_PART_RE = re.compile(r"\bin\s+part\b", re.IGNORECASE)
@@ -298,7 +339,9 @@ def _prose_disposition(tail: str) -> str | None:
     best = None
     for m in PROSE_SENTENCE_RE.finditer(tail):
         sentence = m.group(1)
-        if not PROSE_CONTEXT_RE.search(sentence):
+        if PROSE_CITATION_VETO_RE.search(sentence):
+            continue
+        if not PROSE_DECRETAL_RE.search(sentence):
             continue
         verbs = PROSE_VERB_RE.findall(sentence)
         if not verbs:
