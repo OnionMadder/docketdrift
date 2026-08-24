@@ -36,10 +36,10 @@ import re
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 
 from django.core.management.base import BaseCommand
-from django.db import connection
+from django.db import connection, models
 from django.utils.text import slugify
 
 from opinions.models import Judge, Opinion, PanelVote
@@ -706,6 +706,70 @@ class Command(BaseCommand):
         # log a single summary at the end.
         forged_judges: int = 0
 
+        # ---- Service windows, for disambiguating shared surnames --------
+        #
+        # A bare "Anderson, J." byline was previously DISCARDED whenever a
+        # state had more than one Anderson, because guessing wrong is worse
+        # than recording nothing. Minnesota has four (Barry A., G. Barry,
+        # Paul H., Russell A.), three Gallaghers and three Petersons, so
+        # that safe default was throwing away exactly the most common
+        # names.
+        #
+        # But two judges sharing a surname almost never sit in the same
+        # era, and the opinion carries its own filing date. So we can
+        # often tell them apart without guessing: if exactly ONE candidate
+        # was on the bench when the opinion issued, that is the judge.
+        #
+        # The window comes from evidence we already trust:
+        #   start = appointment_date, else their earliest known vote
+        #   end   = their latest known vote -- or OPEN if still seated
+        # Those existing votes were themselves resolved unambiguously (a
+        # full-name byline, or CL's bulk panel data), so this is not
+        # circular: it is using confident attributions to place the
+        # uncertain ones.
+        #
+        # Deliberately conservative:
+        #   - only ONE candidate may match, otherwise we skip as before
+        #   - a candidate with no dates at all is not considered a match
+        #     (we prefer the judge with positive date evidence over one
+        #     with none) but is reported by audit_judges as an orphan
+        #   - GRACE_DAYS of slack, since our observed vote span is a
+        #     lower bound on real tenure, not the tenure itself
+        GRACE_DAYS = 365
+
+        vote_spans = {
+            r["judge_id"]: (r["first"], r["last"])
+            for r in PanelVote.objects
+            .filter(judge__state__code=state_code)
+            .values("judge_id")
+            .annotate(first=models.Min("opinion__release_date"),
+                      last=models.Max("opinion__release_date"))
+        }
+
+        def _window(j: Judge):
+            """(start, end) for a judge; either may be None = open-ended."""
+            first, last = vote_spans.get(j.pk, (None, None))
+            start = j.appointment_date or first
+            end = None if j.is_currently_seated else last
+            return start, end
+
+        def _in_window(j: Judge, when) -> bool:
+            if when is None:
+                return False
+            start, end = _window(j)
+            if start is None and end is None:
+                return False          # no date evidence at all
+            if start is not None and when < start - timedelta(days=GRACE_DAYS):
+                return False
+            if end is not None and when > end + timedelta(days=GRACE_DAYS):
+                return False
+            return True
+
+        def _disambiguate(candidates: list, when) -> Judge | None:
+            """Exactly one candidate on the bench at ``when``, else None."""
+            hits = [j for j in candidates if _in_window(j, when)]
+            return hits[0] if len(hits) == 1 else None
+
         def _get_or_create_byline_judge(last_lower: str) -> Judge | None:
             """Return Judge for ``last_lower`` (state-scoped), creating one
             when --create-missing is on and no roster row exists.
@@ -793,6 +857,7 @@ class Command(BaseCommand):
         scanned = 0
         author_resolved = panel_resolved = 0
         author_ambiguous = panel_ambiguous = 0
+        disambiguated = 0
         new_author_votes = new_join_votes = upgraded_votes = 0
         new_dissent_votes = dissent_ambiguous = 0
         new_concur_votes = concur_ambiguous = 0
@@ -900,7 +965,12 @@ class Command(BaseCommand):
             if author_last:
                 pre_existing = last_name_map.get(author_last, [])
                 if len(pre_existing) > 1:
-                    author_ambiguous += 1
+                    author_judge = _disambiguate(pre_existing, opinion.release_date)
+                    if author_judge is not None:
+                        author_resolved += 1
+                        disambiguated += 1
+                    else:
+                        author_ambiguous += 1
                 else:
                     author_judge = _get_or_create_byline_judge(author_last)
                     if author_judge is not None:
@@ -925,10 +995,16 @@ class Command(BaseCommand):
             for panel_last in panel_lasts:
                 pre_existing = last_name_map.get(panel_last, [])
                 if len(pre_existing) > 1:
-                    panel_ambiguous += 1
-                    continue
+                    _picked = _disambiguate(pre_existing, opinion.release_date)
+                    if _picked is None:
+                        panel_ambiguous += 1
+                        continue
+                    disambiguated += 1
+                    _forced = _picked
+                else:
+                    _forced = None
 
-                panel_judge = _get_or_create_byline_judge(panel_last)
+                panel_judge = _forced or _get_or_create_byline_judge(panel_last)
                 if panel_judge is None:
                     continue
                 if author_judge is not None and panel_judge.pk == author_judge.pk:
@@ -954,10 +1030,16 @@ class Command(BaseCommand):
             for dissenter_last in dissenter_lasts:
                 pre_existing = last_name_map.get(dissenter_last, [])
                 if len(pre_existing) > 1:
-                    dissent_ambiguous += 1
-                    continue
+                    _picked = _disambiguate(pre_existing, opinion.release_date)
+                    if _picked is None:
+                        dissent_ambiguous += 1
+                        continue
+                    disambiguated += 1
+                    _forced = _picked
+                else:
+                    _forced = None
 
-                dissent_judge = _get_or_create_byline_judge(dissenter_last)
+                dissent_judge = _forced or _get_or_create_byline_judge(dissenter_last)
                 if dissent_judge is None:
                     continue
 
@@ -986,10 +1068,16 @@ class Command(BaseCommand):
             for concurrer_last in concurrer_lasts:
                 pre_existing = last_name_map.get(concurrer_last, [])
                 if len(pre_existing) > 1:
-                    concur_ambiguous += 1
-                    continue
+                    _picked = _disambiguate(pre_existing, opinion.release_date)
+                    if _picked is None:
+                        concur_ambiguous += 1
+                        continue
+                    disambiguated += 1
+                    _forced = _picked
+                else:
+                    _forced = None
 
-                concur_judge = _get_or_create_byline_judge(concurrer_last)
+                concur_judge = _forced or _get_or_create_byline_judge(concurrer_last)
                 if concur_judge is None:
                     continue
                 if author_judge is not None and concur_judge.pk == author_judge.pk:
