@@ -106,10 +106,18 @@ class Command(BaseCommand):
 
             latest_end = max(terms)
 
-            # Corroboration: a termination BEFORE the judge's last vote in
-            # our corpus means CL's date is wrong (or refers to a different
-            # seat). Report it; never write it.
-            if last_vote and latest_end < str(last_vote):
+            # Corroboration at YEAR granularity. CL stores many historical
+            # terminations as a January-1 placeholder for the year, so a
+            # day-level comparison flags "CL says 1986-01-01, we have a vote
+            # 1986-05-08" as a contradiction when it is really the same
+            # retirement recorded to different precision -- 7 of 9 initial
+            # conflicts were exactly that. Comparing years keeps the guard
+            # pointed at genuine disagreements: a CL termination YEARS
+            # before our last vote means the date is wrong, the seat is a
+            # different one, or the votes are misattributed.
+            end_year = int(latest_end[:4])
+            vote_year = last_vote.year if last_vote else None
+            if vote_year and end_year < vote_year:
                 self.stdout.write(self.style.WARNING(
                     f"  {j.full_name:<30} CONFLICT: CL ends {latest_end} but we have "
                     f"a vote {last_vote} -- skipped"))
