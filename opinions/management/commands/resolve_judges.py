@@ -1124,7 +1124,9 @@ class Command(BaseCommand):
             f"(ambiguous skipped: {dissent_ambiguous})\n"
             f"  new concur votes:    {new_concur_votes:>7,}  "
             f"(ambiguous skipped: {concur_ambiguous})\n"
-            f"  upgraded (J->A/D/C): {upgraded_votes:>7,}"
+            f"  upgraded (J->A/D/C): {upgraded_votes:>7,}\n"
+            f"  disambiguated by date:{disambiguated:>6,}  "
+            f"(shared surname resolved via service window)"
             + (
                 f"\n  byline-learned judges (status=UNKNOWN): {forged_judges:>7,}"
                 if create_missing else ""
