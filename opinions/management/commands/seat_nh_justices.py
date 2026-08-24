@@ -158,7 +158,13 @@ class Command(BaseCommand):
 
         # Anyone still seated who is NOT on the official list is stale --
         # a justice who left the bench without the flag being cleared.
+        # Match on BOTH the current and official spellings. In --apply the
+        # rename above already landed, but in a dry-run the rows still hold
+        # their old names -- without this the preview flags the very
+        # justices it just renamed as "stray", which is a false alarm in
+        # the one tool whose job is to be trusted.
         official = {full for _, full, _, _ in SITTING}
+        official |= {match for match, _, _, _ in SITTING}
         strays = (Judge.objects.filter(state=nh, is_currently_seated=True)
                   .exclude(full_name__in=official))
         if strays.exists():
