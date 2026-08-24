@@ -278,6 +278,55 @@ class Judge(models.Model):
         return f"https://{self.state.slug}.docketdrift.com/judge/{self.slug}/"
 
 
+class JudgeSlugAlias(models.Model):
+    """A retired judge slug that must keep resolving, via 301, forever.
+
+    ``Judge.slug`` is a PUBLIC URL KEY. Once a dossier has been indexed,
+    linked from an opinion page, or cited by an AI agent grounding an
+    answer, that URL is a promise. Renaming a slug without leaving a
+    forwarding address breaks every one of those -- and on the state
+    Google crawls hardest, breaking the sitting bench's five pages is the
+    worst possible thing to 404.
+
+    So slug changes go through ``rename_judge_slug``, which writes the old
+    value here before changing the live one. ``judge_detail`` falls back to
+    this table and issues a permanent redirect, which also tells search
+    engines to move their index entry rather than drop it.
+
+    Why a table and not a hardcoded dict: the first use is the five NH
+    justices seeded on 2026-06-05 with an internal provenance marker
+    ("fallback-<name>", meaning hand-curated rather than scraped) that
+    leaked into the URL and stayed public for 79 days. That will not be
+    the last slug we need to correct, and the next one should not need a
+    code change.
+    """
+
+    slug = models.SlugField(
+        max_length=128,
+        help_text="The OLD slug that should redirect.",
+    )
+    judge = models.ForeignKey(
+        Judge, on_delete=models.CASCADE, related_name="slug_aliases",
+        help_text="The judge this old slug now points to.",
+    )
+    note = models.CharField(
+        max_length=200, blank=True, default="",
+        help_text="Why the slug changed (shown only in admin).",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        # Scoped per state for the same reason Judge.slug is: the same
+        # slug can legitimately exist in two states, and the subdomain
+        # disambiguates. Enforced via the judge's state in the view.
+        unique_together = [("judge", "slug")]
+        indexes = [models.Index(fields=["slug"])]
+        verbose_name_plural = "judge slug aliases"
+
+    def __str__(self):
+        return f"{self.slug} -> {self.judge.slug}"
+
+
 def _opinion_pdf_upload_path(instance, filename):
     """Where uploaded opinion PDFs live under MEDIA_ROOT.
 

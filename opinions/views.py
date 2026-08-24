@@ -1791,6 +1791,22 @@ def judge_detail(request, slug):
     try:
         judge = qs.get(slug=slug)
     except Judge.DoesNotExist:
+        # Not a live slug -- is it a RETIRED one? A judge dossier URL that
+        # has been indexed or cited must keep resolving, so slug changes
+        # leave a forwarding address in JudgeSlugAlias. 301 (permanent)
+        # rather than 302 so search engines move the index entry instead
+        # of holding the dead URL. Query string is preserved so a shared
+        # ?vs=<other> comparison link survives the rename too.
+        from opinions.models import JudgeSlugAlias
+        alias_qs = JudgeSlugAlias.objects.select_related("judge").filter(slug=slug)
+        if state is not None:
+            alias_qs = alias_qs.filter(judge__state=state)
+        alias = alias_qs.first()
+        if alias is not None:
+            target = f"/judge/{alias.judge.slug}/"
+            if request.META.get("QUERY_STRING"):
+                target = f"{target}?{request.META['QUERY_STRING']}"
+            return redirect(target, permanent=True)
         raise Http404("Judge not found")
 
     # Optional comparison judge from ?vs=<slug>. Scoped to the same
