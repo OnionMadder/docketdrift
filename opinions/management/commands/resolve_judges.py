@@ -747,19 +747,36 @@ class Command(BaseCommand):
         }
 
         def _window(j: Judge):
-            """(start, end) for a judge; either may be None = open-ended."""
+            """(start, end) for a judge, or None if we can't bound them.
+
+            ``end is None`` means GENUINELY OPEN (still on the bench) --
+            never "we don't know". That distinction is load-bearing: an
+            earlier version returned the raw last-vote date as the end,
+            so a judge with an appointment date and ZERO votes came out
+            as "1936 .. open" and greedily matched every opinion for the
+            next ninety years. MN has exactly that row (Harry H.
+            Peterson, appointed 1936, no votes), and two Gallaghers like
+            it. A judge we cannot bound is ineligible to win a
+            disambiguation -- we would be choosing them on no evidence.
+            """
             first, last = vote_spans.get(j.pk, (None, None))
             start = j.appointment_date or first
-            end = None if j.is_currently_seated else last
-            return start, end
+            if start is None:
+                return None                     # no start at all
+            if j.is_currently_seated:
+                return (start, None)            # open because still serving
+            if last is None:
+                return None                     # started, but no end evidence
+            return (start, last)
 
         def _in_window(j: Judge, when) -> bool:
             if when is None:
                 return False
-            start, end = _window(j)
-            if start is None and end is None:
-                return False          # no date evidence at all
-            if start is not None and when < start - timedelta(days=GRACE_DAYS):
+            win = _window(j)
+            if win is None:
+                return False
+            start, end = win
+            if when < start - timedelta(days=GRACE_DAYS):
                 return False
             if end is not None and when > end + timedelta(days=GRACE_DAYS):
                 return False
