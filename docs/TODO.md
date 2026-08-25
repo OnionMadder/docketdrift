@@ -1069,5 +1069,32 @@ order:
   until the sweep stamps DONE, then silent no-ops.
 - Embed: fixed 2026-08-25, see 8e above (0.4 → 12.5 op/s; in-scope LA
   completes in ~1-2 overnight windows, then run 8f suggest_tags).
+- [x] **Dispositions sweep FINISHED 2026-08-25** — DONE stamp on prod.
+  Final: **LA 64.7% overall / 66.6% modern (1980+)** — in family with AZ
+  64% / NH 78%. This launch gate is closed.
+- [x] **LA judge-layer junk CULLED + four extraction leaks FIXED
+  2026-08-25** (`869a829` + `cleanup_la_junk_judges`). The byline-learned
+  layer carried parser-leak judges: "C" (961 votes, the Chief Judge
+  marker from `WHIPPLE, C. J.` — whose lazy capture ALSO dropped the rest
+  of every such panel), "Defendant"/"Plaintiff"/"Appellant"/"Appellee"
+  (party words from an uncut panel-composed sentence, which ALSO minted
+  actual party surnames — verified: "Bolton", the defendant in
+  02-KA-1034, held a MAJORITY_JOIN vote), "Curiam" (254 votes from the
+  per-curiam author string — resolve_judges' hybrid path trusted
+  PARSER-provided fields unguarded), "Tempore" (65, from "Pro Tempore").
+  Fixes: greedy BEFORE capture + role-token filter + sentence-cut +
+  _valid_surname applied to parser fields; BEFORE lines that WRAP across
+  a newline (never matched at all — part of the 83%-authorless stat) now
+  parse. Verified on 6 real leak/healthy samples + a 3,480-opinion scale
+  parse (58 distinct surnames, all real). Cull: **32 judges + 1,936
+  bogus votes deleted**, every one evidence-gated (re-extraction with
+  the fixed pipeline must NOT emit the surname), 0 orphans. St.pierre +
+  L.cannella kept (mangled REAL judges — merge material).
+  **QUEUED FOLLOW-UP — Bolton-class systematic sweep:** the party-name
+  leak minted real-looking surnames on ~400+ reporter-era opinions;
+  after the panel-recovery re-sweep, run a report-only verification pass
+  over all court-NULL judges (sample each judge's vote opinions with the
+  fixed pipeline; never-extracted = phantom candidate) and cull with the
+  same evidence-gated discipline.
 - MCP server LIVE + dark at /mcp; .mcp.json committed (tools work in-session).
   Privacy section + load test + connector directory still gated on LA launch.
