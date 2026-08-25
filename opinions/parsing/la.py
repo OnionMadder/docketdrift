@@ -800,8 +800,10 @@ class LouisianaParser(StateParser):
             if not panel:
                 bm = COA_BEFORE_RE.search(raw_text[:6000])
                 if bm:
-                    for chunk in re.split(r",\s*(?:AND\s+)?|\s+AND\s+",
-                                          bm.group(1)):
+                    for chunk in re.split(
+                            r",\s*(?:AND\s+)?|\s+AND\s+"
+                            r"|\s*&(?:amp;)?\s*",
+                            bm.group(1)):
                         chunk = _space_name_particles(
                             chunk.strip().strip(".").strip())
                         # Drop role/marker tokens ("C. J." rides inside
@@ -851,7 +853,13 @@ class LouisianaParser(StateParser):
                     # never extracted them, which read as Mc-judges
                     # absent from their own panels (127 real McClendon
                     # votes nearly refuted).
-                    for seg in re.split(r",\s*(?:and\s+)?|\s+and\s+", blob):
+                    # "&" / "&amp;" (CL text keeps the HTML entity) is a
+                    # live separator on 2nd Cir: "Before BROWN, PEATROSS
+                    # & DREW, JJ." -- unsplit, the middle judge vanished
+                    # (118 real Peatross votes nearly refuted 2026-08-25).
+                    for seg in re.split(
+                            r",\s*(?:and\s+)?|\s+and\s+|\s*&(?:amp;)?\s*",
+                            blob):
                         toks = [
                             t for t in re.findall(
                                 r"\b(?:Mc|Mac)?[A-Z][A-Z.'\-]{2,}", seg)
