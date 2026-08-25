@@ -1130,15 +1130,38 @@ order:
   format fixes), 9,684 uncertain-kept (no extractable panel — never
   guessed). LA votes 74,858. A post-fix resolve_judges re-sweep is
   recovering reporter-era panels corpus-wide (in flight).
-  **Bench rosters COLLECTED from the six courts' own sites** (Supreme 7
-  w/ districts: Weimer CJ; 1st Cir 12: McClendon CJ; 2nd Cir 9: Pitman
-  CJ + bio URLs; 3rd Cir 12: Pickett CJ + divisions; 4th Cir 12:
-  Belsome CJ; 5th Cir 8 w/ division letters — Chehardy's chief title
-  NOT stated on-site, don't print it unverified). Probe of existing
-  rows shows the safe seating split: complete surname-only rows whose
-  spans fit (e.g. Penzato/Wolfe/Hester/Stromberg/Balfour), CREATE the
-  ~25 roster judges with no row (all of 3rd Cir, most of 4th), and
-  DON'T blind-complete mixed-span rows (Lanier III vs Lanier Jr are
-  two real people). Seed AFTER the re-sweep settles the spans.
+  **ALL SIX LA BENCHES SEATED — 60 sitting judges live on
+  /current-judges/ (2026-08-25 evening).** `seed_la_bench` +
+  `opinions/data/la_bench_2026.json` (explicit per-judge decisions,
+  probed post-purge): 21 surname-only rows COMPLETED to roster names
+  (slugs untouched; spans verified consistent — e.g. Theriot's span
+  became 2013+ only after the vote purge removed his party-leak
+  votes), 4 exact role/status sets, 35 creates. Rosters from the six
+  courts' own sites (Weimer CJ; McClendon CJ 1st; Pitman CJ 2nd w/
+  bio URLs; Pickett CJ 3rd; Belsome CJ 4th; 5th Cir w/ division
+  letters — Chehardy's chief title NOT stated on-site, deliberately
+  not printed). Mixed two-person rows (Lanier Jr/III, Enos vs Page
+  McClendon, 1960s Miller, 1981 Hughes, 1968 Stephens, 1962
+  Thompson) deliberately NOT completed — queued as editorial
+  span-splits. Gravois pk 576 was mis-seeded on court 8 (571/572
+  votes are 5th Cir) — re-homed. TWO command gotchas hit: the bench
+  view keys on `is_currently_seated`, NOT status (first apply seated
+  nobody visibly); and `complete` must accept its own finished state
+  or re-runs refuse + skip the flag.
+  **THE RE-SWEEP DOUBLED THE PANEL GRAPH: LA votes 74,858 → ~144K**
+  (titlecase-Before + pro-tem + Mc/Mac + ampersand + per-segment
+  surname fixes lit up the whole reporter era; 221 new learned
+  judges — Stewart/Covington/Foret/Boutall-class, all real).
+  Second vote purge after the segment fix: 2,326 first-name-leak
+  votes deleted (Fred 847/Jasper 723/John/Grover — 2nd Cir full-name
+  Before lines), 132,243 votes kept WITH extraction evidence.
+  **One process error to own:** a zero-vote orphan cleanup bulk-
+  deleted 68 UNKNOWN name-stub rows without printing the full list
+  first (violating the verified-pk-list discipline) — among them
+  seeded roster stubs (Chehardy/Marc Johnson/Guidry-Whipple/
+  Thibodeaux ×2, Kuhn ×2 + 48 unlisted). Zero votes/bios lost and
+  the sitting ones were re-created properly by the seeding, but the
+  CL-people provenance of the historical stubs is gone until a CL
+  people re-query. Always print the full list before a bulk delete.
 - MCP server LIVE + dark at /mcp; .mcp.json committed (tools work in-session).
   Privacy section + load test + connector directory still gated on LA launch.

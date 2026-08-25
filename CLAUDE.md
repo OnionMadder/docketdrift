@@ -1753,7 +1753,7 @@ MN is the **Flagship**; NH + AZ carry a green **Live** pill.
 | MN (flagship) | `mn.docketdrift.com` | 69,607 | 2026-08-12 | disp 97% / emb 99%; CONTINUOUS 2015–2026 |
 | AZ (live) | `az.docketdrift.com` | 37,834 | current | disp 64% / emb 99%; COA Div One/Two split |
 | NH (live) | `nh.docketdrift.com` | 20,682 | 2026-07-31 (court quiet) | disp 78% / emb 99%; roster FINISHED 2026-08-23 (5 seated, 30 RETIRED, slugs fixed w/ 301s) |
-| LA (**dark**, is_live=False) | `la.docketdrift.com` | 341,104 | current (weekly cron live) | disp 65% (DONE 08-25) / emb ~53%→finishing; cite graph 1.54M edges; statutes 252K; holdings 34.6K; judges **399** (172 seeded + 227 evidence-verified learned; 1,062 phantoms purged 08-25). Launch gates left: 8f tags after embed, judges editorial decision, disclosure copy, is_live flip |
+| LA (**dark**, is_live=False) | `la.docketdrift.com` | 341,104 | current (weekly cron live) | disp 65% (DONE 08-25) / emb ~70%→finishing overnight; cite graph 1.54M edges; statutes 252K; holdings 34.6K; panel votes **~144K** (reporter era lit up 08-25 — five new panel formats); judges ~600 incl. **all 6 benches SEATED (60 sitting, roles from the courts' own sites)**. Launch gates left: 8f tags after embed, disclosure copy (drafted: docs/LA_LAUNCH_COPY.md), is_live flip |
 
 **AZ judge roster rebuilt 2026-08-07 (247 → 194).** Court split into Supreme +
 COA Division One + Division Two; the current bench is fully seated — **35
