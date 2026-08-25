@@ -62,6 +62,9 @@ STATE_COURT_DEFAULTS = {
     "MN": ["minn", "minnctapp"],
     "NH": ["nh"],
     "AZ": ["ariz", "arizctapp"],
+    # LA: la = Supreme, lactapp = all 5 COA circuits (CL groups them
+    # under one id; assign_la_circuits splits them post-load).
+    "LA": ["la", "lactapp"],
 }
 
 # Mutated by main() from CLI args; helpers (src, dst, filter_stream, ...)
