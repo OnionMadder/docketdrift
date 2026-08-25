@@ -97,7 +97,183 @@ in indexed JSON-LD) was reverted — extractive holdings = "no generated text",
 the strong original posture, is correct. Migrations 0026 (holdings) + 0027
 (clustering) are on main and applied on prod.
 
-## Latest session (2026-08-10 → 16) — page anchors; LA Phase 8; embed 100×; judge heat + real dissents
+## Latest session (2026-08-17 → 25) — analytics out; MCP live; LA launch prep; judge-layer integrity sweep
+
+Multi-day rolling session. Committed + deployed + live-verified unless noted.
+
+**THE SINGAPORE "READERS" WERE ONE SCRAPER — analytics REMOVED, network
+logging added.** goatcounter read 74% Singapore; diagnosis (0/369 burst
+requests fetched CSS, UA rotated across six Chrome majors ~evenly, 345
+distinct opinions in 347 fetches, JS-executing-but-resource-blocked =
+headless Chrome with request interception): a datacenter scraper pulling
+1-2.6K opinions/day, growing. Response was three-pronged, all shipped:
+(1) `NetworkOnlyLogger` adds `{x-client-net}i` from XFF **truncated to
+/24 (IPv4) / /48 (IPv6)** — full IPs deliberately refused (see the
+updated "Data is sacred" section); (2) **goatcounter deleted entirely** —
+an analytics signal a crawler can forge is decoration, and it shipped
+visitor data to a third party to produce it; (3) robots.txt + llms.txt
+now lead with the **bulk-download pointer** (archive.org zip + free
+by-email offer for other cuts) — the on-brand answer to someone taking
+the public record is a better door, not a lock. Privacy page rewritten to
+match reality (it promised GoatCounter + "not your IP address"; both
+halves were about to be false).
+
+**MCP SERVER LIVE (dark) at `/mcp` — DocketDrift is a Claude tool.**
+Motivated by the AI-traffic readout: ChatGPT-User ~100 live fetches/day
+(MN #1 after the Search Console flywheel), OAI-SearchBot + PerplexityBot
+actively indexing, Applebot at 64K/10d — and Anthropic at **1** fetch,
+with no submission console to fix that. The active path to Claude is a
+connector. Hand-rolled stateless JSON-RPC (streamable-HTTP profile) on
+the existing gunicorn — NO new deps (FreeBSD pip risk): six read-only
+tools (search_opinions FULLTEXT-only v1, get_opinion, lookup_citation,
+get_judge, citing_opinions, get_statute). Public HTTPS verified
+end-to-end; project `.mcp.json` committed so repo sessions get the tools.
+GATED before going loud: privacy-page MCP section, load test, connector
+directory — after LA launches (four states beats three). llms.txt fully
+refreshed (stats were frozen at June; now 128K+ live corpus, cite graph,
+holdings, #para-N/#page-N anchors documented for agents).
+
+**LA LAUNCH PREP — most gates cleared this session:**
+- `la.docketdrift.com` + `ny.docketdrift.com` aliases + certs DONE
+  (Onion, member panel; ny parked for a hypothetical 5th state).
+- **LA landing hang fixed (`06a3e6f`+`ada2186`) — and it was NOT the
+  landing.** Profiling cleared `_state_landing_stats` (~3s); the hang was
+  the **explore-tags context processor** computing ~20 corpus-scale
+  FULLTEXT COUNTs inline on cold cache — at 341K rows each blows the 25s
+  cap, ~500s of serially-KILLed queries per request, each KILL poisoning
+  a pooled connection, bare `except` swallowing everything. Fix: the
+  request path is now **cache-READ-ONLY** (`compute=False` default; cold
+  cache = no tag cloud, never a dead page); only `precompute_explore_tags`
+  computes, per-tag SET STATEMENT 10s + 120s/state budget + close-on-fail
+  + **resume cursor** (without it a big state burned every warm run on
+  the same first 2 tags forever — measured). **This permanently kills the
+  "cold-cache stampede after gunicorn restart" gotcha** — same bug at
+  smaller corpus. LA landing: 200 in 3.3s cold / 0.37s warm.
+- **CL catch-up**: 1st+2d Cir current to today; Supreme to 2026-07-31.
+  Weekend tasks REGISTERED + ran clean (`ingestlacoa` Sat / 
+  `ingestlasupreme` Sun 23:00).
+- **Circuit re-homing chained into cron-ingest.sh.** All five circuits
+  arrive down CL's single `lactapp` feed and land on 1st Cir (the only
+  circuit with a real CL id) — measured: 4 of the 21 catch-up rows were
+  2d Cir (`56,983-CA`, Shreveport comma-format) sitting in 1st.
+  `assign_la_circuits` gained `--since` (unscoped = 341K re-scan that
+  couldn't finish a bounded run; scoped = 21 rows in 5s) and now runs
+  automatically after every `lactapp` ingest. **AZ has the identical
+  gap** (`assign_az_divisions` not chained into `ingestazcoa`) — filed,
+  not fixed blind.
+- **LA dispositions: "parser is right, loop is slow" was WRONG — 4% →
+  ~66% fill after a measured overhaul.** Fill had collapsed to 11/1,500
+  per tick. Diagnosis on real rows, three defects + a missing tier:
+  (1) the tail `\Z` anchor cost ~30% of rows that plainly state their
+  disposition — LA tails continue past it (footnotes, `GUIDRY, J.,
+  recused.`, rules cites, cc: lines) → sentence-anchored, LAST match
+  wins; (2) civil-law appellate vocabulary (`SUSPENSIVE|DEVOLUTIVE|
+  MAINTAINED...`) — LA disposes of the APPEAL too, unknown words broke
+  the phrase run; (3) the writ-table gate ("writ|applying" within 600
+  chars) starved long per curiams whose recitation sits thousands of
+  chars up — LA Supreme is ~199K rows of mostly writ dispositions, the
+  single largest class in the state → 6KB context gate; (4) NEW prose
+  tier (NH-historic recipe): DECRETAL form required (subject before
+  verb — "context+verb anywhere" leaked twice on real text, storing
+  another court's ruling), plus a citation veto checked against
+  PRECEDING context because the sentence splitter breaks on the period
+  inside "v." and orphans the citation. Both leaks caught by
+  false-positive tests, not by reading code.
+- **Dispositions tick is now a single-pass NFSN scheduled task**
+  (`la_dispositions_tick.sh` rewritten): the daemon(8) loop died every
+  few hours and was babysat three times in two days. Now: `lockf -t 0`
+  single-flight, resume cursor from the log, **DONE stamp** when the
+  cursor stops advancing (delete `.la_dispositions_done` to re-sweep
+  after parser changes), non-zero passthrough → NFSN email. Config
+  block at top = the template for every future long backfill.
+- Thousands separators (humanize/intcomma) on landing + apex counts —
+  JSON-LD numeric-field check done (counts only appear in prose strings).
+- Embed ~20% (~10K/night, ~2wk remaining); 8f tags after.
+
+**NH ROSTER FINISHED (proving-ground promise kept):**
+- Sitting bench sourced from courts.nh.gov via the in-app browser (the
+  Akamai wall): 5 justices with roles + sworn dates (MacDonald CJ
+  2021-03-04, Donovan, Countway, Gould, Will), 6 recent retirements
+  with their role AT DEPARTURE (Lynn + Dalianis correctly CHIEF), name
+  orthography fixes (slugs untouched), Kenison CJ from the
+  building-name source. Status: 30 UNKNOWN → 2 (5 ACTIVE / 30 RETIRED).
+- `backfill_nh_judge_status`: RETIRED from CL position terminations,
+  **corroborated against our own voting record at YEAR granularity**
+  (CL stores Jan-1 placeholders; day-level comparison false-flagged 7
+  of 9). Roles deliberately NOT set from CL — its position_type is
+  uniformly 'jud', and guessing Chief vs Associate would print a
+  fabricated title on a named judge's page. The corroboration guard
+  paid off immediately: it caught **Souter recorded as AUTHORING a 2018
+  NH opinion** (he left in 1990) — a parenthetical citation
+  "(Souter, J., concurring specially)" read as a byline — plus a 2003
+  Batchelder twin. Both deleted with runtime re-verification (surname
+  appears ONLY inside parens). Batchelder's bare-mention 1997/1999
+  votes kept: NH recalls retired justices; deleting a real vote is
+  worse than keeping an uncertain one.
+- **`fallback-` slugs fixed WITH redirects.** All five sitting justices'
+  URLs had carried the seed-time provenance marker
+  (`/judge/fallback-gordon-j-macdonald/`) for **79 days** — on the
+  most-crawled state. New `JudgeSlugAlias` (migration 0040) +
+  `rename_judge_slug` (dry-run default; refuses collisions and aliases
+  that shadow live slugs; alias written in the same transaction as the
+  rename): old URLs **301** with query string preserved (`?vs=` links
+  survive). Portrait files + manifest renamed too — including the
+  manifest's `slug` keys, which `localize_judge_photos` matches on: a
+  stale value there would have silently no-op'd future portrait runs.
+
+**JUDGE-LAYER INTEGRITY SWEEP (the selling point, hardened):**
+- Measured first: 6-check audit across all states found 21-29% panel
+  coverage on mature states, ~30 impossible-span rows (LA "Martin"
+  1811-2008 = 197yr), 7/9/26 ambiguous surnames (MN/AZ/LA), LA 83%
+  authorless panels.
+- **Date-window disambiguation in resolve_judges**: a shared surname now
+  resolves when exactly ONE candidate's service window contains the
+  opinion date (window = appointment/first vote .. last vote; OPEN only
+  if seated; GRACE 365d). **Verification caught a would-be disaster in
+  v1**: "no end date" conflated *still serving* with *unknown*, so
+  Harry H. Peterson (appointed 1936, ZERO votes) matched every Peterson
+  byline for 90 years — 98 of the first 124 "disambiguations" were
+  wrong (79% FP) and would have shipped silently. Unbounded judges are
+  now ineligible. Real recovery: 26/4,000 MN opinions, correct.
+- **`audit_judges`** standing command (impossible spans / tenure
+  violations = generalized Souter detector / likely dupes / overlapping
+  windows / orphans / coverage), `--fail-on-anomalies` for a weekly
+  NFSN task. First run immediately found NH's John E. Allen voting 47
+  years before his appointment. Known heuristic FP documented: Barry A.
+  vs Russell A. Anderson (share surname+initial, are two real people).
+  Natalie Hudson's "violation" is the appointment_date being her
+  SUPREME date while votes include COA service — fix the field, not
+  the votes.
+- **Merges**: LA `merge_duplicate_judges --apply` = 16 surname-only
+  shadows folded, **1,741 votes** onto real judges (Lanier 1,066,
+  McClendon 419; Lottinger correctly REFUSED — two real Lottingers).
+  New `merge_cross_court_judges`: **elevation = two CL person records =
+  two Judge rows for one human** (Pelander, Berch, Cameron, Noyes,
+  G. Barry Anderson; each verified on 4 signals). AZ dupes 4→0, LA
+  18→3, and each merge shrinks a surname group → compounds with date
+  disambiguation.
+- **`cleanup_span_outliers`**: histogram finds the outlier votes, but
+  the DELETE gate is text evidence — surname exclusively inside parens
+  (citation) → delete; any bare mention → keep + report as a probable
+  second judge. Result: **45 citation-leak votes deleted, 215 kept**
+  (Wynne G. Rogers has real 1923 AND 2000s clusters = two people; LA
+  Martin's 1810s cluster is François-Xavier Martin). MN impossible
+  spans → 0. LA's remaining 26 are the two-people kind — editorial
+  splits, not a rule.
+- CLAUDE.md gained the `resilient_sleep` gotcha (CL's 2,075s Retry-After
+  interrupted by EINTR killed the catch-up; the harder CL throttles, the
+  likelier the old code died — latent in ALL weekly ingests, now sliced
+  ≤30s against a monotonic deadline).
+
+**Lessons this arc (each measured, several caught pre-damage):** verify
+what a counter claims before trusting it (124→26); "no end date" must
+distinguish *open* from *unknown*; a guard that corroborates two
+independent sources finds bugs neither source shows alone (Souter);
+public copy that overstates in ANY direction gets corrected (privacy
+page); and a scheduled task beats a daemon every single time on NFSN —
+now applied to backfills, not just embeds.
+
+## Prior session (2026-08-10 → 16) — page anchors; LA Phase 8; embed 100×; judge heat + real dissents
 
 Multi-day rolling session. Everything committed + deployed + live-verified
 unless noted. Chronology compressed; lessons inline.
@@ -1491,18 +1667,19 @@ identity decoupled; semantic/keyword alerts refused-by-design, not stored).
 
 ## Where things stand right now
 
-(Numbers pulled live from prod 2026-08-07/08. **Re-measure before
-quoting these anywhere public** — stale numbers on a public page are the
-exact class of problem the 2026-08-02 audit was cleaning up.)
+(Numbers refreshed 2026-08-25. **Re-measure before quoting these
+anywhere public** — stale numbers on a public page are the exact class
+of problem the 2026-08-02 audit was cleaning up.)
 
-Three states live, all on subdomains of `docketdrift.com`. MN is the
-**Flagship**; NH + AZ carry a green **Live** pill.
+Three states live + one dark, all on subdomains of `docketdrift.com`.
+MN is the **Flagship**; NH + AZ carry a green **Live** pill.
 
 | State | Subdomain | Opinions | Newest | Notes |
 |---|---|---|---|---|
-| MN (flagship) | `mn.docketdrift.com` | ~69,800 | 2026-08-05 | **CONTINUOUS 2015–2026** (~970-1,435/yr); ~9,800 rebuilt from the State Law Library archive + 519 early-2026 (2026-08-07) |
-| AZ (live) | `az.docketdrift.com` | 37,791 | current | COA now split **Div One 18,593 / Div Two 5,717**; Supreme 13,481. CL feed healthy; our ONLY state with no independent pipeline |
-| NH (live) | `nh.docketdrift.com` | 20,723 | current | proving ground; steady state |
+| MN (flagship) | `mn.docketdrift.com` | 69,607 | 2026-08-12 | disp 97% / emb 99%; CONTINUOUS 2015–2026 |
+| AZ (live) | `az.docketdrift.com` | 37,834 | current | disp 64% / emb 99%; COA Div One/Two split |
+| NH (live) | `nh.docketdrift.com` | 20,682 | 2026-07-31 (court quiet) | disp 78% / emb 99%; roster FINISHED 2026-08-23 (5 seated, 30 RETIRED, slugs fixed w/ 301s) |
+| LA (**dark**, is_live=False) | `la.docketdrift.com` | 341,104 | current (weekly cron live) | disp ~6%→sweeping / emb 20%; cite graph 1.54M edges; statutes 252K; holdings 34.6K; judges 1,437 (editorial pending). Launch gates left: dispositions sweep, judges decision, disclosure copy, is_live flip |
 
 **AZ judge roster rebuilt 2026-08-07 (247 → 194).** Court split into Supreme +
 COA Division One + Division Two; the current bench is fully seated — **35
