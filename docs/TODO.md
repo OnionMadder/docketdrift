@@ -552,13 +552,36 @@ must start with `/bin/sh`. Path alone is not enough.
   Tier-3 panel-byline classifier is the follow-up), statutes 252,375 rows,
   citations 1,543,411 edges, judges 1,437 (172 seeded + ~1,265 UNKNOWN for
   editorial review), panel votes 74,222, holdings 34,624. What's left:
-  - [ ] **8e embed** — IN FLIGHT via `.embed_state=LA` overnight cron;
-    measured ~$100 total (~2,485 tok/op × $0.12/M); days-scale after the
-    ORDER-BY fix. Check `.embed_progress` / pending count.
+  - [~] **8e embed — throughput fixed 30× on 2026-08-25; finishes ~1-2
+    overnight windows.** The ~7K/night mystery was measured to two causes:
+    (a) LA's ~111K permanently-pending pre-1980 rows (out of scope under
+    `.embed_since=1980-01-01`) sit at the FRONT of the (embedding_pending,
+    court_id) index, and every 256-row batch re-read + discarded that block
+    → 0.4 op/s; (b) the startup + end counts carried raw_text/--since row
+    predicates and had regressed to 112s+ each, twice per tick. Fixed in
+    `embed_opinions` (`535e0ed`): per-court pk-cursor fetch with FORCE
+    INDEX (skip rows read once per run, not per batch) + index-only counts
+    (0.27s). Measured after: **12.5 op/s** (post-1980 LA docs are short,
+    ~647 tok/op) → remaining ~161K ≈ 3.6h runtime ≈ **~$13**, not $60.
   - [ ] **8f suggest_tags** — $0 (pure MariaDB cosine), run after 8e.
-  - [ ] **7b lasc.org Supreme backfill** — the CL-dead 2020+ hole (~12K, the
-    audit's largest single-court gap; doubles as FLP report #2). Recon
-    first: open vs Akamai-walled decides unattended vs MN-style attended.
+  - [ ] **7b lasc.org Supreme backfill — RECON DONE 2026-08-25; hole
+    re-verified REAL; unattended build.** Our DB: LA Supreme ~2,000-2,250/yr
+    through 2018, then **2020=8 / 2021=0 / 2022=0 / 2023=11 / 2024=42 /
+    2025=49** — the 2026-08-19 "feed is NOT dead" correction only proved a
+    ~50/yr trickle (~97% missing), so the audit's ~12K figure stands.
+    lasc.org recon: **NO bot wall** (datacenter curl gets 200s, fast); site
+    is **Blazor Server over SignalR** — no REST API, no prerendered HTML
+    (a curl of a batch page returns the 14KB shell), robots.txt falls
+    through to the SPA shell; a GoogleCaptcha component exists but is
+    likely form-only. **Enumeration key: `lasc.org/opinions?p=YYYY-NNN`**
+    (also `actions?p=`, `rehearings?p=`) — batch numbers are sequential
+    per year (~60/yr), so 2020–2025 ≈ 360 browser page loads; sitemap.xml
+    (real XML, 2,684 URLs) confirms the scheme but only covers 2026.
+    Build shape: residential Playwright LISTS (headless fine — no wall,
+    no CAPTCHAs expected) → manifest → NFSN downloads PDFs →
+    `ingest_pdfs --state LA --court supreme`. ~1 day, unattended.
+    NOT a launch gate — disclose the 2020–2025 Supreme gap on /about/
+    (MN precedent) and backfill after launch.
   - [ ] **9–12: rosters, weekly cron, flip is_live** — seat the 5-circuit +
     Supreme benches, register the weekly forward-fill, then LA goes on the
     nav. `docs/LA_BUILD_LIST.md` has the full overlay.
@@ -1027,12 +1050,24 @@ order:
     `extract_holdings_text` / `resolve_judges` for the new rows.
   - Note `lactapp-5` (Fifth Circuit) was already the stalest at
     2025-10-17 even before this — check it specifically after catch-up.
-- Dispositions backfill loop RUNNING (daemon, resumes via min-id; restart with:
-  `daemon -p ~/.la_dispositions.pid ~/scripts/la_dispositions_tick.sh`).
-  14.5K/341K filled at close; tail tier ~69% fill on reporter-era rows; scan is
-  fetch-bound (~2.6/s — likely window-query plan pathology, optimize or wait
-  ~35h of ticks). Wrapper self-exits at end of corpus.
-- Embed 26K (8%); overnight cron armed (.embed_state=LA); ~7K/night observed —
-  investigate why below post-fix projection when convenient.
+- [x] **Dispositions sweep — UNBLOCKED 2026-08-25, ~200× faster, finishing
+  today.** The "~2.6/s fetch-bound" guess was measured to two real causes:
+  the pk-window fetch's `select_related("court")` JOIN flipped the plan
+  (optimizer drove from the 6-row court table → temp table + filesort of
+  ALL remaining rows per 500-row batch, ~3.8 min each; identical WHERE
+  without the JOIN = 0.33s on the PRIMARY range plan), and the tick-start
+  COUNT cost 112s of pure banner decoration. Fixed (`2f5ee4a`): court→state
+  via a Python dict, count skipped under --max-runtime. Parser measured
+  innocent (1 ms/row). Measured after: **~450-550 rows/s**. Second fix
+  (`9c210dc`): NFSN's CPU cull (rc=152) killed a fast pass 120K rows in
+  BEFORE the clean-exit resume trailer printed, pinning the wrapper cursor
+  to the pass start — the command now flushes pending writes + emits the
+  trailer at every 2,000-row progress mark, so any kill resumes near the
+  death point. **The NFSN scheduled task IS registered and firing every
+  ~10 min** (it looked dead because the log had been silent since 08-22;
+  ticks resumed once observed 08-25). rc=152 ticks each email — noise
+  until the sweep stamps DONE, then silent no-ops.
+- Embed: fixed 2026-08-25, see 8e above (0.4 → 12.5 op/s; in-scope LA
+  completes in ~1-2 overnight windows, then run 8f suggest_tags).
 - MCP server LIVE + dark at /mcp; .mcp.json committed (tools work in-session).
   Privacy section + load test + connector directory still gated on LA launch.
