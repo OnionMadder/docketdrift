@@ -89,6 +89,7 @@ class Command(BaseCommand):
         from opinions.management.commands.resolve_judges import (
             _extract_generic_byline,
             _last_name,
+            _valid_surname,
         )
 
         if connection.vendor == "mysql":
@@ -147,6 +148,12 @@ class Command(BaseCommand):
                 names.update(generic.panel_last)
                 names.update(generic.dissenter_last)
                 names.update(generic.concurrer_last)
+                # Mirror the fixed resolve_judges hybrid path: a name the
+                # resolver would REJECT via _valid_surname can never
+                # receive a vote again, so it does not count as evidence.
+                # (Without this, the raw parser output for e.g. a
+                # per-curiam author string refuses its own cull.)
+                names = {n for n in names if _valid_surname(n)}
                 if surname in names:
                     still_extracted_on = vote.opinion_id
                     break
