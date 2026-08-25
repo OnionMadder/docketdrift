@@ -103,7 +103,7 @@
       "judges": [
         {"name": "Susan M. Chehardy", "action": "create", "note": "Division D; chief title not stated on-site, deliberately not set"},
         {"name": "Fredericka H. Wicker", "action": "create", "note": "Division B"},
-        {"name": "Jude G. Gravois", "action": "create", "note": "Division H"},
+        {"name": "Jude G. Gravois", "action": "exact", "pk": 576, "note": "Division H; pk 576 was mis-seeded on court 8 (571 of 572 votes are 5th Cir) — re-homed 2026-08-25"},
         {"name": "Marc E. Johnson", "action": "create", "note": "Division C"},
         {"name": "Stephen J. Windhorst", "action": "complete", "pk": 717, "note": "Division E"},
         {"name": "John J. Molaison, Jr.", "action": "create", "note": "Division G"},
