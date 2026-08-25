@@ -1,0 +1,115 @@
+{
+  "as_of": "2026-08-25",
+  "sources": {
+    "supreme": "lasc.org/About/Biography (7 justices w/ districts)",
+    "cir1": "la-fcca.org Judges of the Court composites (as of 2025-03-01)",
+    "cir2": "la2nd.org court-personnel-overview (bio URLs per judge)",
+    "cir3": "la3circuit.org/About/Judges.aspx (division letters)",
+    "cir4": "la4th.org/Judge.aspx",
+    "cir5": "fifthcircuit.org OUR JUDGES menu (division letters; Chehardy's chief title NOT stated on-site, so not printed)"
+  },
+  "notes": [
+    "action=complete: the pk is a surname-only byline-learned row whose post-purge vote span is consistent with this judge's tenure and whose surname has no second candidate row in the court.",
+    "action=exact: the pk already carries this judge's full name; only role/status are set.",
+    "action=create: no identity-matching row exists. Mixed-span rows sharing the surname (two real people: Lanier Jr/III, Enos vs Page McClendon, a 1960s Miller, a 1981 Hughes) are deliberately NOT completed; they stay for editorial span-splits.",
+    "Every complete/exact pk was probed 2026-08-25 AFTER the vote-level purge; see docs/TODO.md."
+  ],
+  "courts": {
+    "7": {
+      "role_chief": "CHIEF_JUSTICE",
+      "role_member": "ASSOCIATE_JUSTICE",
+      "judges": [
+        {"name": "John L. Weimer", "chief": true, "action": "exact", "pk": 666, "note": "Sixth District"},
+        {"name": "William H. Burris", "action": "create", "note": "First District"},
+        {"name": "John Michael Guidry", "action": "create", "note": "Second District; distinct from Greg Gerard Guidry (pk 664)"},
+        {"name": "Cade R. Cole", "action": "create", "note": "Third District; distinct from Luther F. Cole (pk 514)"},
+        {"name": "Jay B. McCallum", "action": "complete", "pk": 789, "note": "Fourth District"},
+        {"name": "Jefferson D. Hughes III", "action": "exact", "pk": 657, "note": "Fifth District; row also carries pre-tenure votes (editorial span-split); learned 'Hughes' pk 1939 left alone"},
+        {"name": "Piper D. Griffin", "action": "complete", "pk": 790, "note": "Seventh District"}
+      ]
+    },
+    "8": {
+      "role_chief": "CHIEF_JUDGE",
+      "role_member": "JUDGE",
+      "judges": [
+        {"name": "Page McClendon", "chief": true, "action": "create", "note": "3rd District Div B; both existing McClendon rows are mixed (Enos pk 610; learned pk 1943)"},
+        {"name": "Mitchell R. Theriot", "action": "complete", "pk": 728, "note": "1st District Div B; span 2013+ post-purge"},
+        {"name": "Allison H. Penzato", "action": "complete", "pk": 696, "note": "3rd District Div C"},
+        {"name": "Walter I. Lanier III", "action": "exact", "pk": 598, "note": "1st District Div A; row also carries Lanier Jr-era votes (editorial split); learned 'Lanier' pk 1940 left alone"},
+        {"name": "Elizabeth P. Wolfe", "action": "complete", "pk": 681, "note": "3rd District Div D"},
+        {"name": "Christopher Hester", "action": "complete", "pk": 682, "note": "2nd District Subd 1 Div A"},
+        {"name": "Steven Miller", "action": "create", "note": "1st District Div D; learned 'Miller' pk 785 is mixed (1960s votes)"},
+        {"name": "Hunter Greene", "action": "create", "note": "2nd District Subd 1 Div B; learned 'Greene' pk 699 is mixed (1980 votes)"},
+        {"name": "Tess P. Stromberg", "action": "complete", "pk": 700, "note": "1st District Elec Sec 1 Div C"},
+        {"name": "Blair D. Edwards", "action": "create", "note": "3rd District Div A; distinct from Marion E. Edwards (pk 564)"},
+        {"name": "Kelly Balfour", "action": "complete", "pk": 1195, "note": "2nd District Subd 1 Div C"},
+        {"name": "Wilson E. Fields", "action": "complete", "pk": 1196, "note": "2nd District Subd 2 Div D"}
+      ]
+    },
+    "9": {
+      "role_chief": "CHIEF_JUDGE",
+      "role_member": "JUDGE",
+      "judges": [
+        {"name": "Frances Jones Pitman", "chief": true, "action": "complete", "pk": 2061, "bio_url": "https://www.la2nd.org/court-personnel-overview/judge-frances-jones-pitman/"},
+        {"name": "Shonda D. Stone", "action": "complete", "pk": 2062, "bio_url": "https://www.la2nd.org/court-personnel-overview/judge-shonda-d-stone/"},
+        {"name": "Jeff Cox", "action": "create", "bio_url": "https://www.la2nd.org/court-personnel-overview/judge-jeff-cox/"},
+        {"name": "James M. Stephens", "action": "create", "bio_url": "https://www.la2nd.org/court-personnel-overview/judge-james-m-jimbo-stephens/", "note": "learned 'Stephens' pk 1186 is mixed (1968 votes)"},
+        {"name": "Jefferson R. Thompson", "action": "create", "bio_url": "https://www.la2nd.org/court-personnel-overview/judge-jefferson-jeff-r-thompson/", "note": "learned 'Thompson' pk 1000 is mixed (1962 votes)"},
+        {"name": "Jeff Robinson", "action": "create", "bio_url": "https://www.la2nd.org/court-personnel-overview/judge-jeff-robinson/"},
+        {"name": "Marcus L. Hunter", "action": "complete", "pk": 992, "bio_url": "https://www.la2nd.org/court-personnel-overview/judge-marcus-l-hunter/"},
+        {"name": "Craig O. Marcotte", "action": "complete", "pk": 2063, "bio_url": "https://www.la2nd.org/court-personnel-overview/judge-craig-o-marcotte/"},
+        {"name": "Danny Ellender", "action": "complete", "pk": 991, "bio_url": "https://www.la2nd.org/court-personnel-overview/judge-danny-ellender/"}
+      ]
+    },
+    "10": {
+      "role_chief": "CHIEF_JUDGE",
+      "role_member": "JUDGE",
+      "judges": [
+        {"name": "Elizabeth A. Pickett", "chief": true, "action": "create", "note": "Division 1A"},
+        {"name": "Shannon J. Gremillion", "action": "create", "note": "Division 1C"},
+        {"name": "Van H. Kyzar", "action": "create", "note": "Division 1B"},
+        {"name": "Candyce G. Perret", "action": "create", "note": "Division 3B"},
+        {"name": "Jonathan W. Perry", "action": "create", "note": "Division 3F"},
+        {"name": "Sharon D. Wilson", "action": "create", "note": "Division 2C"},
+        {"name": "Charles G. Fitzgerald", "action": "create", "note": "Division 3A"},
+        {"name": "Gary J. Ortego", "action": "create", "note": "Division 3C"},
+        {"name": "Ledricka J. Thierry", "action": "create", "note": "Division 3D"},
+        {"name": "Guy E. Bradberry", "action": "create", "note": "Division 2B"},
+        {"name": "Wilbur L. Stiles", "action": "create", "note": "Division 3E"},
+        {"name": "Clayton Davis", "action": "create", "note": "Division 2A"}
+      ]
+    },
+    "11": {
+      "role_chief": "CHIEF_JUDGE",
+      "role_member": "JUDGE",
+      "judges": [
+        {"name": "Roland L. Belsome", "chief": true, "action": "create"},
+        {"name": "Daniel L. Dysart", "action": "create"},
+        {"name": "Joy Cossich Lobrano", "action": "create"},
+        {"name": "Rosemary Ledet", "action": "create"},
+        {"name": "Sandra Cabrina Jenkins", "action": "complete", "pk": 777},
+        {"name": "Paula A. Brown", "action": "create"},
+        {"name": "Tiffany Gautier Chase", "action": "complete", "pk": 1175},
+        {"name": "Dale N. Atkins", "action": "complete", "pk": 759},
+        {"name": "Rachael D. Johnson", "action": "create"},
+        {"name": "Karen K. Herman", "action": "complete", "pk": 1181},
+        {"name": "Nakisha Ervin-Knott", "action": "complete", "pk": 1180},
+        {"name": "Monique G. Morial", "action": "create"}
+      ]
+    },
+    "12": {
+      "role_chief": "CHIEF_JUDGE",
+      "role_member": "JUDGE",
+      "judges": [
+        {"name": "Susan M. Chehardy", "action": "create", "note": "Division D; chief title not stated on-site, deliberately not set"},
+        {"name": "Fredericka H. Wicker", "action": "create", "note": "Division B"},
+        {"name": "Jude G. Gravois", "action": "create", "note": "Division H"},
+        {"name": "Marc E. Johnson", "action": "create", "note": "Division C"},
+        {"name": "Stephen J. Windhorst", "action": "complete", "pk": 717, "note": "Division E"},
+        {"name": "John J. Molaison, Jr.", "action": "create", "note": "Division G"},
+        {"name": "Scott U. Schlegel", "action": "complete", "pk": 781, "note": "Division F"},
+        {"name": "Timothy S. Marcel", "action": "create", "note": "Division I"}
+      ]
+    }
+  }
+}
