@@ -96,10 +96,12 @@ class Command(BaseCommand):
                         judge.full_name = name
                         judge.role = role
                         judge.status = Judge.Status.ACTIVE
+                        judge.is_currently_seated = True
                         if bio_url and not judge.bio_url:
                             judge.bio_url = bio_url
                         judge.save(update_fields=[
-                            "full_name", "role", "status", "bio_url"])
+                            "full_name", "role", "status",
+                            "is_currently_seated", "bio_url"])
                     if action == "complete":
                         completed += 1
                     else:
@@ -117,10 +119,12 @@ class Command(BaseCommand):
                     if apply:
                         existing.role = role
                         existing.status = Judge.Status.ACTIVE
+                        existing.is_currently_seated = True
                         if bio_url and not existing.bio_url:
                             existing.bio_url = bio_url
                         existing.save(update_fields=[
-                            "role", "status", "bio_url"])
+                            "role", "status", "is_currently_seated",
+                            "bio_url"])
                     exact += 1
                     continue
                 slug = slugify(name)
@@ -144,6 +148,7 @@ class Command(BaseCommand):
                         full_name=name,
                         slug=slug,
                         status=Judge.Status.ACTIVE,
+                        is_currently_seated=True,
                         role=role,
                         bio_url=bio_url,
                     )
