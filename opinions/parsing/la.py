@@ -442,6 +442,19 @@ COA_BEFORE_RE = re.compile(
     r"BEFORE\s*:\s*([A-Z][A-Z, .'\-\n]{0,300}),?\s+J{1,2}\s*\.",
     re.MULTILINE)
 
+# Reporter-era variant: "Before LEAR, CARTER and LANIER, JJ." --
+# titlecase "Before", no colon, lowercase "and", names ALL-CAPS, often
+# mid-line in flowing text. Two terminators, tried in order: the
+# double-J "JJ." (multi-judge panels; lazy, and immune to an inline
+# "C.J." marker, which carries no whitespace-J-J sequence) and the
+# single "J." (one-judge writ panels). The consumer keeps only
+# ALL-CAPS tokens >=3 chars, so lowercase prose, titlecase attorney
+# names, and the "and" connective can never enter the panel.
+BEFORE_TITLECASE_JJ_RE = re.compile(
+    r"\bBefore\s+([A-Z][^\n]{0,200}?),?\s+JJ\s*\.")
+BEFORE_TITLECASE_J_RE = re.compile(
+    r"\bBefore\s+([A-Z][^\n]{0,120}?),?\s+J\s*\.")
+
 # Role/marker tokens that ride inside panel name lists and must never
 # become judges: "WHIPPLE, C. J., PENZATO" carries the Chief Judge
 # marker as a list element; 5th Cir panels append "Pro Tempore" /
@@ -450,6 +463,10 @@ _PANEL_ROLE_TOKENS = {
     "c", "j", "cj", "jj", "c j",
     "pro tempore", "pro tem", "ad hoc",
     "judge pro tempore", "judge ad hoc", "judges",
+    # Generational suffixes ride the lists as standalone tokens in
+    # reporter text ("EDWARD A. DUFRESNE, JR., ...") and once minted a
+    # judge named "Iii".
+    "jr", "sr", "ii", "iii", "iv",
 }
 
 
@@ -798,6 +815,27 @@ class LouisianaParser(StateParser):
                             surname = _titlecase_caps(chunk)
                             if surname not in panel:
                                 panel.append(surname)
+            # Reporter-era titlecase form, no colon: "Before LEAR, CARTER
+            # and LANIER, JJ." (1980s-90s West reports; names ALL-CAPS,
+            # connective lowercase). The uppercase BEFORE: regex misses it
+            # entirely, which read as "no panel" for a whole era -- and
+            # nearly got 1,065 REAL Lanier votes deleted when a vote-level
+            # cleanup trusted partial extraction as complete (2026-08-25).
+            # Window-based: take the text from "Before" to the first
+            # "J{1,2}." terminator, keep only ALL-CAPS tokens (>=3 chars,
+            # so "and"/prose can't enter), filter role tokens.
+            if not panel:
+                wm = (BEFORE_TITLECASE_JJ_RE.search(raw_text[:8000])
+                      or BEFORE_TITLECASE_J_RE.search(raw_text[:8000]))
+                if wm:
+                    for tok in re.findall(r"[A-Z][A-Z.'\-]{2,}",
+                                          wm.group(1)):
+                        tok = _space_name_particles(tok.rstrip(".,"))
+                        if _norm_panel_token(tok) in _PANEL_ROLE_TOKENS:
+                            continue
+                        surname = _titlecase_caps(tok)
+                        if surname and surname not in panel:
+                            panel.append(surname)
         result.panel = panel
         if panel:
             result.confidence["panel"] = 0.8
