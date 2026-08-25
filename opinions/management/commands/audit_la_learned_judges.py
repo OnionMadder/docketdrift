@@ -44,8 +44,22 @@ class Command(BaseCommand):
             "--max-runtime", type=int, default=0,
             help="Self-exit after N seconds at a judge boundary.",
         )
+        parser.add_argument(
+            "--cull", action="store_true",
+            help=(
+                "Delete flagged judges + their votes. The evidence gate "
+                "widens to ALL of a judge's votes (cap 50) before any "
+                "delete -- a single extraction hit refuses the cull. "
+                "Requires --apply to actually delete; --cull alone is a "
+                "cull-mode dry-run."
+            ),
+        )
+        parser.add_argument(
+            "--apply", action="store_true",
+            help="With --cull: actually delete (default reports only).",
+        )
 
-    def handle(self, *args, min_id, max_runtime, **options):
+    def handle(self, *args, min_id, max_runtime, cull, apply, **options):
         from opinions.parsing import parse as parse_opinion
         from opinions.management.commands.resolve_judges import (
             _extract_generic_byline,
@@ -57,6 +71,8 @@ class Command(BaseCommand):
             with connection.cursor() as cur:
                 cur.execute("SET SESSION max_statement_time = 0")
 
+        from django.db import transaction
+
         judges = (
             Judge.objects.filter(court__isnull=True, pk__gt=min_id)
             .annotate(n=Count("panel_votes"))
@@ -64,8 +80,14 @@ class Command(BaseCommand):
             .order_by("pk")
         )
 
+        # In cull mode the evidence gate widens to every vote (bounded),
+        # so a judge whose ONE real appearance sits past the report-mode
+        # sample can never be deleted on the sample alone.
+        sample_cap = 50 if cull else SAMPLE_CAP
+
         t0 = time.time()
-        checked = flagged = 0
+        checked = flagged = culled = refused = 0
+        votes_deleted = 0
         last_pk = min_id
         stopped_early = False
 
@@ -80,7 +102,7 @@ class Command(BaseCommand):
             sampled = 0
             found = False
             for vote in (PanelVote.objects.filter(judge=judge)
-                         .select_related("opinion")[:SAMPLE_CAP]):
+                         .select_related("opinion")[:sample_cap]):
                 text = vote.opinion.raw_text
                 if not text:
                     continue
@@ -102,8 +124,11 @@ class Command(BaseCommand):
                     found = True
                     break
 
-            if not found:
-                flagged += 1
+            if found:
+                continue
+            flagged += 1
+
+            if not cull:
                 why = ("no sampled opinion had text"
                        if sampled == 0 else
                        f"never extracted across {sampled} sampled opinions")
@@ -111,11 +136,59 @@ class Command(BaseCommand):
                     f"  [FLAG] pk={judge.pk} {judge.full_name!r} "
                     f"({judge.n} votes) -- {why}"
                 )
+                continue
+
+            # Cull mode. Refuse anything human-touched or unverifiable.
+            if judge.bio_summary or judge.photo_url or \
+                    judge.status != "UNKNOWN":
+                self.stdout.write(self.style.WARNING(
+                    f"  [REFUSE] pk={judge.pk} {judge.full_name!r}: "
+                    "editorial metadata -- human-touched."
+                ))
+                refused += 1
+                continue
+            if sampled == 0:
+                self.stdout.write(self.style.WARNING(
+                    f"  [REFUSE] pk={judge.pk} {judge.full_name!r}: "
+                    "no vote opinion had text to verify -- won't guess."
+                ))
+                refused += 1
+                continue
+            if judge.n > sample_cap:
+                self.stdout.write(self.style.WARNING(
+                    f"  [REFUSE] pk={judge.pk} {judge.full_name!r}: "
+                    f"{judge.n} votes exceed the {sample_cap}-vote "
+                    "verification cap -- needs its own pass."
+                ))
+                refused += 1
+                continue
+
+            tag = "CULL" if apply else "would cull"
+            self.stdout.write(
+                f"  [{tag}] pk={judge.pk} {judge.full_name!r} "
+                f"({judge.n} votes; {sampled} opinions verified clean)"
+            )
+            culled += 1
+            if apply:
+                with transaction.atomic():
+                    n, _ = PanelVote.objects.filter(judge=judge).delete()
+                    judge.delete()
+                votes_deleted += n
+            else:
+                votes_deleted += judge.n
 
         tag = " (stopped early on --max-runtime)" if stopped_early else ""
-        self.stdout.write(self.style.SUCCESS(
-            f"\nChecked {checked:,} court-NULL judges;{tag} "
-            f"flagged {flagged:,}."
-        ))
+        if cull:
+            mode = "CULL APPLIED" if apply else "CULL DRY RUN"
+            self.stdout.write(self.style.SUCCESS(
+                f"\n{mode}: checked {checked:,};{tag} flagged {flagged:,}, "
+                f"culled {culled:,} (votes {votes_deleted:,}), "
+                f"refused {refused:,}."
+            ))
+        else:
+            self.stdout.write(self.style.SUCCESS(
+                f"\nChecked {checked:,} court-NULL judges;{tag} "
+                f"flagged {flagged:,}."
+            ))
         if stopped_early:
             self.stdout.write(f"resume with:  --min-id {last_pk}")
