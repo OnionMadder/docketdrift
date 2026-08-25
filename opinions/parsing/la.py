@@ -840,7 +840,13 @@ class LouisianaParser(StateParser):
                         raw_text[wm.end():wm.end() + 120])
                     if cont:
                         blob += ", " + cont.group(1)
-                    for tok in re.findall(r"[A-Z][A-Z.'\-]{2,}", blob):
+                    # (?:Mc|Mac)? — "McDONALD"/"McKAY" carry an internal
+                    # lowercase letter; a plain ALL-CAPS token filter
+                    # never extracted them, which read as Mc-judges
+                    # absent from their own panels (127 real McClendon
+                    # votes nearly refuted, 2026-08-25).
+                    for tok in re.findall(
+                            r"\b(?:Mc|Mac)?[A-Z][A-Z.'\-]{2,}", blob):
                         tok = _space_name_particles(tok.rstrip(".,"))
                         if _norm_panel_token(tok) in _PANEL_ROLE_TOKENS:
                             continue

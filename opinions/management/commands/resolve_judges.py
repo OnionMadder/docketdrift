@@ -177,6 +177,9 @@ _NON_NAME_TOKENS = frozenset({
     # panel paths leaked ("Defendant" 436 votes, "Tempore" 65 from
     # "Pro Tempore", "Curiam" 254 from a per-curiam author string).
     "defendant", "plaintiff", "tempore", "tem", "hoc",
+    # Generational suffixes are never surnames; a standalone "III" in a
+    # reporter panel list once minted a judge named "Iii" (89+ votes).
+    "iii", "iv", "jr", "sr",
 })
 
 
