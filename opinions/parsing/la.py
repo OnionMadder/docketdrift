@@ -828,8 +828,19 @@ class LouisianaParser(StateParser):
                 wm = (BEFORE_TITLECASE_JJ_RE.search(raw_text[:8000])
                       or BEFORE_TITLECASE_J_RE.search(raw_text[:8000]))
                 if wm:
-                    for tok in re.findall(r"[A-Z][A-Z.'\-]{2,}",
-                                          wm.group(1)):
+                    blob = wm.group(1)
+                    # Pro-tem tail: "Before CARTER and PITCHER, JJ., and
+                    # CRAIN, J. Pro Tem." -- the designated judge rides
+                    # AFTER the JJ. terminator the lazy match stops at,
+                    # and dropping it refuted ~130 REAL pro-tem votes in
+                    # the vote-level cleanup's dry run (2026-08-25).
+                    cont = re.match(
+                        r"\s*,?\s*and\s+([A-Z][^\n]{0,80}?),?\s+"
+                        r"J{1,2}\s*\.?,?\s*[Pp]ro\s*[Tt]em",
+                        raw_text[wm.end():wm.end() + 120])
+                    if cont:
+                        blob += ", " + cont.group(1)
+                    for tok in re.findall(r"[A-Z][A-Z.'\-]{2,}", blob):
                         tok = _space_name_particles(tok.rstrip(".,"))
                         if _norm_panel_token(tok) in _PANEL_ROLE_TOKENS:
                             continue
