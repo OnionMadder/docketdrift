@@ -1090,11 +1090,26 @@ order:
   bogus votes deleted**, every one evidence-gated (re-extraction with
   the fixed pipeline must NOT emit the surname), 0 orphans. St.pierre +
   L.cannella kept (mangled REAL judges — merge material).
-  **QUEUED FOLLOW-UP — Bolton-class systematic sweep:** the party-name
-  leak minted real-looking surnames on ~400+ reporter-era opinions;
-  after the panel-recovery re-sweep, run a report-only verification pass
-  over all court-NULL judges (sample each judge's vote opinions with the
-  fixed pipeline; never-extracted = phantom candidate) and cull with the
-  same evidence-gated discipline.
+  **Bolton-class sweep — DONE the same day.** `audit_la_learned_judges`
+  (report + evidence-gated cull modes): for every court-NULL judge, the
+  fixed pipeline re-extracts its own vote opinions; never-extracted =
+  phantom. Spot-checks confirmed the flagged "names" are the case
+  PARTIES (Justin Taylor indicted, Robert Smith appealing, Gary
+  Jackson's plea) plus caption words (Company 73 votes, Plaintiffs 53,
+  Corporation, Renovations, Mortgage, Jewelers…). **Culled 1,062
+  phantom judges + ~3,550 bogus votes total** (32 junk-token + 1,030
+  phantom, incl. full-verification passes on the two over-cap rows);
+  the panel-RECOVERY re-sweep (post-fix `resolve_judges`, 30 chunks,
+  ~25 min external drive) added **~4,400 real votes** — the "C"-class
+  opinions got their dropped panelists back (verified: 133482 now
+  Whipple/Penzato/Hester) and wrapped BEFORE lines produce panels for
+  the first time. Post-state: **LA judges 1,437 → 399** (172 seeded +
+  227 evidence-verified learned; report mode flags 0), LA panel votes
+  75,143, 0 orphans. Two mangled-name merges: Emile R. St. Pierre
+  (fused-particle fix in the parser so "ST.PIERRE" can't re-mint) and
+  L.cannella → James Cannella. **The judges launch gate is now
+  editorial, not correctness:** the 227 learned rows are surname-only
+  but real; Onion's call is whether to seat the current benches
+  (Phase 9-10) before or after the flip.
 - MCP server LIVE + dark at /mcp; .mcp.json committed (tools work in-session).
   Privacy section + load test + connector directory still gated on LA launch.

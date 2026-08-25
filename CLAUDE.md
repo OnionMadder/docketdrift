@@ -97,7 +97,81 @@ in indexed JSON-LD) was reverted — extractive holdings = "no generated text",
 the strong original posture, is correct. Migrations 0026 (holdings) + 0027
 (clustering) are on main and applied on prod.
 
-## Latest session (2026-08-17 → 25) — analytics out; MCP live; LA launch prep; judge-layer integrity sweep
+## Latest session (2026-08-25b) — three LA perf pathologies measured + killed; dispositions DONE; judge layer purged + recovered
+
+One-day session, everything measured-first, committed + deployed + verified.
+
+**LA DISPOSITIONS SWEEP FINISHED — 64.7% overall / 66.6% modern.** The
+"fetch-bound ~2.6/s, wait ~35h" note was wrong twice over: (1) the
+pk-window fetch's `select_related("court")` made the optimizer drive
+from the 6-row court table and temp-table+filesort ALL remaining rows
+per 500-row batch (~3.8 min each; identical WHERE without the JOIN =
+0.33s on the PRIMARY range plan) — **a JOIN beside a court_id filter is
+another member of the plan-flip gotcha family**; (2) the tick-start
+COUNT cost 112s of banner decoration (the disposition='' predicate
+needs row data). Post-fix: **~450-550 rows/s (~200×)**, corpus swept
+same day, DONE stamp on prod. Third fix: NFSN's CPU cull (rc=152)
+killed a fast pass 120K rows in BEFORE the resume trailer printed,
+pinning the wrapper cursor to the pass start — `backfill_dispositions`
+now **flushes pending writes + emits the trailer at every 2,000-row
+progress mark**, so any kill (SIGXCPU/SIGKILL) resumes near the death
+point. Use that pattern in every future long backfill. (Also: the
+la-dispositions NFSN scheduled task IS registered and firing.)
+
+**EMBED 0.4 → 12.5 op/s (~30×) — `.embed_since` was the killer.** The
+~7K/night mystery: LA's ~111K permanently-pending pre-1980 rows (out of
+scope under since=1980) sit at the FRONT of the (embedding_pending,
+court_id) index, and every 256-row batch fetch re-read + discarded the
+whole block (release_date isn't in the index; each skip costs an ~11KB
+clustered row read) → 0.4 op/s × 36 ticks × 480s = exactly the observed
+7K. Fix: **per-court pk-cursor fetch** (`court_id = X AND id > cursor
+ORDER BY id` — fixed index prefix returns pk-ordered entries, skip rows
+read once per RUN) + **FORCE INDEX (op_pending_court_idx)** (without it
+the ORDER BY flips to a PRIMARY walk from id=0 — a probe timed out vs
+0.56-0.80s forced). Counts are now index-only (0.27s, was 112s+, twice
+per tick); the end beacon derives from the walk. Post-1980 LA docs are
+short (~647 tok/op) so remaining ≈ $13, 1-2 overnight windows. **8f
+suggest_tags is next once the beacon reads 0.**
+
+**LA JUDGE LAYER: 1,437 → 399 rows; ~3,550 bogus votes culled; ~4,400
+real votes recovered.** Four extraction leaks found + root-fixed
+(`parsing/la.py` + `resolve_judges`): the lazy BEFORE capture stopped
+at the Chief Judge marker ("C", 961 votes — AND silently dropped the
+rest of every such panel); the panel-composed blob had no sentence cut
+in flowing reporter text and minted PARTY NAMES ("Defendant" 436,
+"Plaintiff", and real-looking parties: "Bolton" the defendant held a
+MAJORITY_JOIN vote); "Pro Tempore" passed the name shape ("Tempore");
+and resolve_judges trusted PARSER-provided author/panel unguarded, so
+"Per Curiam" became judge "Curiam" (254 MAJORITY_AUTHOR). Also: BEFORE
+lines that WRAP never matched (part of the 83%-authorless stat) — the
+capture now spans line breaks; fused "ST.PIERRE" particles are spaced
+(they minted shadow judges twice). Cleanup discipline (AZ playbook,
+scaled): `cleanup_la_junk_judges` (explicit pks) + a generalized
+`audit_la_learned_judges` (report + cull modes) whose **evidence gate
+re-extracts each judge's own vote opinions with the fixed pipeline —
+never-extracted = phantom; one hit refuses the cull**. Culled 1,062
+judges / ~3,550 votes (incl. full-vote verification on Company-73 /
+Plaintiffs-53); post-fix `resolve_judges` re-sweep (30 external-driven
+chunks, ~25 min) recovered ~4,400 votes. Verified after: report flags
+0, orphans 0, LA votes 75,143; 133482 = Whipple/Penzato/Hester.
+
+**LA Supreme hole RE-VERIFIED REAL + lasc.org recon DONE.** By-year:
+~2,000-2,250/yr through 2018 → 2020=8 / 2021=0 / 2022=0 / 2023=11 /
+2024=42 / 2025=49. The 08-19 "feed is NOT dead" correction only proved
+a ~50/yr trickle (~97% missing); the audit's ~12K figure stands.
+lasc.org: **no bot wall** (datacenter curl 200s) but **Blazor Server
+over SignalR** — no REST API, no prerendered HTML, robots.txt is the
+SPA shell. Enumeration key `opinions?p=YYYY-NNN` (sequential ~60/yr,
+sitemap.xml confirms the scheme, 2026 only) → ~360 browser page loads
+for 2020-2025. Build: residential Playwright lists (headless, likely
+unattended — no CAPTCHAs expected), NFSN downloads, `ingest_pdfs`.
+~1 day. NOT a launch gate — disclose the gap on /about/ (MN precedent).
+
+**Launch gates remaining:** 8e beacon→0 + 8f tags (automated), judges
+EDITORIAL decision (seat benches before/after flip — the 227 learned
+rows are real but surname-only), disclosure copy, is_live flip.
+
+## Prior session (2026-08-17 → 25) — analytics out; MCP live; LA launch prep; judge-layer integrity sweep
 
 Multi-day rolling session. Committed + deployed + live-verified unless noted.
 
@@ -1679,7 +1753,7 @@ MN is the **Flagship**; NH + AZ carry a green **Live** pill.
 | MN (flagship) | `mn.docketdrift.com` | 69,607 | 2026-08-12 | disp 97% / emb 99%; CONTINUOUS 2015–2026 |
 | AZ (live) | `az.docketdrift.com` | 37,834 | current | disp 64% / emb 99%; COA Div One/Two split |
 | NH (live) | `nh.docketdrift.com` | 20,682 | 2026-07-31 (court quiet) | disp 78% / emb 99%; roster FINISHED 2026-08-23 (5 seated, 30 RETIRED, slugs fixed w/ 301s) |
-| LA (**dark**, is_live=False) | `la.docketdrift.com` | 341,104 | current (weekly cron live) | disp ~6%→sweeping / emb 20%; cite graph 1.54M edges; statutes 252K; holdings 34.6K; judges 1,437 (editorial pending). Launch gates left: dispositions sweep, judges decision, disclosure copy, is_live flip |
+| LA (**dark**, is_live=False) | `la.docketdrift.com` | 341,104 | current (weekly cron live) | disp 65% (DONE 08-25) / emb ~53%→finishing; cite graph 1.54M edges; statutes 252K; holdings 34.6K; judges **399** (172 seeded + 227 evidence-verified learned; 1,062 phantoms purged 08-25). Launch gates left: 8f tags after embed, judges editorial decision, disclosure copy, is_live flip |
 
 **AZ judge roster rebuilt 2026-08-07 (247 → 194).** Court split into Supreme +
 COA Division One + Division Two; the current bench is fully seated — **35
