@@ -142,22 +142,37 @@ class Command(BaseCommand):
         base_qs = Opinion.objects.exclude(raw_text="")
         if not recompute:
             base_qs = base_qs.filter(disposition="")
+        # Court is a handful of rows; resolve court->state in Python so the
+        # scan query never JOINs. A select_related("court") here made the
+        # optimizer drive from the 6-row court table and collect EVERY
+        # remaining matching row into a temp table + filesort per 500-row
+        # batch (~3.8 min each, measured 2026-08-25); the identical WHERE
+        # without the JOIN runs the PRIMARY range plan in 0.33s.
+        from opinions.models import Court
+        state_by_court = dict(Court.objects.values_list("id", "state_id"))
         if state:
-            # Pre-resolve court ids to skip the JOIN through court->state
-            # on the 2.75GB table (CLAUDE.md gotcha).
-            from opinions.models import Court
-            court_ids = list(
-                Court.objects.filter(state__code=state.upper())
-                .values_list("id", flat=True)
-            )
+            court_ids = [
+                cid for cid, sc in state_by_court.items()
+                if sc == state.upper()
+            ]
             base_qs = base_qs.filter(court_id__in=court_ids)
 
-        total = (base_qs.filter(pk__gt=min_id) if min_id else base_qs).count()
-        if limit:
-            total = min(total, limit)
+        # The exact remaining-count costs ~112s on a 313K-row tail (the
+        # disposition filter needs row data, so it walks the clustered
+        # rows). It only feeds the banner + ETA, so a bounded tick skips
+        # it -- a pass that self-exits on --max-runtime can't finish the
+        # corpus anyway.
+        if max_runtime:
+            total = None
+        else:
+            total = (base_qs.filter(pk__gt=min_id) if min_id else base_qs).count()
+            if limit:
+                total = min(total, limit)
 
         self.stdout.write(self.style.SUCCESS(
-            f"Backfilling disposition for {total:,} opinions"
+            "Backfilling disposition for "
+            + (f"{total:,} opinions" if total is not None else
+               "opinions (count skipped under --max-runtime)")
             + (f" in state {state.upper()}" if state else "")
             + ("." if not dry_run else " (DRY RUN; no DB writes).")
         ))
@@ -180,8 +195,7 @@ class Command(BaseCommand):
             batch = list(
                 base_qs.filter(pk__gt=last_pk)
                 .order_by("pk")
-                .select_related("court")
-                .only("id", "raw_text", "disposition", "court__state")[:SCAN_BATCH]
+                .only("id", "raw_text", "disposition", "court")[:SCAN_BATCH]
             )
             if not batch:
                 break
@@ -192,7 +206,7 @@ class Command(BaseCommand):
                 scanned += 1
                 last_pk = op.pk
 
-                state_code = op.court.state_id
+                state_code = state_by_court[op.court_id]
                 result = parse_opinion(state_code, op.raw_text)
                 confidence = (
                     result.confidence.get("disposition", 0.0) if result else 0.0
@@ -237,13 +251,20 @@ class Command(BaseCommand):
             if scanned // 2_000 > (scanned - len(batch)) // 2_000:
                 elapsed = time.time() - t0
                 rate = scanned / max(elapsed, 0.001)
-                eta = (total - scanned) / max(rate, 0.001)
-                self.stdout.write(
-                    f"  scanned {scanned:>6,}/{total:,}  "
-                    f"filled {filled:>5,}  no-match {no_match:>5,}  "
-                    f"({rate:>3.0f}/s, eta {eta/60:.0f}min)",
-                    ending="\n",
-                )
+                if total is not None:
+                    eta = (total - scanned) / max(rate, 0.001)
+                    progress = (
+                        f"  scanned {scanned:>6,}/{total:,}  "
+                        f"filled {filled:>5,}  no-match {no_match:>5,}  "
+                        f"({rate:>3.0f}/s, eta {eta/60:.0f}min)"
+                    )
+                else:
+                    progress = (
+                        f"  scanned {scanned:>6,}  "
+                        f"filled {filled:>5,}  no-match {no_match:>5,}  "
+                        f"({rate:>3.0f}/s)"
+                    )
+                self.stdout.write(progress, ending="\n")
 
         if to_update and not dry_run:
             Opinion.objects.bulk_update(
