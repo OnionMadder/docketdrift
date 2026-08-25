@@ -322,48 +322,55 @@ class Command(BaseCommand):
 
         # Optional state filter: restrict to one state's court_ids.
         # Done as a raw IN-list (court ids are small ints, no SQL-injection
-        # risk) appended to every embedding-loop query.
-        state_clause = ""
-        state_params: list = []
+        # risk). Kept SEPARATE from the row-predicate clause below: the
+        # count must stay index-only (court_ids live in the composite
+        # index; raw_text/release_date don't).
+        court_ids: list = []
+        court_clause = ""
         if state:
             from opinions.models import Court, State
             try:
                 state_obj = State.objects.get(code=state.upper())
             except State.DoesNotExist:
                 raise CommandError(f"State {state.upper()!r} not found.")
-            court_ids = list(state_obj.courts.values_list("id", flat=True))
+            court_ids = sorted(state_obj.courts.values_list("id", flat=True))
             if not court_ids:
                 raise CommandError(f"No courts found for state {state.upper()!r}.")
             placeholders = ",".join(["%s"] * len(court_ids))
-            state_clause = f" AND court_id IN ({placeholders})"
-            state_params = court_ids
+            court_clause = f" AND court_id IN ({placeholders})"
             self.stdout.write(
                 f"  [state filter] restricting to {state.upper()} "
                 f"({len(court_ids)} court(s))"
             )
 
-        # Optional date-since filter: skip the pre-YYYY tail. Appended to
-        # the state_clause so the composite (embedding_pending, court_id)
-        # index still leads; release_date is a filtering predicate, not
-        # the driving key.
+        # Optional date-since filter: skip the pre-YYYY tail. A row
+        # predicate (release_date isn't in the composite index), applied
+        # in the fetch, never the count.
+        since_clause = ""
+        since_params: list = []
         if since:
-            state_clause += " AND release_date >= %s"
-            state_params.append(since)
+            since_clause = " AND release_date >= %s"
+            since_params = [since]
             self.stdout.write(
                 f"  [date filter] release_date >= {since}"
             )
 
-        # Count work remaining.
-        # Migration 0023 added the indexed `embedding_pending` column so
-        # we can stop using `WHERE embedding IS NULL` (which can't use
-        # an index because the embedding VECTOR column isn't indexable
-        # for NULL-ness). The composite index (embedding_pending,
-        # court_id) makes this sub-100ms regardless of corpus size.
+        # Count work remaining -- INDEX-ONLY, deliberately WITHOUT the
+        # raw_text/--since predicates. Both need row data, and this
+        # count's old "sub-100ms regardless of corpus size" promise had
+        # regressed to MINUTES once the pending set grew (measured
+        # 2026-08-25: 112s+ at 272K LA pending rows, twice per tick --
+        # most of every overnight tick's budget went to counting).
+        # Index-only it is 0.27s. It OVERSTATES by rows the fetch
+        # predicates will skip (empty raw_text, pre---since); the loop's
+        # empty-fetch break is what actually ends a run, so the total is
+        # a display figure + upper bound, not a terminator.
         with connection.cursor() as cursor:
             cursor.execute(
                 "SELECT COUNT(*) FROM opinions_opinion "
-                "WHERE embedding_pending = TRUE AND raw_text != ''" + state_clause,
-                state_params,
+                "FORCE INDEX (op_pending_court_idx) "
+                "WHERE embedding_pending = TRUE" + court_clause,
+                court_ids,
             )
             total_to_do = cursor.fetchone()[0]
 
@@ -376,6 +383,7 @@ class Command(BaseCommand):
             ))
             return
 
+        full_total = total_to_do  # pre --limit, for the end-of-run beacon
         if limit:
             total_to_do = min(total_to_do, limit)
 
@@ -395,6 +403,23 @@ class Command(BaseCommand):
         # max_runtime=0 means "no budget" (manual full run); the cron tick
         # passes a budget so it exits under NFSN's wallclock cull.
         deadline = run_started + max_runtime if max_runtime else None
+
+        # Per-court fetch cursors (state runs only). Rows a fetch reads
+        # but skips (empty raw_text, pre---since) stay embedding_pending
+        # forever, and without a cursor every LIMIT-bounded fetch re-read
+        # the same skip block from the front of the index -- with LA's
+        # ~111K permanently-pending pre-1980 rows that was ~60-90s per
+        # 256-row batch, i.e. the 0.4 op/s that made overnight ticks
+        # deliver ~7K instead of ~50K (measured 2026-08-25). Court by
+        # court with `court_id = X AND id > cursor ORDER BY id` the
+        # composite index prefix is fixed, so entries come back pk-ordered
+        # with no filesort and each skip row is read at most once per run.
+        # FORCE INDEX is required: the ORDER BY otherwise flips the plan
+        # to a PRIMARY walk from id=0 (the documented pathology).
+        court_queue = list(court_ids)
+        current_court = court_queue.pop(0) if court_queue else None
+        court_cursor = 0
+        walk_complete = False
 
         while embedded_total < total_to_do:
             # Stop cleanly when the time budget is spent; the next run
@@ -425,16 +450,39 @@ class Command(BaseCommand):
             # Order-of-processing doesn't matter for correctness because
             # embedding_pending gets flipped to FALSE in the same batch's
             # write, so the next fetch's index scan simply skips them.
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    "SELECT id, raw_text FROM opinions_opinion "
-                    "WHERE embedding_pending = TRUE AND raw_text != ''" + state_clause + " "
-                    "LIMIT %s",
-                    state_params + [batch_size],
-                )
-                fetched = cursor.fetchall()
+            fetched = ()
+            while True:
+                with connection.cursor() as cursor:
+                    if current_court is None:
+                        # No state filter: the original global fetch. The
+                        # pending set is all real work here (no court
+                        # scoping means no --since era residue in
+                        # practice), so the front-of-index grab is fine.
+                        cursor.execute(
+                            "SELECT id, raw_text FROM opinions_opinion "
+                            "WHERE embedding_pending = TRUE AND raw_text != ''"
+                            + since_clause + " LIMIT %s",
+                            since_params + [batch_size],
+                        )
+                    else:
+                        cursor.execute(
+                            "SELECT id, raw_text FROM opinions_opinion "
+                            "FORCE INDEX (op_pending_court_idx) "
+                            "WHERE embedding_pending = TRUE AND raw_text != '' "
+                            "AND court_id = %s" + since_clause + " "
+                            "AND id > %s ORDER BY id LIMIT %s",
+                            [current_court] + since_params
+                            + [court_cursor, batch_size],
+                        )
+                    fetched = cursor.fetchall()
+                if fetched or current_court is None or not court_queue:
+                    break
+                # This court's in-scope pending rows are exhausted; move on.
+                current_court = court_queue.pop(0)
+                court_cursor = 0
 
             if not fetched:
+                walk_complete = True
                 break  # All done
 
             # Pack as many rows as we can under Voyage's per-request token
@@ -453,6 +501,12 @@ class Command(BaseCommand):
                 batch = [fetched[0]]
                 batch_estimated_tokens = _estimate_tokens(fetched[0][1])
             rows = batch  # name the inner loop expects
+            # Advance the per-court cursor only past rows actually taken
+            # into this batch: the token-cap may leave a tail of `fetched`
+            # unprocessed, and those must be re-fetched next iteration
+            # (they are still embedding_pending, so they will be).
+            if current_court is not None:
+                court_cursor = rows[-1][0]
 
             # Rate limit -- wait between batches if we'd exceed RPM
             elapsed = time.time() - last_call_ts
@@ -588,16 +642,22 @@ class Command(BaseCommand):
             # progress even if this run is later killed mid-flight.
             _write_progress(total_to_do - embedded_total)
 
-        # Accurate end-of-run beacon: re-count true remaining so the
-        # heartbeat sees 0 when the corpus is fully embedded (rather than a
-        # stale positive from the per-batch estimate).
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT COUNT(*) FROM opinions_opinion "
-                "WHERE embedding_pending = TRUE AND raw_text != ''" + state_clause,
-                state_params,
-            )
-            _write_progress(cursor.fetchone()[0])
+        # End-of-run beacon. The old exact re-count here carried the
+        # raw_text/--since row predicates and cost minutes per tick (see
+        # the startup-count note). The walk itself already knows the
+        # answer: an exhausted walk means zero in-scope work remains, and
+        # a deadline-stopped one leaves the index-only upper bound minus
+        # what this run embedded. Heartbeat only needs staleness + a
+        # nonzero-ness that errs high, never low.
+        if walk_complete:
+            _write_progress(0)
+            if embedded_total == 0:
+                self.stdout.write(self.style.SUCCESS(
+                    "In-scope corpus fully embedded (walk found no "
+                    "pending rows matching the filters)."
+                ))
+        else:
+            _write_progress(max(full_total - embedded_total, 0))
 
         elapsed_total = time.time() - run_started
         cost = tokens_total / 1_000_000 * PRICE_PER_M_TOKENS_USD
