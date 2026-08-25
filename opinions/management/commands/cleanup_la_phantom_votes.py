@@ -50,6 +50,12 @@ class Command(BaseCommand):
             _last_name,
             _valid_surname,
         )
+        # Judge names carry generational suffixes ("Harmon Drew jr");
+        # _last_name would return "jr" and refute every vote the row
+        # holds (906 near-deletions on the first dry-run). The
+        # suffix-aware surname() from judge_merge is the right tool for
+        # the JUDGE side; _last_name stays correct for byline names.
+        from opinions.judge_merge import surname as _judge_surname
         from opinions.models import Court
 
         if connection.vendor == "mysql":
@@ -102,7 +108,7 @@ class Command(BaseCommand):
         per_judge: list[tuple[int, str, int]] = []
 
         for judge in judges:
-            surname = _last_name(judge.full_name).lower()
+            surname = _judge_surname(judge.full_name).lower()
             doomed: list[int] = []
             for vote_id, opinion_id in PanelVote.objects.filter(
                     judge=judge).values_list("id", "opinion_id"):
