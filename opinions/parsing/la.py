@@ -463,6 +463,18 @@ def _norm_panel_token(chunk: str) -> str:
     return " ".join(chunk.replace(".", " ").lower().split())
 
 
+def _space_name_particles(chunk: str) -> str:
+    """Insert the missing space in fused St./Ste. name particles.
+
+    Reporter text renders "EMILE ST.PIERRE" with no space; left fused,
+    the surname token becomes "st.pierre" and can never match a judge
+    row whose canonical surname is "Pierre" -- resolve_judges then
+    mints a shadow "St.pierre" judge (it did, twice, 2026-08-25).
+    """
+    return re.sub(r"\b(St|Ste)\.(?=[A-Za-z])", r"\1. ", chunk,
+                  flags=re.IGNORECASE)
+
+
 def _titlecase_caps(s: str) -> str:
     """Title-case an ALL-CAPS token/name for display ('WEIMER' -> 'Weimer')."""
     return " ".join(w[:1] + w[1:].lower() if w.isupper() else w
@@ -756,7 +768,8 @@ class LouisianaParser(StateParser):
                     # "and" so it doesn't split "Alexander")
                     for chunk in re.split(
                             r",\s+and\s+|,\s*|\s+and\s+", names_blob):
-                        chunk = " ".join(chunk.split()).rstrip(".")
+                        chunk = _space_name_particles(
+                            " ".join(chunk.split()).rstrip("."))
                         if _norm_panel_token(chunk) in _PANEL_ROLE_TOKENS:
                             continue
                         if chunk and re.match(
@@ -772,7 +785,8 @@ class LouisianaParser(StateParser):
                 if bm:
                     for chunk in re.split(r",\s*(?:AND\s+)?|\s+AND\s+",
                                           bm.group(1)):
-                        chunk = chunk.strip().strip(".").strip()
+                        chunk = _space_name_particles(
+                            chunk.strip().strip(".").strip())
                         # Drop role/marker tokens ("C. J." rides inside
                         # the list on Chief Judge panels) and any
                         # single-letter residue -- see _PANEL_ROLE_TOKENS.
