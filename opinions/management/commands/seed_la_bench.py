@@ -69,7 +69,9 @@ class Command(BaseCommand):
                         ))
                         refused += 1
                         continue
-                    if action == "complete":
+                    if action == "complete" and judge.full_name != name:
+                        # A prior apply already renamed the row; accept
+                        # its own finished state (idempotent re-runs).
                         if (" " in judge.full_name.strip()
                                 or jsn(name).lower()
                                 != judge.full_name.strip().lower()):
