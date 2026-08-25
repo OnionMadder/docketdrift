@@ -265,6 +265,21 @@ class Command(BaseCommand):
                         f"({rate:>3.0f}/s)"
                     )
                 self.stdout.write(progress, ending="\n")
+                # NFSN's CPU cull (SIGXCPU, rc=152) can kill a fast pass
+                # before the clean-exit resume trailer prints, pinning the
+                # wrapper's cursor to the pass START forever (2026-08-25:
+                # one tick scanned 120K rows and left the cursor where it
+                # began). So flush pending writes and emit the trailer at
+                # every progress interval -- the wrapper greps the LAST
+                # one, so any kill resumes near the death point. Flush
+                # FIRST: a cursor covering unwritten rows would skip them.
+                if to_update and not dry_run:
+                    Opinion.objects.bulk_update(
+                        to_update,
+                        ["disposition", "disposition_bucket"],
+                    )
+                    to_update.clear()
+                self.stdout.write(f"resume with:  --min-id {last_pk}")
 
         if to_update and not dry_run:
             Opinion.objects.bulk_update(
