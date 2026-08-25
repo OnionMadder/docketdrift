@@ -840,16 +840,28 @@ class LouisianaParser(StateParser):
                         raw_text[wm.end():wm.end() + 120])
                     if cont:
                         blob += ", " + cont.group(1)
-                    # (?:Mc|Mac)? — "McDONALD"/"McKAY" carry an internal
+                    # Split into per-judge SEGMENTS first, then keep only
+                    # the LAST caps token of each -- 2nd Cir wrote full
+                    # names in Before lines ("Before JASPER E. JONES,
+                    # FRED W. JONES, Jr., and ..."), and a flat token
+                    # scan minted the FIRST names as judges ("Fred" 847
+                    # votes, "Jasper" 724 -- found 2026-08-25).
+                    # (?:Mc|Mac)? -- "McDONALD"/"McKAY" carry an internal
                     # lowercase letter; a plain ALL-CAPS token filter
                     # never extracted them, which read as Mc-judges
                     # absent from their own panels (127 real McClendon
-                    # votes nearly refuted, 2026-08-25).
-                    for tok in re.findall(
-                            r"\b(?:Mc|Mac)?[A-Z][A-Z.'\-]{2,}", blob):
-                        tok = _space_name_particles(tok.rstrip(".,"))
-                        if _norm_panel_token(tok) in _PANEL_ROLE_TOKENS:
+                    # votes nearly refuted).
+                    for seg in re.split(r",\s*(?:and\s+)?|\s+and\s+", blob):
+                        toks = [
+                            t for t in re.findall(
+                                r"\b(?:Mc|Mac)?[A-Z][A-Z.'\-]{2,}", seg)
+                            if _norm_panel_token(
+                                _space_name_particles(t.rstrip(".,")))
+                            not in _PANEL_ROLE_TOKENS
+                        ]
+                        if not toks:
                             continue
+                        tok = _space_name_particles(toks[-1].rstrip(".,"))
                         surname = _titlecase_caps(tok)
                         if surname and surname not in panel:
                             panel.append(surname)
