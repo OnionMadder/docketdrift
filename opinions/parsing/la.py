@@ -426,9 +426,41 @@ COA_COURT_COMPOSED_RE = re.compile(
     re.IGNORECASE)
 
 # COA 1st Circuit "BEFORE : WOLFE, STROMBERG, AND BALFOUR, JJ."
+# GREEDY capture, deliberately: the lazy version stopped at the FIRST
+# ", J." -- on "BEFORE: WHIPPLE, C. J., PENZATO AND HESTER, JJ." it
+# captured "WHIPPLE, C." (minting a 961-vote judge named "C" from the
+# Chief Judge marker) and silently DROPPED the rest of the panel
+# (2026-08-25). Greedy backtracks from the line end to the final
+# "JJ."; the char class carries no \n so it can't cross lines.
+# \n is allowed inside the capture (bounded at 300 chars) because long
+# 1st Cir panels WRAP: "BEFORE: GUIDRY, C.J., HOLDRIDGE, WOLFE, MILLER,
+# AND\n<...>, JJ." -- the old single-line class silently returned no
+# panel at all for every wrapped line (part of the 83%-authorless-panel
+# stat). Lowercase body text ends the class, so the capture can't run
+# into prose; the ", J{1,2}." terminator anchors the backtrack.
 COA_BEFORE_RE = re.compile(
-    r"BEFORE\s*:\s*([A-Z][A-Z, .'\-]+?),?\s+J{1,2}\.",
+    r"BEFORE\s*:\s*([A-Z][A-Z, .'\-\n]{0,300}),?\s+J{1,2}\s*\.",
     re.MULTILINE)
+
+# Role/marker tokens that ride inside panel name lists and must never
+# become judges: "WHIPPLE, C. J., PENZATO" carries the Chief Judge
+# marker as a list element; 5th Cir panels append "Pro Tempore" /
+# "Ad Hoc" after a name. Compared lowercase, punctuation stripped.
+_PANEL_ROLE_TOKENS = {
+    "c", "j", "cj", "jj", "c j",
+    "pro tempore", "pro tem", "ad hoc",
+    "judge pro tempore", "judge ad hoc", "judges",
+}
+
+
+def _norm_panel_token(chunk: str) -> str:
+    """Normalize a panel-list chunk for the role-token check.
+
+    Lowercase, periods dropped, whitespace collapsed -- so "C. J.",
+    "C.J." and "c j" all normalize to "c j" / "cj" family entries in
+    _PANEL_ROLE_TOKENS.
+    """
+    return " ".join(chunk.replace(".", " ").lower().split())
 
 
 def _titlecase_caps(s: str) -> str:
@@ -704,11 +736,29 @@ class LouisianaParser(StateParser):
                     # Cut at double newline or paren
                     names_blob = re.split(r"\n\s*\n|[()]",
                                           names_blob, 1)[0]
+                    # Cut at the end of the panel SENTENCE. Reporter-era
+                    # text flows straight into the opinion body ("...and
+                    # WALTER J. ROTHSCHILD. MARION F. EDWARDS, Judge.
+                    # Defendant, Robert Bolton, appeals...") and an
+                    # uncut blob minted PARTY NAMES as judges (the LA
+                    # "Defendant"/"Bolton" leak, 2026-08-25). A period
+                    # ends the sentence when the word before it has 2+
+                    # letters and isn't a generational suffix or the
+                    # St./Ste. name particle -- single-letter initials
+                    # ("Marc E. Johnson") keep the list going.
+                    for dot in re.finditer(r"([A-Za-z'\-]+)\.", names_blob):
+                        w = dot.group(1)
+                        if len(w) >= 2 and w.lower() not in (
+                                "jr", "sr", "ii", "iii", "iv", "st", "ste"):
+                            names_blob = names_blob[:dot.end() - 1]
+                            break
                     # Split on ", and" / "," / " and " (word-boundary
                     # "and" so it doesn't split "Alexander")
                     for chunk in re.split(
                             r",\s+and\s+|,\s*|\s+and\s+", names_blob):
                         chunk = " ".join(chunk.split()).rstrip(".")
+                        if _norm_panel_token(chunk) in _PANEL_ROLE_TOKENS:
+                            continue
                         if chunk and re.match(
                                 r"^[A-Z][A-Za-z.'\-]+"
                                 r"(?:\s+[A-Z][A-Za-z.'\-]+)+"
@@ -723,6 +773,13 @@ class LouisianaParser(StateParser):
                     for chunk in re.split(r",\s*(?:AND\s+)?|\s+AND\s+",
                                           bm.group(1)):
                         chunk = chunk.strip().strip(".").strip()
+                        # Drop role/marker tokens ("C. J." rides inside
+                        # the list on Chief Judge panels) and any
+                        # single-letter residue -- see _PANEL_ROLE_TOKENS.
+                        if _norm_panel_token(chunk) in _PANEL_ROLE_TOKENS:
+                            continue
+                        if len(chunk.replace(".", "").replace(" ", "")) < 2:
+                            continue
                         if chunk and chunk.replace("-", "").replace("'", "").isalpha():
                             surname = _titlecase_caps(chunk)
                             if surname not in panel:

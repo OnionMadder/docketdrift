@@ -173,6 +173,10 @@ _NON_NAME_TOKENS = frozenset({
     "concurred", "concurring", "dissented", "dissenting", "joined", "join",
     "authored", "delivered", "affirmed", "reversed",
     "silent", "trade", "one", "hon", "ini",
+    # 2026-08-25 LA audit: party words + role riders the LA parser's
+    # panel paths leaked ("Defendant" 436 votes, "Tempore" 65 from
+    # "Pro Tempore", "Curiam" 254 from a per-curiam author string).
+    "defendant", "plaintiff", "tempore", "tem", "hoc",
 })
 
 
@@ -939,6 +943,17 @@ class Command(BaseCommand):
                 )
                 panel_lasts = [_last_name(p).lower() for p in result.panel]
                 panel_lasts = [p for p in panel_lasts if p]
+                # Guard the PARSER-provided fields the same way the
+                # generic extractor guards its own captures. The hybrid
+                # path used to trust the parser unfiltered, which is how
+                # the LA panel leaks ("C", "Defendant", "Tempore") and
+                # the per-curiam author string ("Curiam") became judges
+                # with tens of thousands of votes between them
+                # (2026-08-25). "Per Curiam" is a legitimate DISPLAY
+                # author on the opinion page; it is never a person.
+                if author_last is not None and not _valid_surname(author_last):
+                    author_last = None
+                panel_lasts = [p for p in panel_lasts if _valid_surname(p)]
             else:
                 author_last = None
                 panel_lasts = []
