@@ -1111,5 +1111,34 @@ order:
   editorial, not correctness:** the 227 learned rows are surname-only
   but real; Onion's call is whether to seat the current benches
   (Phase 9-10) before or after the flip.
+  **CONTINUED same day — vote-level purge + THREE more panel formats.**
+  `cleanup_la_phantom_votes` (per-vote evidence gate: keep when the
+  fixed extraction contains the surname; delete only when a NON-EMPTY
+  extracted panel excludes the judge; keep-and-count when no panel is
+  extractable). Its dry-runs were a format-discovery engine — each
+  round's top flags were REAL votes exposing an unparsed convention,
+  fixed before any apply: (1) reporter-era titlecase "Before LEAR,
+  CARTER and LANIER, JJ." (no colon, mid-line — an entire era read as
+  panel-less; 1,065 real Lanier-JR votes nearly refuted); (2) the
+  pro-tem tail "…JJ., and CRAIN, J. Pro Tem." after the terminator;
+  (3) Mc/Mac names (internal lowercase broke the ALL-CAPS token
+  filter — 127 real McClendon votes); plus _last_name('X jr')='jr' in
+  MY checker (906 near-deletions), and generational suffixes added to
+  _NON_NAME_TOKENS (the 'Iii' judge, culled). Final apply: **285 party
+  votes deleted** (Robinson/Brown/Lee/Williams-class defendants),
+  65,174 votes kept WITH extraction evidence (was 26K before the
+  format fixes), 9,684 uncertain-kept (no extractable panel — never
+  guessed). LA votes 74,858. A post-fix resolve_judges re-sweep is
+  recovering reporter-era panels corpus-wide (in flight).
+  **Bench rosters COLLECTED from the six courts' own sites** (Supreme 7
+  w/ districts: Weimer CJ; 1st Cir 12: McClendon CJ; 2nd Cir 9: Pitman
+  CJ + bio URLs; 3rd Cir 12: Pickett CJ + divisions; 4th Cir 12:
+  Belsome CJ; 5th Cir 8 w/ division letters — Chehardy's chief title
+  NOT stated on-site, don't print it unverified). Probe of existing
+  rows shows the safe seating split: complete surname-only rows whose
+  spans fit (e.g. Penzato/Wolfe/Hester/Stromberg/Balfour), CREATE the
+  ~25 roster judges with no row (all of 3rd Cir, most of 4th), and
+  DON'T blind-complete mixed-span rows (Lanier III vs Lanier Jr are
+  two real people). Seed AFTER the re-sweep settles the spans.
 - MCP server LIVE + dark at /mcp; .mcp.json committed (tools work in-session).
   Privacy section + load test + connector directory still gated on LA launch.
