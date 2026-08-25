@@ -54,10 +54,14 @@ produce what we never stored.**
 
 - Search is **POST**, so the query never enters a URL — not the access log, not
   the proxy log, not a CDN cache key, not browser history, not a shared link.
-- The gunicorn access log is **query-stripped** by a custom log format.
-- Analytics is goatcounter only, with the page path pinned to a constant `"/"`
-  and the referrer blanked. Which opinions you read is itself a research trail,
-  so it isn't recorded.
+- The gunicorn access log is **query-stripped** by a custom log format, and
+  client addresses are recorded only at network granularity (/24 for IPv4,
+  /48 for IPv6) — never a full IP beside a path and a timestamp.
+- **There is no analytics script.** No Google, no self-hosted counter, no
+  third-party beacon; zero visitor JavaScript leaves the site. (An earlier
+  privacy-tuned counter was removed in August 2026 when a scraper demonstrated
+  the signal could be forged anyway — an analytics number a crawler can fake is
+  decoration, and it shipped visitor data to a third party to produce it.)
 - No query is ever persisted server-side — not logged, not sessioned, not
   stored in an analytics row.
 
@@ -68,52 +72,64 @@ DocketDrift stands substantially on the work of the
 
 - **[CourtListener](https://www.courtlistener.com/)** supplies the historical
   backfill and a standing source for ongoing ingestion, via both the REST API
-  and the bulk exports. The Minnesota and Arizona citation graphs (605K+ edges)
-  are built from CourtListener's bulk citation-map export, scoped to edges where
-  both endpoints are in this corpus. Reporter citations for those states come
-  from the bulk citations export.
+  and the bulk exports. Reporter citations come from the bulk citations export,
+  and part of the citation graph (605K edges) from the bulk citation-map
+  export, scoped to edges where both endpoints are in this corpus.
+- **Our own text extraction** supplies the larger share of the citation graph:
+  per-state citation parsers read each opinion's body and resolve references
+  against reporter cites, parallel cites, and docket numbers — those edges
+  carry the verbatim citing passage and a treatment classification
+  (followed / distinguished / overruled / criticized / explained).
 - **Direct ingestion from the courts** covers what CourtListener doesn't carry
   promptly — particularly recent nonprecedential and order opinions, which some
   courts publish only behind bot-walled archives. Those states are read from the
   court's own release archive on a weekly schedule.
 
 Free Law Project's [eyecite](https://github.com/freelawproject/eyecite) is
-vendored as preparation for a future text-extraction pass on the non-NH states.
-**It is not wired into any production code path today** — the New Hampshire
-citation graph uses a hand-written neutral-cite parser, and MN/AZ use the bulk
-citation map described above.
+vendored but **not wired into any production code path** — a measured bake-off
+against our extractors found it would add about 1% of resolved citation
+targets while losing docket-format citations entirely (the only key that
+reaches unpublished opinions). The write-up lives in the project notes; the
+decision is revisitable if treatment quality ever outranks graph size.
 
 ## Corpus
 
-As of August 2026 — 119,000+ opinions, all embedded for semantic search.
+As of August 2026 — 128,000+ opinions across the three live states, all
+embedded for semantic search.
 
 | | Minnesota | New Hampshire | Arizona |
 |---|---|---|---|
-| Opinions | 60,457 | 20,723 | 38,132 |
+| Opinions | 69,607 | 20,682 | 37,834 |
 | Date range | 1851–present | 1843–present | 1866–present |
-| Dispositions parsed | 97.6% | 78.5% | 63.9% |
-| Reporter cites | 92.9% | 90.2% | 75.0% |
-| Judges | 122 | 36 | 119 |
+| Dispositions parsed | 97.9% | 78.4% | 64.2% |
+| Reporter cites | 80.4% | 90.2% | 74.9% |
+| Judges | 119 | 37 | 169 |
+| Panel votes | 32,291 | 17,736 | 29,195 |
 
-Plus 56,165 panel votes, 605,424 citation edges, and 39,446 extracted holdings.
+Plus a 1.45-million-edge citation graph (bulk-derived breadth + text-extracted
+edges carrying verbatim citing passages and treatment classification) and
+~45,000 verbatim-extracted holdings.
 
 ### Known coverage gaps
 
 Stated plainly, because silence reads as completeness:
 
-- **Minnesota 2017–2023 is incomplete**, and 2020–2022 is currently empty. An
-  ingestion defect (listing from an Elasticsearch-backed endpoint that returned
-  only a fraction of existing records) meant most opinions in that window were
-  never retrieved. The defect is fixed; the backfill is not yet done. The
-  historical corpus (1851–2016) and 2024-forward are unaffected.
+- **Minnesota 2017–2025 was rebuilt** after our upstream source turned out to
+  hold no Minnesota appellate opinions at all for 2020–2022 and sharply reduced
+  coverage from 2017 onward (we reported this upstream, with data). Roughly
+  9,800 opinions were re-read directly from the State Law Library archive, so
+  every year 2015–2025 now holds about 970–1,435 opinions and 2026 is kept
+  current by our own weekly scraper. Rebuilt years remain *substantially
+  covered rather than provably complete*: they are short on Supreme Court
+  *orders* (the archive doesn't publish them) and carry no reporter citations
+  (those arrive via the upstream bulk data, which has nothing for these years)
+  — which is also why the Minnesota reporter-cite figure above reads lower
+  than it used to; the corpus grew by opinions that have no cite to carry.
 - **Disposition and holding extraction thin out sharply on pre-1980 text**,
   where courts used a different vocabulary ("Exceptions overruled." rather than
   "Affirmed."). Historic dispositions are *transcribed, never mapped* — deciding
   that "exceptions overruled" *means* "affirmed" is an editorial read of the
   record, and that call isn't ours to make.
-- **~14,400 opinions carry a synthetic `CL-<id>` docket number** where the real
-  docket number wasn't available at ingest time. They are reachable, but not by
-  the identifier a lawyer would actually paste.
 - **Editorial review is early.** Most records have not been read by a human.
   Every record publishes its own review status, so this is visible per opinion
   rather than averaged away.
