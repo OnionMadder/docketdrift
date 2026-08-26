@@ -21,6 +21,7 @@ from django.db import connection, models
 from django.db.models import Q
 from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
+from django.utils import timezone
 from django.views.decorators.cache import cache_control, cache_page
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.vary import vary_on_headers
@@ -208,6 +209,59 @@ def _state_landing_stats(state, court_ids):
     return bundle
 
 
+def _state_year_histogram(state, court_ids, compute=True):
+    """Cached opinions-per-year rows for the landing hero band.
+
+    A GROUP BY over the corpus: index-only (the (court_id, case_number,
+    release_date) unique index covers it) but still ~1s on Louisiana's
+    341K rows -- too slow to sit on an uncached request path, which is
+    exactly the mistake the explore-tags context processor made. So this
+    mirrors that fix: ``compute=False`` is READ-ONLY, and a cold cache
+    costs a missing graphic, never a slow page. Only
+    ``precompute_explore_tags`` (which already warms the stats bundle)
+    passes ``compute=True``.
+
+    Missing years are filled with zero rather than skipped, so the
+    silhouette shows a coverage hole as a hole. See ``build_corpus_band``.
+    """
+    key = f"state_year_hist:{state.code}"
+    rows = cache.get(key)
+    if rows is not None or not compute:
+        return rows
+
+    if not court_ids:
+        return None
+    placeholders = ",".join(["%s"] * len(court_ids))
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SET STATEMENT max_statement_time=20 FOR "
+            "SELECT YEAR(release_date) AS y, COUNT(*) AS n "
+            "FROM opinions_opinion "
+            f"WHERE court_id IN ({placeholders}) "
+            "GROUP BY y ORDER BY y",
+            court_ids,
+        )
+        raw = {
+            int(y): int(n) for y, n in cursor.fetchall() if y
+        }
+    if not raw:
+        return None
+
+    # Drop stray future-dated rows (CL has served them before, and one
+    # would stretch the axis to a year that hasn't happened).
+    this_year = timezone.localdate().year
+    raw = {y: n for y, n in raw.items() if y <= this_year}
+    if not raw:
+        return None
+
+    rows = [
+        {"year": y, "n": raw.get(y, 0)}
+        for y in range(min(raw), max(raw) + 1)
+    ]
+    cache.set(key, rows, CACHE_SEC_STATE_STATS)
+    return rows
+
+
 @csrf_exempt  # search is POSTed (keeps the query out of the URL); read-only, no state to forge
 @cache_control(public=True, max_age=CACHE_SEC_HOME)
 def home(request):
@@ -301,6 +355,12 @@ def home(request):
                 "reason_html": mark_safe(reason_html),
             }
 
+    # Hero band. Cache-READ-ONLY on the request path (the GROUP BY is ~1s
+    # on the biggest state); a cold cache simply drops the graphic.
+    from opinions import charts
+    hist = _state_year_histogram(state, court_ids, compute=False)
+    corpus_band = charts.build_corpus_band(hist) if hist else None
+
     return render(request, "opinions/state_landing.html", {
         "state": state,
         "total_opinions": total_opinions,
@@ -311,6 +371,7 @@ def home(request):
         "total_tags_used": total_tags_used,
         "total_tags_available": total_tags_available,
         "coverage_note": coverage_note,
+        "corpus_band": corpus_band,
         "active_nav": "home",
     })
 

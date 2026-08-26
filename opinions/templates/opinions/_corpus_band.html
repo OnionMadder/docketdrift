@@ -1,0 +1,58 @@
+{% load humanize %}
+{% comment %}
+Landing hero band: opinions per year across the whole state corpus,
+drawn as a filled silhouette.
+
+Decorative in placement, honest in construction. Years with no opinions
+are plotted as zero (never interpolated away), so a coverage hole shows
+as a hole; the peak carries its real count; and the <title>/<desc> pair
+gives screen readers the same facts a sighted reader gets from the
+shape. See charts.build_corpus_band.
+
+The gradient id is namespaced per state so two bands on one page (the
+apex could grow them later) can't collide on a document-wide id.
+{% endcomment %}
+{% comment %}
+No preserveAspectRatio="none": stretching to a fixed CSS height would
+squash the year labels and distort the stroke. Default (meet) + CSS
+height:auto scales the whole band proportionally instead.
+{% endcomment %}
+<div class="corpus-band">
+  <svg class="corpus-band__svg"
+       viewBox="0 0 {{ corpus_band.width }} {{ corpus_band.height }}"
+       role="img"
+       aria-labelledby="cb-t-{{ state.code }} cb-d-{{ state.code }}">
+    <title id="cb-t-{{ state.code }}">{{ state.name }} appellate opinions per year, {{ corpus_band.year_min }} to {{ corpus_band.year_max }}</title>
+    <desc id="cb-d-{{ state.code }}">Area chart of the {{ state.name }} corpus by filing year. Coverage runs from {{ corpus_band.year_min }} to {{ corpus_band.year_max }}, peaking in {{ corpus_band.peak.year }} with {{ corpus_band.peak.n|intcomma }} opinions.</desc>
+
+    <defs>
+      <linearGradient id="cb-fill-{{ state.code }}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="var(--neon-cyan)" stop-opacity="0.55" />
+        <stop offset="55%" stop-color="var(--neon-violet)" stop-opacity="0.28" />
+        <stop offset="100%" stop-color="var(--neon-violet)" stop-opacity="0" />
+      </linearGradient>
+    </defs>
+
+    <path class="corpus-band__area" d="{{ corpus_band.area }}"
+          fill="url(#cb-fill-{{ state.code }})" />
+    <path class="corpus-band__line" d="{{ corpus_band.line }}" fill="none"
+          vector-effect="non-scaling-stroke" />
+
+    <line class="corpus-band__baseline"
+          x1="0" y1="{{ corpus_band.baseline }}"
+          x2="{{ corpus_band.width }}" y2="{{ corpus_band.baseline }}" />
+
+    {% for tick in corpus_band.ticks %}
+      <text class="corpus-band__tick" x="{{ tick.x }}" y="{{ corpus_band.label_y }}"
+            text-anchor="{% if forloop.first %}start{% elif forloop.last %}end{% else %}middle{% endif %}">{{ tick.year }}</text>
+    {% endfor %}
+
+    <circle class="corpus-band__peak-dot" cx="{{ corpus_band.peak.x }}" cy="{{ corpus_band.peak.y }}" r="3.5" />
+  </svg>
+
+  <p class="corpus-band__caption">
+    <span class="corpus-band__caption-key"></span>
+    Opinions per year, {{ corpus_band.year_min }}&ndash;{{ corpus_band.year_max }} &middot;
+    busiest year <strong>{{ corpus_band.peak.year }}</strong> ({{ corpus_band.peak.n|intcomma }})
+  </p>
+</div>

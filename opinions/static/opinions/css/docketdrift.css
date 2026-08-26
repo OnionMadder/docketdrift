@@ -1653,6 +1653,80 @@ button.cta-primary {
   font-style: italic;
 }
 
+/* Corpus band -- the landing's hero graphic. Sits INSIDE .landing-hero,
+   bled to the frame edges so it reads as part of the panel rather than a
+   chart pasted into it. Proportional scaling (no preserveAspectRatio
+   override), so nothing distorts on mobile; see _corpus_band.html. */
+.corpus-band {
+  margin: 1.6rem -1.4rem 0;
+  padding: 0;
+}
+
+.corpus-band__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.corpus-band__line {
+  stroke: var(--neon-cyan);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 4px rgba(var(--neon-cyan-rgb), 0.55));
+}
+
+.corpus-band__baseline {
+  stroke: rgba(var(--neon-cyan-rgb), 0.25);
+  stroke-width: 1;
+}
+
+.corpus-band__tick {
+  fill: var(--text-dim);
+  font-size: 13px;
+  font-family: inherit;
+  letter-spacing: 0.08em;
+}
+
+.corpus-band__peak-dot {
+  fill: var(--neon-amber);
+  filter: drop-shadow(0 0 5px rgba(var(--neon-amber-rgb), 0.8));
+}
+
+.corpus-band__caption {
+  margin: 0.55rem 1.4rem 0;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  letter-spacing: 0.03em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.corpus-band__caption strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.corpus-band__caption-key {
+  display: inline-block;
+  width: 26px;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg,
+    rgba(var(--neon-cyan-rgb), 0.9),
+    rgba(var(--neon-violet-rgb), 0.5));
+}
+
+@media (max-width: 640px) {
+  /* Tick labels are sized in viewBox units, so proportional scaling
+     shrinks them below legibility on a phone. Hide the in-SVG years and
+     lean on the caption, which carries the same span in real text. */
+  .corpus-band__tick { display: none; }
+  .corpus-band { margin-top: 1.2rem; }
+}
+
 .landing-stats-frame {
   padding: 1.2rem 1.4rem;
 }

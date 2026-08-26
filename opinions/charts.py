@@ -71,6 +71,115 @@ def _tick_step(span: int) -> int:
     return 10
 
 
+# ---- Landing hero band ("corpus shape") --------------------------------------
+
+# Wide, short band tuned to sit under the landing headline as a graphic
+# rather than a data table. viewBox'd + width:100% in CSS, so it scales
+# proportionally on mobile instead of distorting.
+_BAND_WIDTH = 1200
+_BAND_HEIGHT = 190
+_BAND_PAD_TOP = 18       # headroom so the peak never touches the top edge
+_BAND_LABEL_BAND = 22    # bottom strip reserved for the sparse year labels
+
+
+def build_corpus_band(
+    rows: list[dict],
+    max_ticks: int = 6,
+) -> Optional[dict]:
+    """Opinions-per-year silhouette for the state landing hero.
+
+    ``rows`` is an ordered list of ``{"year": int, "n": int}``. Years with
+    no opinions MUST be present with ``n = 0`` -- the caller fills them
+    (see ``_state_year_histogram``). That is deliberate: a coverage hole
+    is a true fact about the corpus, and a silhouette that quietly closed
+    the gap by interpolating across it would misstate coverage. This is
+    the same rule the disposition parser follows -- transcribe, never
+    infer.
+
+    Decorative in placement, honest in construction: no y-axis (the band
+    is a shape, not a precise read), but the peak year is labeled with
+    its real count and the template exposes the whole thing to screen
+    readers via <title>/<desc>.
+
+    Returns ``None`` when there is nothing to draw, so the template can
+    drop the section entirely rather than render an empty frame.
+    """
+    rows = [r for r in rows if r.get("year") is not None]
+    if len(rows) < 2:
+        return None
+
+    year_min = rows[0]["year"]
+    year_max = rows[-1]["year"]
+    span = year_max - year_min
+    if span <= 0:
+        return None
+
+    value_max = max(r["n"] for r in rows)
+    if value_max <= 0:
+        return None
+
+    plot_h = _BAND_HEIGHT - _BAND_PAD_TOP - _BAND_LABEL_BAND
+    baseline = _BAND_HEIGHT - _BAND_LABEL_BAND
+
+    def coord(year: int, value: int) -> tuple[float, float]:
+        x = (year - year_min) / span * _BAND_WIDTH
+        y = baseline - (value / value_max) * plot_h
+        return x, y
+
+    pts = [coord(r["year"], r["n"]) for r in rows]
+
+    # Area = the silhouette; line = its lit top edge.
+    area = (
+        f"M {pts[0][0]:.1f},{baseline:.1f} "
+        + " ".join(f"L {x:.1f},{y:.1f}" for x, y in pts)
+        + f" L {pts[-1][0]:.1f},{baseline:.1f} Z"
+    )
+    line = "M " + " L ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
+
+    # Sparse year ticks: first + last always, evenly spaced between, and
+    # snapped to decades so the labels read as eras rather than arbitrary
+    # years. Deduped in case snapping collides.
+    ticks: list[dict] = []
+    seen: set[int] = set()
+    for i in range(max_ticks):
+        raw = year_min + round(span * i / (max_ticks - 1))
+        year = year_max if i == max_ticks - 1 else round(raw / 10) * 10
+        year = min(max(year, year_min), year_max)
+        if year in seen:
+            continue
+        seen.add(year)
+        x, _ = coord(year, 0)
+        ticks.append({"year": year, "x": x})
+
+    peak_row = max(rows, key=lambda r: r["n"])
+    peak_x, peak_y = coord(peak_row["year"], peak_row["n"])
+
+    return {
+        "width": _BAND_WIDTH,
+        "height": _BAND_HEIGHT,
+        "baseline": baseline,
+        "area": area,
+        "line": line,
+        "ticks": ticks,
+        "label_y": _BAND_HEIGHT - 6,
+        "year_min": year_min,
+        "year_max": year_max,
+        "value_max": value_max,
+        "peak": {
+            "year": peak_row["year"],
+            "n": peak_row["n"],
+            "x": peak_x,
+            "y": peak_y,
+            # Nudge the label inboard at the edges so it can't clip.
+            "anchor": (
+                "start" if peak_x < 90
+                else "end" if peak_x > _BAND_WIDTH - 90
+                else "middle"
+            ),
+        },
+    }
+
+
 def build_yearly_votes_chart(
     series_a: list[dict],
     label_a: str,

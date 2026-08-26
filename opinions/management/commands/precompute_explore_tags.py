@@ -64,7 +64,8 @@ class Command(BaseCommand):
 
         # Local import: pulls in opinions.views only when the command
         # actually runs, avoiding any import-time cycle at startup.
-        from opinions.views import _state_court_ids, _state_landing_stats
+        from opinions.views import (_state_court_ids, _state_landing_stats,
+                                    _state_year_histogram)
 
         # Lift this connection's per-statement timeout. settings' 25s
         # init_command cap protects gunicorn workers, but the FULLTEXT
@@ -88,13 +89,18 @@ class Command(BaseCommand):
             # hit a real user with the full cold aggregate cost.
             cache.delete(f"explore_tags_sized:{s.code}")
             cache.delete(f"state_landing_stats:{s.code}")
+            cache.delete(f"state_year_hist:{s.code}")
             t0 = time.time()
             # compute=True is what makes this the ONLY place the expensive
             # FULLTEXT sizing runs. The context processor is cache-read-only
             # (see _get_sized_tags' docstring) precisely so a cold cache can
             # never turn a page request into 20 corpus-scale COUNTs.
             sized = _get_sized_tags(s, compute=True)
-            _state_landing_stats(s, _state_court_ids(s))
+            court_ids = _state_court_ids(s)
+            _state_landing_stats(s, court_ids)
+            # Landing hero band: same compute=True/read-only split as
+            # the tag sizing above -- ~1s GROUP BY on the big states.
+            _state_year_histogram(s, court_ids, compute=True)
             elapsed = time.time() - t0
             self.stdout.write(
                 f"  {s.code}: {len(sized)} tags + stats warmed in {elapsed:.1f}s"

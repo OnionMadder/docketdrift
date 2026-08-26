@@ -96,6 +96,9 @@
       Opinions of the {{ state.name }} Supreme Court and Court of Appeals, {{ date_range.first|date:"Y" }}&ndash;present. A public-records project.
     </p>
   {% endif %}
+  {% if corpus_band %}
+    {% include "opinions/_corpus_band.html" %}
+  {% endif %}
 </div>
 
 <div class="glossy-frame landing-values-frame">
