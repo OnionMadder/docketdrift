@@ -563,7 +563,14 @@ must start with `/bin/sh`. Path alone is not enough.
     INDEX (skip rows read once per run, not per batch) + index-only counts
     (0.27s). Measured after: **12.5 op/s** (post-1980 LA docs are short,
     ~647 tok/op) → remaining ~161K ≈ 3.6h runtime ≈ **~$13**, not $60.
-  - [ ] **8f suggest_tags** — $0 (pure MariaDB cosine), run after 8e.
+  - [x] **8f suggest_tags — DONE 2026-08-25 (embedded bulk).** After the
+    slim-table/placeholder modernization (see below): 218K embedded LA
+    opinions scored against 32 tags → **76,921 suggestions (1,575
+    auto-applied, 75,346 pending review)**. Two-run shape: the first
+    run's 30-min timeout cut the write phase (get_or_create made the
+    resume trivially safe — size timeouts to scan≈23min + writes).
+    Re-run once after the embed tail lands to score the last ~5-8K
+    rows; idempotent, ~25 min.
   - [ ] **7b lasc.org Supreme backfill — RECON DONE 2026-08-25; hole
     re-verified REAL; unattended build.** Our DB: LA Supreme ~2,000-2,250/yr
     through 2018, then **2020=8 / 2021=0 / 2022=0 / 2023=11 / 2024=42 /
