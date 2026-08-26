@@ -63,13 +63,13 @@ Log ("manifest holds {0} opinion(s)" -f $rows)
 & scp $manifest 'docketdrift:/tmp/mn_weekly.tsv' 2>&1 | Tee-Object -FilePath $log -Append
 if ($LASTEXITCODE -ne 0) { Log "SCP FAILED (exit $LASTEXITCODE) -- aborting"; exit 1 }
 
-& ssh docketdrift ('cd /home/private/docketdrift && source .venv/bin/activate && ' +
-    'rm -rf /tmp/mn_weekly && ' +
-    'python scripts/mn_scraper/fetch_manifest.py --manifest /tmp/mn_weekly.tsv --out /tmp/mn_weekly --max-runtime 0 && ' +
-    'for court in appeals supreme; do d=/tmp/mn_weekly/$court; if [ -d "$d" ] && [ -n "$(ls -A $d)" ]; then ' +
-    'python manage.py ingest_pdfs --dir $d --state MN --court $court; fi; done; ' +
-    'rm -rf /tmp/mn_weekly /tmp/mn_weekly.tsv') 2>&1 | Tee-Object -FilePath $log -Append
-if ($LASTEXITCODE -ne 0) { Log "NFSN FETCH/INGEST FAILED (exit $LASTEXITCODE)"; exit 1 }
+# Call a real shell script on the server rather than building a bash
+# one-liner in a PowerShell string. PowerShell mangles quotes on the way to
+# a native exe, which silently broke the ingest branch for two weeks while
+# the wrapper reported success -- see the header of nfsn_ingest_manifest.sh.
+# One remote command means $LASTEXITCODE actually means something.
+& ssh docketdrift '/bin/sh /home/private/docketdrift/scripts/mn_scraper/nfsn_ingest_manifest.sh /tmp/mn_weekly.tsv /tmp/mn_weekly' 2>&1 | Tee-Object -FilePath $log -Append
+if ($LASTEXITCODE -ne 0) { Log "NFSN FETCH/INGEST FAILED (exit $LASTEXITCODE) -- beacon NOT stamped"; exit 1 }
 
 Remove-Item $manifest -ErrorAction SilentlyContinue
 Log '=== MN weekly run DONE (new rows embed overnight on NFSN) ==='
