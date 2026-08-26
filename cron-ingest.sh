@@ -50,6 +50,22 @@ if [ -n "$1" ]; then
         .venv/bin/python manage.py assign_la_circuits --apply \
             --since "$SINCE" --max-runtime 240
     fi
+
+    # AZ COA post-step: the SAME shape as the LA circuits above. Both AZ
+    # Court of Appeals divisions arrive down CourtListener's single
+    # 'arizctapp' feed, so a fresh ingest lands every Division Two opinion
+    # (dockets '2 CA-...') in Division One, the court that owns the CL id.
+    # Left unchained for weeks as "filed, not fixed blind"; chained now that
+    # AZ COA needed a measured catch-up (2026-08-26), rather than waiting for
+    # a Div-2 opinion to show up misfiled on a live page.
+    #
+    # No --since here (unlike LA): the command has no such flag and does not
+    # need one -- AZ COA is ~24K rows, not LA's 341K, and a full dry-run
+    # measures 1.5s. Idempotent; a correctly-homed opinion is a no-op.
+    if [ "$1" = "arizctapp" ]; then
+        echo "--- re-homing AZ COA divisions ---"
+        .venv/bin/python manage.py assign_az_divisions --apply
+    fi
 else
     # Auto-discover: every CL court id belonging to a live state, ordered
     # by state code then court level so logs read predictably across runs.
