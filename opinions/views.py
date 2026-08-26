@@ -1409,30 +1409,18 @@ def current_judges(request):
     era = (request.GET.get("era") or "current").strip().lower()
 
     # Active span = first/last release_date over the opinions each judge
-    # participated in. Done as TWO cheap queries, NOT a Min/Max annotation on
-    # the Judge queryset -- the latter forces a GROUP BY over every judge
-    # column (incl. the bio_summary TEXT field) across the panel-vote join,
-    # which blows past max_statement_time. Here the aggregate groups ONLY by
-    # judge_id; spans are attached in Python. Roster is small (~70-140/state).
-    from opinions.models import PanelVote
+    # participated in -- READ from the denormalized columns, never computed
+    # here. The live aggregate joined panel votes to the 2.75GB opinions
+    # table for a column no index covers, so each vote cost a clustered-row
+    # fetch: 27.4s on MN (past the 25s cap -> this page hard-500'd), 23.9s
+    # AZ, 14.7s LA. `backfill_judge_spans` maintains the columns after each
+    # ingest; the span only changes when new opinions land. NULL means the
+    # judge has no votes on record, which is a real answer.
     judges = list(Judge.objects.filter(state=state).select_related("court"))
-    spans = {
-        r["judge_id"]: (r["first_op"], r["last_op"])
-        for r in (
-            PanelVote.objects.filter(judge_id__in=[j.id for j in judges])
-            .values("judge_id")
-            .annotate(
-                first_op=models.Min("opinion__release_date"),
-                last_op=models.Max("opinion__release_date"),
-            )
-        )
-    }
-    for j in judges:
-        j.first_op, j.last_op = spans.get(j.id, (None, None))
 
     def span(j):
-        return (j.first_op.year if j.first_op else None,
-                j.last_op.year if j.last_op else None)
+        return (j.first_vote_date.year if j.first_vote_date else None,
+                j.last_vote_date.year if j.last_vote_date else None)
 
     # Decades present in the data (newest first) -> filter chips.
     yrs = [y for j in judges for y in span(j) if y]
@@ -1482,7 +1470,7 @@ def current_judges(request):
         if era == "current":
             members.sort(key=lambda j: (j.role or "zz", j.full_name))
         else:  # most-recently-active first
-            members.sort(key=lambda j: (-(j.last_op.year if j.last_op else 0), j.full_name))
+            members.sort(key=lambda j: (-(j.last_vote_date.year if j.last_vote_date else 0), j.full_name))
 
     return render(request, "opinions/current_judges.html", {
         "state": state,

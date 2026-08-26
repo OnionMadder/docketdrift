@@ -207,6 +207,32 @@ class Judge(models.Model):
         blank=True,
         help_text="When this judge took the bench in their current role.",
     )
+    # DERIVED, denormalized on purpose (2026-08-26). The active span is
+    # MIN/MAX release_date over the judge's panel votes. Computing it live
+    # means joining panel votes to the 2.75GB opinions table and reading a
+    # non-covered column per vote, which crossed max_statement_time and
+    # 500'd /current-judges/ on MN (27.4s measured; AZ 23.9s, LA 14.7s
+    # right behind it). The span only changes when new opinions land, so
+    # it belongs on this small table, refreshed by `backfill_judge_spans`
+    # after each ingest -- not recomputed per request. NULL = no votes on
+    # record, which is a real state (roster rows with no in-corpus
+    # opinions), NOT "not yet computed".
+    first_vote_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Derived: earliest opinion release_date this judge sat on. "
+            "Maintained by backfill_judge_spans; do not edit by hand."
+        ),
+    )
+    last_vote_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text=(
+            "Derived: latest opinion release_date this judge sat on. "
+            "Maintained by backfill_judge_spans; do not edit by hand."
+        ),
+    )
     bio_url = models.URLField(
         max_length=512,
         blank=True,
