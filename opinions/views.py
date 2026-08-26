@@ -247,10 +247,17 @@ def _state_year_histogram(state, court_ids, compute=True):
     if not raw:
         return None
 
-    # Drop stray future-dated rows (CL has served them before, and one
-    # would stretch the axis to a year that hasn't happened).
-    this_year = timezone.localdate().year
-    raw = {y: n for y, n in raw.items() if y <= this_year}
+    # End the series at the last COMPLETE year. The current year is only
+    # partially filed, so plotting it beside full years draws a cliff at
+    # the right edge that looks like collapsing coverage and is really
+    # just "it's August" -- the classic partial-period charting lie. The
+    # lede still says "<first>-present", and the stats tiles carry the
+    # live totals, so nothing is hidden by ending the SHAPE a year early.
+    # (This also drops the stray future-dated rows CL has served before,
+    # which would otherwise stretch the axis to a year that hasn't
+    # happened.)
+    last_complete = timezone.localdate().year - 1
+    raw = {y: n for y, n in raw.items() if y <= last_complete}
     if not raw:
         return None
 
