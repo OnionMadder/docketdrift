@@ -1,0 +1,143 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>DocketDrift Ko-fi cover</title>
+<style>
+  @font-face {
+    font-family: 'Chakra Petch';
+    /* Shared with the site; no second copy of the binary in the repo. */
+    src: url('../../opinions/static/opinions/fonts/ChakraPetch-Regular.ttf') format('truetype');
+  }
+  :root {
+    --bg-deep: #050505;
+    --neon-pink: #ff2bb3;
+    --neon-cyan: #26ffe6;
+    --neon-amber: #ffbf00;
+    --neon-green: #9bef4d;
+    --neon-violet: #b14bff;
+    --text-dim: #948ca1;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1200px; height: 400px; }
+  body {
+    font-family: 'Chakra Petch', system-ui, sans-serif;
+    background: var(--bg-deep);
+    position: relative;
+    overflow: hidden;
+  }
+  /* Deep violet bloom behind the wordmark, so the black isn't flat. */
+  .bloom {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(58% 85% at 22% 46%, rgba(177, 75, 255, 0.20), transparent 68%),
+      radial-gradient(46% 78% at 82% 60%, rgba(38, 255, 230, 0.10), transparent 70%);
+  }
+  .grid {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(177, 75, 255, 0.055) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(177, 75, 255, 0.055) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(70% 70% at 50% 50%, #000 40%, transparent 100%);
+  }
+  svg.traces { position: absolute; inset: 0; }
+
+  .stage {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 66px;
+  }
+  .wordmark {
+    font-size: 63px; font-weight: 700; letter-spacing: 0.085em;
+    color: #ff7fd0;
+    text-shadow:
+      0 0 6px rgba(255, 43, 179, 0.95),
+      0 0 22px rgba(255, 43, 179, 0.72),
+      0 0 52px rgba(255, 43, 179, 0.42);
+    line-height: 1;
+  }
+  .tagline {
+    margin-top: 15px; font-size: 20.5px; letter-spacing: 0.012em;
+    color: var(--neon-cyan);
+    text-shadow: 0 0 12px rgba(38, 255, 230, 0.5);
+  }
+  .promises {
+    margin-top: 13px; font-size: 13.5px; letter-spacing: 0.05em;
+    color: var(--text-dim);
+  }
+  .promises .on { color: var(--neon-green); }
+  .promises .sep { opacity: 0.5; padding: 0 7px; }
+
+  .right { text-align: right; }
+  .kicker {
+    font-size: 13.5px; letter-spacing: 0.30em; color: var(--neon-amber);
+    text-shadow: 0 0 11px rgba(255, 191, 0, 0.55);
+    margin-bottom: 17px;
+  }
+  .chips { display: flex; gap: 11px; justify-content: flex-end; }
+  .chip {
+    width: 74px; padding: 11px 0 9px;
+    border: 1px solid rgba(155, 239, 77, 0.55);
+    border-radius: 3px;
+    background: rgba(155, 239, 77, 0.055);
+    text-align: center;
+  }
+  .chip .code {
+    display: block; font-size: 20px; font-weight: 700; letter-spacing: 0.05em;
+    color: var(--neon-green);
+    text-shadow: 0 0 9px rgba(155, 239, 77, 0.6);
+  }
+  .chip .state {
+    display: block; margin-top: 3px;
+    font-size: 10px; letter-spacing: 0.17em; color: rgba(155, 239, 77, 0.85);
+  }
+  /* The open slot: amber, because it is the thing being funded. */
+  .chip.next {
+    border-color: rgba(255, 191, 0, 0.75);
+    background: rgba(255, 191, 0, 0.075);
+    box-shadow: 0 0 17px rgba(255, 191, 0, 0.2);
+  }
+  .chip.next .code { color: var(--neon-amber); text-shadow: 0 0 11px rgba(255, 191, 0, 0.75); }
+  .chip.next .state { color: rgba(255, 191, 0, 0.9); }
+
+  .url {
+    position: absolute; left: 66px; bottom: 34px;
+    font-size: 13px; letter-spacing: 0.13em; color: rgba(148, 140, 161, 0.75);
+  }
+</style>
+
+<div class="bloom"></div>
+<div class="grid"></div>
+
+<svg class="traces" viewBox="0 0 1200 400" fill="none">
+  <path d="M 96 96 L 168 96 L 214 50" stroke="#ff2bb3" stroke-width="2" opacity="0.85"/>
+  <circle cx="214" cy="50" r="4.5" fill="#ff2bb3"/>
+  <path d="M 1104 300 L 1020 300 L 974 346" stroke="#26ffe6" stroke-width="2" opacity="0.8"/>
+  <circle cx="974" cy="346" r="4.5" fill="#26ffe6"/>
+  <path d="M 96 316 L 176 316 L 216 276" stroke="#b14bff" stroke-width="2" opacity="0.8"/>
+  <circle cx="216" cy="276" r="4.5" fill="#b14bff"/>
+  <path d="M 1104 84 L 1032 84 L 992 124" stroke="#9bef4d" stroke-width="2" opacity="0.7"/>
+  <circle cx="992" cy="124" r="4.5" fill="#9bef4d"/>
+</svg>
+
+<div class="stage">
+  <div class="left">
+    <div class="wordmark">DOCKETDRIFT</div>
+    <div class="tagline">Real-time tracking of state judicial trends.</div>
+    <div class="promises">
+      Free public record<span class="sep">&middot;</span><span class="on">no generated text</span><span class="sep">&middot;</span><span class="on">no tracking</span>
+    </div>
+  </div>
+
+  <div class="right">
+    <div class="kicker">FUND THE NEXT STATE</div>
+    <div class="chips">
+      <div class="chip"><span class="code">MN</span><span class="state">LIVE</span></div>
+      <div class="chip"><span class="code">NH</span><span class="state">LIVE</span></div>
+      <div class="chip"><span class="code">AZ</span><span class="state">LIVE</span></div>
+      <div class="chip"><span class="code">LA</span><span class="state">LIVE</span></div>
+      <div class="chip next"><span class="code">??</span><span class="state">NEXT</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="url">ko-fi.com/onionmadder</div>

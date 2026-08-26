@@ -39,3 +39,4 @@ Thumbs.db
 # Research materials (not DocketDrift code)
 research/
 .cache/
+scripts/brand/*.png
