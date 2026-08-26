@@ -589,9 +589,17 @@ must start with `/bin/sh`. Path alone is not enough.
     `ingest_pdfs --state LA --court supreme`. ~1 day, unattended.
     NOT a launch gate — disclose the 2020–2025 Supreme gap on /about/
     (MN precedent) and backfill after launch.
-  - [ ] **9–12: rosters, weekly cron, flip is_live** — seat the 5-circuit +
-    Supreme benches, register the weekly forward-fill, then LA goes on the
-    nav. `docs/LA_BUILD_LIST.md` has the full overlay.
+  - [x] **9–12 DONE — LOUISIANA IS LIVE (2026-08-25).** Benches seated
+    (60 sitting across all 6 courts), weekly cron already registered
+    (`ingestlacoa`/`ingestlasupreme` + `assign_la_circuits` chained),
+    `is_live=True`, gunicorn restarted, copy shipped with the gaps
+    disclosed on `/about/#coverage-gaps`. Verified live: apex LA tile
+    (341,104), all key pages 200 (warm 0.29–0.44s after
+    `precompute_explore_tags`), LA search 50 results in 2.1s, 5xx below
+    threshold. **Post-launch:** re-submit the la sitemap in Search
+    Console (NOT right after a deploy — stale-503 lesson), and MCP's
+    "after LA launches" gate is now met (privacy section + load test +
+    connector directory).
   Reporter/parallel cites: NOT COMING from CL (their citations.csv has zero
   rows for LA's 10M+ cluster ids — verified against live API; permanent
   upstream gap until CL backfills).

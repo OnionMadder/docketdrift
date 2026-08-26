@@ -97,7 +97,35 @@ in indexed JSON-LD) was reverted — extractive holdings = "no generated text",
 the strong original posture, is correct. Migrations 0026 (holdings) + 0027
 (clustering) are on main and applied on prod.
 
-## Latest session (2026-08-25b) — three LA perf pathologies measured + killed; dispositions DONE; judge layer purged + recovered
+## LOUISIANA IS LIVE (2026-08-25) — four states
+
+`is_live=True` flipped, gunicorn restarted, verified end to end: apex
+carries the LA tile (341,104), landing/opinions/current-judges/about/
+sitemap all 200 (cold 8.6s/13.7s → warm 0.29s/0.44s after
+`precompute_explore_tags`), LA search POST returns 50 results in 2.1s,
+5xx below threshold. Copy shipped WITH the gaps, not after them:
+`/about/#coverage-gaps` now has a Louisiana subsection naming every
+rough edge (Supreme 2020–2025 ~3% upstream, zero reporter cites,
+approximate circuit labels on older writ rulings, 1980-forward
+semantic scope, ~two-thirds dispositions), the FAQ JSON-LD says
+"Four", llms.txt lists LA live with the same disclosures, and the
+support page's "the next state is Louisiana" fundraising pitch was
+rewritten as delivered (it would have gone stale at the flip) with the
+lasc.org backfill named as what's next.
+
+**Still open on LA, in order:** the embed tail (~5K in-scope rows; the
+overnight tick finishes it, then re-run `suggest_tags --state LA`,
+idempotent ~25 min); the lasc.org Supreme backfill (recon done — no
+bot wall, Blazor SPA, `opinions?p=YYYY-NNN`, ~360 browser loads,
+unattended ~1 day); the editorial span-splits `merge_duplicate_judges`
+correctly refused (Tate/Ponder/Bailes/Hardy/Hall/Marcus, plus the
+McClendon and Lottinger surname pairs); and the ~75K pending tag queue.
+**Post-launch ops:** re-submit the la sitemap in Search Console — but
+NOT right after a deploy (the stale-503 lesson), and MCP's gating
+condition ("after LA launches") is now met: privacy-page MCP section +
+load test + connector-directory submission.
+
+## Prior session (2026-08-25b) — three LA perf pathologies measured + killed; dispositions DONE; judge layer purged + recovered
 
 One-day session, everything measured-first, committed + deployed + verified.
 
@@ -1753,7 +1781,7 @@ MN is the **Flagship**; NH + AZ carry a green **Live** pill.
 | MN (flagship) | `mn.docketdrift.com` | 69,607 | 2026-08-12 | disp 97% / emb 99%; CONTINUOUS 2015–2026 |
 | AZ (live) | `az.docketdrift.com` | 37,834 | current | disp 64% / emb 99%; COA Div One/Two split |
 | NH (live) | `nh.docketdrift.com` | 20,682 | 2026-07-31 (court quiet) | disp 78% / emb 99%; roster FINISHED 2026-08-23 (5 seated, 30 RETIRED, slugs fixed w/ 301s) |
-| LA (**dark**, is_live=False) | `la.docketdrift.com` | 341,104 | current (weekly cron live) | disp 65% (DONE 08-25) / emb ~70%→finishing overnight; cite graph 1.54M edges; statutes 252K; holdings 34.6K; panel votes **~144K** (reporter era lit up 08-25 — five new panel formats); judges ~600 incl. **all 6 benches SEATED (60 sitting, roles from the courts' own sites)**. Launch gates left: 8f tags after embed, disclosure copy (drafted: docs/LA_LAUNCH_COPY.md), is_live flip |
+| LA (**LIVE 2026-08-25**) | `la.docketdrift.com` | 341,104 | current (weekly cron live) | Largest corpus, 1809–present, Supreme + all 5 COA circuits. disp 65% / emb 66% (1980+ scope) / tags 76.9K suggestions; cite graph 1.54M edges; statutes 252K; holdings 34.6K; panel votes ~144K; judges 560 incl. **all 6 benches seated (60 sitting)**. Gaps DISCLOSED on /about/#coverage-gaps — do not remove |
 
 **AZ judge roster rebuilt 2026-08-07 (247 → 194).** Court split into Supreme +
 COA Division One + Division Two; the current bench is fully seated — **35
