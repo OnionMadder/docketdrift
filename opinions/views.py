@@ -322,6 +322,43 @@ def _state_year_histogram(state, court_ids, compute=True):
     return rows
 
 
+def _apex_corpus_stack(compute=False):
+    """Cached, pre-BUILT stacked band for the apex hero.
+
+    Cached as ONE entry holding the finished payload, not assembled per
+    request from the four per-state histograms. That assembly needed all
+    four keys alive at once, so any single eviction silently dropped the
+    graphic -- it would flicker in and out as entries came and went.
+    One key is atomic: either the whole band is there or it isn't, and
+    it can never render a partial corpus (which would read as a real
+    coverage dip).
+
+    ``compute=False`` is READ-ONLY, so a cold cache costs the graphic and
+    never a slow apex -- the explore-tags rule. Only
+    ``precompute_explore_tags`` computes.
+    """
+    key = "apex_corpus_stack"
+    payload = cache.get(key)
+    if payload is not None or not compute:
+        return payload
+
+    from opinions import charts
+
+    live = list(State.objects.filter(is_live=True).order_by("name"))
+    series = []
+    for s in live:
+        rows = _state_year_histogram(s, _state_court_ids(s), compute=True)
+        if not rows:
+            # Refuse to build a stack missing a live state.
+            return None
+        series.append({"code": s.code, "name": s.name, "rows": rows})
+
+    payload = charts.build_stacked_corpus_band(series)
+    if payload:
+        cache.set(key, payload, CACHE_SEC_STATE_STATS)
+    return payload
+
+
 @csrf_exempt  # search is POSTed (keeps the query out of the URL); read-only, no state to forge
 @cache_control(public=True, max_age=CACHE_SEC_HOME)
 def home(request):
@@ -352,31 +389,10 @@ def home(request):
                 s, _state_court_ids(s)
             )["total_opinions"]
 
-        # Module-scope name: `charts` is imported function-locally further
-        # down this same view (the state-landing branch), which makes the
-        # name local to the WHOLE function -- so referencing it here without
-        # its own import is the documented UnboundLocalError trap, and it
-        # 500'd the apex. Import inside this branch too.
-        from opinions import charts
-
-        # Whole-corpus hero band, stacked by state. Composed from the SAME
-        # per-state histograms the landing bands use, read-only -- so a warm
-        # cache costs zero extra queries and a cold one costs the graphic,
-        # never a slow apex (the explore-tags rule).
-        #
-        # ALL-OR-NOTHING on purpose: a stack quietly missing one state
-        # understates the corpus and draws what looks like a real coverage
-        # dip. Better no graphic than a wrong one.
-        hists = [
-            (s, _state_year_histogram(s, _state_court_ids(s), compute=False))
-            for s in live
-        ]
-        corpus_stack = None
-        if hists and all(rows for _, rows in hists):
-            corpus_stack = charts.build_stacked_corpus_band([
-                {"code": s.code, "name": s.name, "rows": rows}
-                for s, rows in hists
-            ])
+        # Whole-corpus hero band, stacked by state. Read-only single
+        # cache entry (see _apex_corpus_stack): warm costs nothing, cold
+        # costs the graphic, and it can never render a partial corpus.
+        corpus_stack = _apex_corpus_stack()
 
         return render(request, "opinions/apex.html", {
             "states": live,

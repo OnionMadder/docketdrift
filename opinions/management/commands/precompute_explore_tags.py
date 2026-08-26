@@ -64,7 +64,8 @@ class Command(BaseCommand):
 
         # Local import: pulls in opinions.views only when the command
         # actually runs, avoiding any import-time cycle at startup.
-        from opinions.views import (_state_court_ids, _state_landing_stats,
+        from opinions.views import (_apex_corpus_stack, _state_court_ids,
+                                    _state_landing_stats,
                                     _state_year_histogram)
 
         # Lift this connection's per-statement timeout. settings' 25s
@@ -105,4 +106,23 @@ class Command(BaseCommand):
             self.stdout.write(
                 f"  {s.code}: {len(sized)} tags + stats warmed in {elapsed:.1f}s"
             )
+
+        # Apex hero band. Built LAST, from the per-state histograms just
+        # warmed above, and stored as one entry -- the apex reads only
+        # that key, so it can never render a partially-populated corpus.
+        # Skipped when scoped to a single state, since the stack needs
+        # every live state to be honest.
+        if not state:
+            t0 = time.time()
+            stack = _apex_corpus_stack(compute=True)
+            if stack:
+                self.stdout.write(
+                    f"  apex band: {len(stack['bands'])} states, "
+                    f"{stack['grand_total']:,} opinions ({time.time() - t0:.1f}s)"
+                )
+            else:
+                self.stdout.write(self.style.WARNING(
+                    "  apex band: SKIPPED (a live state has no histogram)"
+                ))
+
         self.stdout.write(self.style.SUCCESS("Done."))
