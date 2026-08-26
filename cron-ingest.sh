@@ -71,4 +71,14 @@ for c in Court.objects.filter(state__is_live=True).order_by('state__code', 'leve
     done
 fi
 
+# Refresh the denormalized judge active-spans. These back /current-judges/
+# and its era filters; they are derived from panel votes, so any ingest can
+# move them. Cheap (seconds per state) and idempotent -- and NOT optional:
+# computing the span live is what 500'd /current-judges/ on MN (2026-08-26),
+# so the page now trusts these columns and a stale value shows a judge's
+# tenure ending early. Runs unconditionally, including after a single-court
+# manual run, because a new opinion in any court can extend a span.
+echo "--- refreshing judge spans ---"
+.venv/bin/python manage.py backfill_judge_spans
+
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] cron-ingest done"
