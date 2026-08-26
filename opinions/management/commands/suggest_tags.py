@@ -172,9 +172,16 @@ class Command(BaseCommand):
                 str(c) for c in court_ids
             ) + ")"
 
-        # (1) Build the opinion candidate set.
+        # (1) Build the opinion candidate set -- for DISPLAY and the
+        # optional --limit smoke-test only. Since 2026-06-27 the
+        # `embedding` column is NOT NULL with a zero-vector default, so
+        # `embedding IS NOT NULL` is always true and would count (and,
+        # worse, SCORE) placeholder rows -- structural for LA, whose
+        # pre-1980 tail (~111K rows) is deliberately never embedded
+        # (`.embed_since`). Gate on the indexed embedding_pending flag,
+        # same as semantic.py.
         with connection.cursor() as cursor:
-            base_where = "embedding IS NOT NULL"
+            base_where = "embedding_pending = 0"
             if not rescore_all:
                 base_where += (
                     " AND id NOT IN ("
@@ -196,18 +203,20 @@ class Command(BaseCommand):
             ))
             return
 
-        # (2) Build the set of "in-scope opinion IDs" we're willing to score
-        # so the per-tag distance scans can filter on it cheaply. For full
-        # corpus runs without --limit, we skip the IN-list and let the WHERE
-        # clause stand on its own.
+        # (2) With --limit, materialize a small IN-list so a smoke test
+        # scans only N opinions. WITHOUT --limit there is deliberately no
+        # id list any more: the old code shipped every un-scored id as an
+        # IN clause per tag, which at LA scale is a 341K-int parameter
+        # blob times 32 tags. State scoping now rides the SLIM table's
+        # clustered (court_id, ...) key inside the scan itself, and the
+        # already-scored skip is enforced by get_or_create at write time.
         in_scope_ids: list[int] | None = None
-        if limit or not rescore_all or state:
+        if limit:
             with connection.cursor() as cursor:
-                lim_clause = "LIMIT %s" if limit else ""
-                params = [limit] if limit else []
                 cursor.execute(
-                    f"SELECT id FROM opinions_opinion WHERE {base_where} ORDER BY id {lim_clause}",
-                    params,
+                    f"SELECT id FROM opinions_opinion WHERE {base_where} "
+                    "ORDER BY id LIMIT %s",
+                    [limit],
                 )
                 in_scope_ids = [row[0] for row in cursor.fetchall()]
 
@@ -238,19 +247,22 @@ class Command(BaseCommand):
         for i, tag in enumerate(tags, 1):
             tag_vec_json = json.dumps(tag.embedding)
 
+            # Scan the SLIM embedding table, not the 2.75GB fat table:
+            # it holds ONLY truly-embedded rows (placeholder zero-vectors
+            # never enter it, so they can't be scored), its clustered
+            # (court_id, release_date, opinion_id) key makes the state
+            # scope a range scan, and the rows are a fraction of the IO
+            # (the same reason search moved here 2026-08-05).
             sql = [
-                "SELECT id,",
+                "SELECT opinion_id,",
                 "       VEC_DISTANCE_COSINE(embedding, Vec_FromText(%s)) AS dist",
-                "FROM opinions_opinion",
-                "WHERE embedding IS NOT NULL",
+                "FROM opinions_opinionembedding",
+                "WHERE 1=1" + court_filter_sql,
             ]
             params: list = [tag_vec_json]
             if in_scope_ids is not None:
-                # Bound the IN-list to keep the query plan tight. For the
-                # full corpus, this list is up to 60K ints -- still a
-                # reasonable IN clause for MariaDB.
                 placeholders = ",".join(["%s"] * len(in_scope_ids))
-                sql.append(f"  AND id IN ({placeholders})")
+                sql.append(f"  AND opinion_id IN ({placeholders})")
                 params.extend(in_scope_ids)
             sql.append("HAVING dist < %s")
             params.append(review_distance)
@@ -270,6 +282,21 @@ class Command(BaseCommand):
             )
 
         scan_elapsed = time.time() - run_started
+
+        # (4b) Drop opinions that already have suggestions (the scan no
+        # longer excludes them server-side). Chunked lookup over just the
+        # candidate keys -- sparse, so this is cheap even corpus-wide.
+        if not rescore_all and candidates:
+            cand_ids = list(candidates.keys())
+            scored: set[int] = set()
+            for i in range(0, len(cand_ids), 10_000):
+                scored.update(
+                    TagSuggestion.objects.filter(
+                        opinion_id__in=cand_ids[i:i + 10_000]
+                    ).values_list("opinion_id", flat=True).distinct()
+                )
+            for oid in scored:
+                candidates.pop(oid, None)
 
         # (5) For each opinion: keep top-N candidates above review, write
         # TagSuggestion rows (idempotent via unique_together), auto-apply
