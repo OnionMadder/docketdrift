@@ -77,6 +77,15 @@
 <div class="glossy-frame apex-hero">
   <h1>DocketDrift</h1>
   <p class="lede">Real-time tracking of state judicial trends. Public records, organized for human review.</p>
+  {% if corpus_stack %}
+    {% include "opinions/_corpus_stack.html" %}
+    <p class="corpus-stack__caption">
+      <strong>{{ corpus_stack.grand_total|intcomma }}</strong> opinions,
+      {{ corpus_stack.year_min }}&ndash;{{ corpus_stack.year_max }} &middot;
+      busiest year <strong>{{ corpus_stack.peak.year }}</strong>
+      ({{ corpus_stack.peak.n|intcomma }})
+    </p>
+  {% endif %}
 </div>
 
 <div class="glossy-frame">

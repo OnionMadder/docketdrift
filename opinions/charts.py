@@ -180,6 +180,142 @@ def build_corpus_band(
     }
 
 
+# Per-state band colors for the apex stack. Drawn from the --neon-* BRAND
+# family, deliberately NOT the --dd-* semantic key: those five hues mean
+# affirmed / reversed / vacated / etc. everywhere else on the site, and
+# reusing them here would imply an outcome reading that a state identity
+# does not carry. Order is the stacking order, oldest corpus at the base.
+_APEX_BAND_COLORS = (
+    "var(--neon-violet)",
+    "var(--neon-cyan)",
+    "var(--neon-green)",
+    "var(--neon-pink)",
+    "var(--neon-amber)",
+)
+
+_STACK_HEIGHT = 230
+
+
+def build_stacked_corpus_band(
+    series: list[dict],
+    max_ticks: int = 7,
+) -> Optional[dict]:
+    """Whole-corpus silhouette for the apex, stacked by state.
+
+    ``series`` is a list of ``{"code", "name", "rows"}`` where ``rows`` is
+    that state's ``{"year", "n"}`` histogram (the same per-state payload
+    the landing band uses, so a warm cache costs no new queries).
+
+    Same honesty rules as ``build_corpus_band``: every year in the union
+    range is present for every state -- zero-filled, never interpolated --
+    so a state's coverage hole reads as a hole in its own band instead of
+    being smoothed shut by its neighbours. Bands stack oldest-corpus-first
+    so the deep history forms the base.
+
+    The CALLER must pass every live state or none: a stack silently
+    missing one state understates the corpus and reads as a real dip.
+
+    Returns ``None`` when there is nothing to draw.
+    """
+    series = [s for s in series if s.get("rows")]
+    if not series:
+        return None
+
+    # Union year range across every state, clipped to where data exists.
+    year_min = min(s["rows"][0]["year"] for s in series)
+    year_max = max(s["rows"][-1]["year"] for s in series)
+    span = year_max - year_min
+    if span <= 0:
+        return None
+
+    # Oldest corpus at the base of the stack.
+    series = sorted(series, key=lambda s: s["rows"][0]["year"])
+
+    years = list(range(year_min, year_max + 1))
+    dense = [
+        {int(r["year"]): int(r["n"]) for r in s["rows"]} for s in series
+    ]
+
+    totals = [sum(d.get(y, 0) for d in dense) for y in years]
+    value_max = max(totals)
+    if value_max <= 0:
+        return None
+
+    plot_h = _STACK_HEIGHT - _BAND_PAD_TOP - _BAND_LABEL_BAND
+    baseline = _STACK_HEIGHT - _BAND_LABEL_BAND
+
+    def x_of(year: int) -> float:
+        return (year - year_min) / span * _BAND_WIDTH
+
+    def y_of(value: int) -> float:
+        return baseline - (value / value_max) * plot_h
+
+    # Walk the stack bottom-up, carrying the running cumulative height so
+    # each band is the ribbon between the previous top and the new one.
+    running = [0] * len(years)
+    bands: list[dict] = []
+    for idx, (state_series, counts) in enumerate(zip(series, dense)):
+        lower = list(running)
+        for i, y in enumerate(years):
+            running[i] += counts.get(y, 0)
+        upper = list(running)
+
+        top = " ".join(
+            f"L {x_of(y):.1f},{y_of(v):.1f}" for y, v in zip(years, upper)
+        )
+        back = " ".join(
+            f"L {x_of(y):.1f},{y_of(v):.1f}"
+            for y, v in zip(reversed(years), reversed(lower))
+        )
+        total_n = sum(counts.values())
+        bands.append({
+            "code": state_series["code"],
+            "name": state_series["name"],
+            "color": _APEX_BAND_COLORS[idx % len(_APEX_BAND_COLORS)],
+            "total": total_n,
+            "first_year": state_series["rows"][0]["year"],
+            "area": (
+                f"M {x_of(years[0]):.1f},{y_of(lower[0]):.1f} {top} {back} Z"
+            ),
+            # Lit top edge, so each ribbon reads as its own layer.
+            "line": "M " + " L ".join(
+                f"{x_of(y):.1f},{y_of(v):.1f}" for y, v in zip(years, upper)
+            ),
+        })
+
+    ticks: list[dict] = []
+    seen: set[int] = set()
+    for i in range(max_ticks):
+        raw = year_min + round(span * i / (max_ticks - 1))
+        year = year_max if i == max_ticks - 1 else round(raw / 10) * 10
+        year = min(max(year, year_min), year_max)
+        if year in seen:
+            continue
+        seen.add(year)
+        ticks.append({"year": year, "x": x_of(year)})
+
+    peak_i = max(range(len(years)), key=lambda i: totals[i])
+
+    return {
+        "width": _BAND_WIDTH,
+        "height": _STACK_HEIGHT,
+        "baseline": baseline,
+        "bands": bands,
+        "ticks": ticks,
+        "label_y": _STACK_HEIGHT - 6,
+        "year_min": year_min,
+        "year_max": year_max,
+        "value_max": value_max,
+        "grand_total": sum(b["total"] for b in bands),
+        "peak": {
+            "year": years[peak_i],
+            "n": totals[peak_i],
+            "x": x_of(years[peak_i]),
+            "y": y_of(totals[peak_i]),
+        },
+    }
+
+
 def build_yearly_votes_chart(
     series_a: list[dict],
     label_a: str,

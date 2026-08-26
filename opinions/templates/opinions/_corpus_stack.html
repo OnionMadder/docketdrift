@@ -1,0 +1,48 @@
+{% load humanize %}
+{% comment %}
+Apex hero band: the whole corpus by filing year, stacked by state.
+
+Same construction rules as the per-state band (see _corpus_band.html):
+zero-filled years so a coverage hole reads as a hole, the series ends at
+the last COMPLETE year so the current partial year can't draw a false
+cliff, and <title>/<desc> carry the same facts the shape does.
+
+Stacked oldest-corpus-first, so the deepest history is the base. Colors
+come from the --neon-* BRAND family, never the --dd-* outcome key -- a
+state identity carries no affirmed/reversed meaning.
+{% endcomment %}
+<div class="corpus-stack">
+  <svg class="corpus-stack__svg"
+       viewBox="0 0 {{ corpus_stack.width }} {{ corpus_stack.height }}"
+       role="img" aria-labelledby="cs-t cs-d">
+    <title id="cs-t">Opinions per year across all {{ corpus_stack.bands|length }} live states, {{ corpus_stack.year_min }} to {{ corpus_stack.year_max }}</title>
+    <desc id="cs-d">Stacked area chart of the DocketDrift corpus by filing year: {{ corpus_stack.grand_total|intcomma }} opinions spanning {{ corpus_stack.year_min }} to {{ corpus_stack.year_max }}, peaking in {{ corpus_stack.peak.year }} with {{ corpus_stack.peak.n|intcomma }} opinions. Composed of {% for b in corpus_stack.bands %}{{ b.name }} ({{ b.total|intcomma }}, from {{ b.first_year }}){% if not forloop.last %}; {% endif %}{% endfor %}.</desc>
+
+    {% for band in corpus_stack.bands %}
+      <path class="corpus-stack__area" d="{{ band.area }}"
+            style="fill: {{ band.color }};" />
+      <path class="corpus-stack__line" d="{{ band.line }}" fill="none"
+            style="stroke: {{ band.color }};"
+            vector-effect="non-scaling-stroke" />
+    {% endfor %}
+
+    <line class="corpus-stack__baseline"
+          x1="0" y1="{{ corpus_stack.baseline }}"
+          x2="{{ corpus_stack.width }}" y2="{{ corpus_stack.baseline }}" />
+
+    {% for tick in corpus_stack.ticks %}
+      <text class="corpus-stack__tick" x="{{ tick.x }}" y="{{ corpus_stack.label_y }}"
+            text-anchor="{% if forloop.first %}start{% elif forloop.last %}end{% else %}middle{% endif %}">{{ tick.year }}</text>
+    {% endfor %}
+  </svg>
+
+  <ul class="corpus-stack__legend">
+    {% for band in corpus_stack.bands %}
+      <li class="corpus-stack__legend-item">
+        <span class="corpus-stack__swatch" style="background: {{ band.color }};"></span>
+        <span class="corpus-stack__legend-name">{{ band.name }}</span>
+        <span class="corpus-stack__legend-n">{{ band.total|intcomma }}</span>
+      </li>
+    {% endfor %}
+  </ul>
+</div>

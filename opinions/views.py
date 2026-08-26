@@ -351,8 +351,29 @@ def home(request):
             s.opinion_count = _state_landing_stats(
                 s, _state_court_ids(s)
             )["total_opinions"]
+
+        # Whole-corpus hero band, stacked by state. Composed from the SAME
+        # per-state histograms the landing bands use, read-only -- so a warm
+        # cache costs zero extra queries and a cold one costs the graphic,
+        # never a slow apex (the explore-tags rule).
+        #
+        # ALL-OR-NOTHING on purpose: a stack quietly missing one state
+        # understates the corpus and draws what looks like a real coverage
+        # dip. Better no graphic than a wrong one.
+        hists = [
+            (s, _state_year_histogram(s, _state_court_ids(s), compute=False))
+            for s in live
+        ]
+        corpus_stack = None
+        if hists and all(rows for _, rows in hists):
+            corpus_stack = charts.build_stacked_corpus_band([
+                {"code": s.code, "name": s.name, "rows": rows}
+                for s, rows in hists
+            ])
+
         return render(request, "opinions/apex.html", {
             "states": live,
+            "corpus_stack": corpus_stack,
             "active_nav": "opinions",
             "search_q": (request.GET.get("q") or "").strip(),
         })

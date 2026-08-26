@@ -1719,6 +1719,99 @@ button.cta-primary {
     rgba(var(--neon-violet-rgb), 0.5));
 }
 
+/* Corpus stack -- the APEX hero. Same grammar as .corpus-band (bled to the
+   frame edges, proportional scaling) but layered: one ribbon per state,
+   stacked oldest-corpus-first. Band colors are set inline from the
+   --neon-* brand family in the template, since they are per-state data,
+   not a fixed rule. See _corpus_stack.html. */
+.corpus-stack {
+  margin: 1.6rem -1.4rem 0;
+  padding: 0;
+}
+
+.corpus-stack__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.corpus-stack__area {
+  /* Translucent so the ribbons read as layers of one corpus rather than
+     opaque blocks; the lit top edge carries each band's identity. */
+  fill-opacity: 0.34;
+}
+
+.corpus-stack__line {
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+  opacity: 0.95;
+}
+
+.corpus-stack__baseline {
+  stroke: rgba(var(--neon-cyan-rgb), 0.22);
+  stroke-width: 1;
+}
+
+.corpus-stack__tick {
+  fill: var(--text-dim);
+  font-size: 13px;
+  font-family: inherit;
+  letter-spacing: 0.08em;
+}
+
+.corpus-stack__legend {
+  list-style: none;
+  margin: 0.7rem 1.4rem 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.45rem 1.1rem;
+}
+
+.corpus-stack__legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  letter-spacing: 0.03em;
+}
+
+.corpus-stack__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+}
+
+.corpus-stack__legend-n {
+  color: var(--text-primary);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.corpus-stack__caption {
+  margin: 0.5rem 1.4rem 0;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  letter-spacing: 0.03em;
+  text-align: center;
+}
+
+.corpus-stack__caption strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  /* Same reason as .corpus-band: viewBox-unit labels fall below
+     legibility once scaled to a phone. The caption keeps the span. */
+  .corpus-stack__tick { display: none; }
+  .corpus-stack { margin-top: 1.2rem; }
+  .corpus-stack__legend { gap: 0.35rem 0.75rem; }
+}
+
 @media (max-width: 640px) {
   /* Tick labels are sized in viewBox units, so proportional scaling
      shrinks them below legibility on a phone. Hide the in-SVG years and
