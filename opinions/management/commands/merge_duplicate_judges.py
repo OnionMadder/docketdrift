@@ -28,13 +28,23 @@ commits.
 """
 
 from collections import defaultdict
+from datetime import timedelta
 
 from django.core.management.base import BaseCommand
 from django.db import connection
-from django.db.models import Count
+from django.db.models import Count, Max, Min
 
 from opinions.judge_merge import merge_judge, metadata_score, surname as _surname
 from opinions.models import Judge, PanelVote, State
+
+
+def _vote_span(judge):
+    """(first, last) release_date over the judge's panel votes, or (None, None)."""
+    agg = PanelVote.objects.filter(judge=judge).aggregate(
+        first=Min("opinion__release_date"),
+        last=Max("opinion__release_date"),
+    )
+    return agg["first"], agg["last"]
 
 
 def _norm(full_name: str) -> str:
@@ -106,7 +116,46 @@ class Command(BaseCommand):
                         key=lambda j: (metadata_score(j), vc.get(j.pk, 0), -j.pk),
                     )
                     losers = [j for j in rows if j.pk != survivor.pk]
-                    for loser in losers:
+                    # SPAN GATE (2026-08-25): "one full name in the group"
+                    # is NOT proof the shadow's votes belong to that
+                    # person -- a newly seated judge is often the ONLY
+                    # full-name row for a surname whose learned shadow
+                    # carries a PREDECESSOR's decades (LA: a 1960s-2026
+                    # 'Miller' shadow beside just-created 'Steven
+                    # Miller'). Fold only when the survivor has votes of
+                    # its own and the shadow's span fits inside the
+                    # survivor's (+/- 3y grace); otherwise refuse and
+                    # leave the split for editorial eyes.
+                    s_span = _vote_span(survivor)
+                    if s_span[0] is None:
+                        total_skipped += len(losers)
+                        self.stdout.write(
+                            f"  [{st.code}] SKIP fold into "
+                            f"{survivor.full_name!r} (id={survivor.pk}) — "
+                            "survivor has no votes to corroborate the "
+                            "shadow's era"
+                        )
+                        continue
+                    grace = timedelta(days=3 * 365)
+                    safe, refused = [], []
+                    for j in losers:
+                        l_span = _vote_span(j)
+                        if l_span[0] is None or (
+                                l_span[0] >= s_span[0] - grace
+                                and l_span[1] <= s_span[1] + grace):
+                            safe.append(j)
+                        else:
+                            refused.append((j, l_span))
+                    for j, l_span in refused:
+                        total_skipped += 1
+                        self.stdout.write(
+                            f"  [{st.code}] SKIP {j.full_name!r} "
+                            f"(id={j.pk}, span {l_span[0]}..{l_span[1]}) — "
+                            f"outside {survivor.full_name!r}'s span "
+                            f"{s_span[0]}..{s_span[1]} (+/-3y); likely a "
+                            "second person"
+                        )
+                    for loser in safe:
                         m, d = merge_judge(loser, survivor, apply)
                         total_merged += 1
                         total_moved += m
