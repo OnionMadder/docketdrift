@@ -97,6 +97,49 @@ in indexed JSON-LD) was reverted — extractive holdings = "no generated text",
 the strong original posture, is correct. Migrations 0026 (holdings) + 0027
 (clustering) are on main and applied on prod.
 
+## Landing hero band (2026-08-25) — the graphic is the corpus
+
+The landing needed a visual break under the headline. Onion had a stock
+gavel/scales image ready; we did NOT use it, for three reasons worth
+keeping: it clashes with onioncore (warm mahogany/brass vs. #050505 +
+neon), the scales render with no pans and implausible beam geometry
+(**it reads as AI-generated — on the one site whose homepage promises
+"the court's own words… we never generate legal text," directly above
+that very value card**), and a gavel is the most generic legal stock
+image there is, on a site positioned against exactly those databases.
+
+Built instead: **`charts.build_corpus_band`** + `_corpus_band.html` —
+opinions per filing year as a filled silhouette, neon-cyan-to-violet,
+peak year marked in amber. On-brand, ~8KB of markup, no licensing
+question, and unique to DocketDrift because it is made of the data.
+
+Rules baked in, each for a reason:
+- **Zero-fill, never interpolate.** Years with no opinions plot as zero,
+  so a coverage hole reads as a hole. Same posture as transcribe-never-
+  map on dispositions.
+- **End at the last COMPLETE year.** Plotting the current partial year
+  beside full years drew a cliff that looked like collapsing coverage
+  and was really "it's August" — the classic partial-period charting
+  lie. The lede still says "<first>–present".
+- **Cache-READ-ONLY on the request path** (`compute=False`). The GROUP BY
+  is index-only but ~1s on LA's 341K rows; a cold cache drops the
+  graphic, never slows the page. `precompute_explore_tags` is the only
+  computing caller. Exactly the explore-tags rule.
+- **No `preserveAspectRatio="none"`** — stretching to a fixed height
+  squashes the year labels. Proportional scaling + hide the in-SVG ticks
+  under 640px, where the text caption carries the same span.
+
+**Also fixed while there:** the lede hardcoded "Supreme Court and Court
+of Appeals" for EVERY state — false on NH, which has no intermediate
+appellate court, on our most-crawled subdomain. `_state_courts_phrase`
+now derives it from the Court rows, treating multi-panel systems as one
+court with divisions ("both divisions" / "all five circuits"), which
+generalizes to CA and TX.
+
+**The band immediately earned its keep:** it made an undisclosed MN/AZ
+coverage trough visible (MN COA 114 opinions in 2013 vs 1,257 in 2015 —
+CL coverage, not caseload). See the starred TODO section.
+
 ## LOUISIANA IS LIVE (2026-08-25) — four states
 
 `is_live=True` flipped, gunicorn restarted, verified end to end: apex

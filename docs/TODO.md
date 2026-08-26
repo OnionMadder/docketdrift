@@ -497,6 +497,39 @@ must start with `/bin/sh`. Path alone is not enough.
   `\DocketDrift MN COA weekly scraper` (Interactive only), alongside
   `\DocketDrift NH weekly scraper`. MN COA forward-fill is autonomous.
 
+## ★ NEW 2026-08-25 — the hero band surfaced an undisclosed MN/AZ coverage trough
+
+Building the landing hero band (opinions per year) made a pattern
+visible that no existing check reports, on the flagship state's
+homepage. **MN Court of Appeals by year, measured:**
+
+| 1986 | 1989 | 1995 | 2001 | 2007 | 2013 | 2014 | 2015 | 2016 |
+|---|---|---|---|---|---|---|---|---|
+| 1,274 | 479 | 350 | 280 | 174 | **114** | 750 | 1,257 | 1,221 |
+
+MN COA is a high-volume intermediate court; it did not decide 114 cases
+in 2013 and 1,257 in 2015. That is **CourtListener coverage, not
+caseload** — the same degradation already documented for 2017–2025
+(which we rebuilt from the State Law Library archive), extending back
+roughly 1989–2014 with a GOOD window at 2015–2016 in between. **AZ shows
+the same shape** (rise from 1965 when its COA was created, trough
+through the 2000s, step up ~2015), so this is a cross-state
+characteristic of CL's historical unpublished-opinion coverage, not an
+MN-specific bug.
+
+- [ ] **Decide the disclosure.** `/about/` is not currently false — its
+  MN section is scoped to "2015 through 2025" — but the band now invites
+  the question, and "silence reads as completeness" is this project's
+  own standard. Onion's call on wording; do NOT invent a percentage
+  we haven't measured against a control.
+- [ ] **Size the real gap** before any backfill: pick 2–3 control years,
+  compare our count against the court's own published totals (the MN
+  archive lists by year), and only then decide whether an archive sweep
+  of 1989–2014 is worth ~25 years of attended browser time.
+- [ ] **Worth adding to the FLP thread (#1115)** — it materially widens
+  the report from "2020–2023 hole" to "MN COA coverage is degraded
+  across ~1989–2014 AND 2017–present, with a good 2015–2016 window."
+
 ## Tier 3 — coverage (bigger builds)
 
 - [ ] **MCP server — put DocketDrift inside Claude as a tool** (NEW
