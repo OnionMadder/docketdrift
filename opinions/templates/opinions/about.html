@@ -56,7 +56,7 @@
       "name": "Which states are live on DocketDrift?",
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": "Three. Minnesota: 68,000+ appellate opinions from 1851 to current, with judge dossiers, statute citation graph, semantic search, and tag-suggestion review pipeline. Coverage of 2017-2025 was affected because our upstream source, CourtListener, holds no Minnesota opinions for 2020-2022 and sharply reduced coverage from 2017 through the present. That range has since been rebuilt by reading the Minnesota State Law Library archive directly (about 9,800 opinions), so every year from 2015 through 2025 now holds roughly 970-1,435 opinions, with 2026 kept current by our own weekly scraper. Rebuilt years remain short on Supreme Court orders and carry no reporter citations, though they do carry text-extracted citation links. New Hampshire: 20,000+ NH Supreme Court opinions with byline-extracted judicial panel graph. Arizona: 38,000+ Arizona Supreme Court and Court of Appeals opinions. New states are added one at a time."
+        "text": "Four. Minnesota: 69,000+ appellate opinions from 1851 to current, with judge dossiers, statute citation graph, semantic search, and tag-suggestion review pipeline. Coverage of 2017-2025 was affected because our upstream source, CourtListener, holds no Minnesota opinions for 2020-2022 and sharply reduced coverage from 2017 through the present. That range has since been rebuilt by reading the Minnesota State Law Library archive directly (about 9,800 opinions), so every year from 2015 through 2025 now holds roughly 970-1,435 opinions, with 2026 kept current by our own weekly scraper. Rebuilt years remain short on Supreme Court orders and carry no reporter citations, though they do carry text-extracted citation links. New Hampshire: 20,000+ NH Supreme Court opinions with byline-extracted judicial panel graph. Arizona: 38,000+ Arizona Supreme Court and Court of Appeals opinions. Louisiana: 341,000+ opinions from 1809 to current across the Supreme Court and all five Courts of Appeal — our largest corpus, launched with disclosed gaps (the Supreme Court's 2020-2025 output is thin upstream, there are no reporter citations, and circuit labels are approximate for older writ rulings). New states are added one at a time."
       }
     },
     {
@@ -114,8 +114,9 @@
     <li><strong>Direct ingestion from the courts</strong> &mdash; some courts publish opinions that don't reach CourtListener promptly, particularly nonprecedential and order opinions. For those we read the court's own release archive directly. Both paths run weekly on a scheduled job, so each state is typically current to within a week.</li>
   </ul>
 
-  <h3>Known coverage gaps</h3>
-  <p>Coverage is not uniform, and we'd rather say so than let a silence read as completeness. Minnesota's <strong>2017&ndash;2025</strong> range was affected.</p>
+  <h3 id="coverage-gaps">Known coverage gaps</h3>
+  <p>Coverage is not uniform, and we'd rather say so than let a silence read as completeness. Two states carry disclosed gaps: Minnesota's <strong>2017&ndash;2025</strong> range was affected and has been rebuilt, and Louisiana launched with specific, named rough edges.</p>
+  <h4>Minnesota</h4>
   <p>The cause is upstream rather than in our processing. CourtListener, which supplies our historical Minnesota data, has no Minnesota appellate opinions on file for 2020&ndash;2022 and sharply reduced coverage from 2017 through the present &mdash; as of mid-2026 its live ingestion for the Minnesota Court of Appeals is still running at a fraction of the court's actual output. The opinions themselves were published normally and remain available from the Minnesota State Law Library. (We've reported this upstream, with data.)</p>
   <p><strong>That entire range has now been rebuilt</strong> by reading the State Law Library archive directly &mdash; roughly 9,800 opinions that were previously absent. Minnesota now runs continuously, with every year from 2015 through 2025 holding between about 970 and 1,435 opinions, and 2026 kept current by our own weekly reading of the court's releases:</p>
   <ul>
@@ -132,6 +133,44 @@
   <p>Rebuilt opinions <em>do</em> carry citation links: we extract the cases each opinion cites from the text itself, so the &ldquo;cited by&rdquo; and &ldquo;authorities cited&rdquo; panels work for them.</p>
   <p>If your research depends on a Minnesota Supreme Court <em>order</em> from any year, or on exhaustive coverage of any single rebuilt year, check the <a href="https://mn.gov/law-library/search/opinions-archive.jsp" target="_blank" rel="noopener">State Law Library archive</a> as well.</p>
 
+  <h4>Louisiana</h4>
+  <p>Louisiana is our largest corpus and carries the most caveats. In the
+  spirit of the Minnesota disclosure above, here is exactly where it is
+  thin:</p>
+  <ul>
+    <li><strong>Louisiana Supreme Court, 2020&ndash;2025</strong> &mdash; our
+    upstream source holds roughly <strong>3%</strong> of the court's output
+    for these years (a few dozen opinions per year against a historical norm
+    above two thousand). The opinions were published normally and remain
+    available from the court; we are building a direct reader of the court's
+    own releases to close this, the same way Minnesota's gap was closed.
+    Until then, recent Supreme writ actions and opinions are best checked
+    against <a href="https://www.lasc.org/" target="_blank" rel="noopener">lasc.org</a>
+    as well.</li>
+    <li><strong>No reporter citations.</strong> Commercial reporter cites
+    (So. 2d / So. 3d) reach us through CourtListener's bulk data, which
+    currently has none for Louisiana. A Louisiana case is readable,
+    searchable, and reachable by docket number, but pasting its So. 2d cite
+    into search will not resolve it. The citation graph is built from the
+    opinion text itself and works despite this.</li>
+    <li><strong>Court of Appeal circuit labels are approximate for older
+    writ rulings.</strong> Our upstream groups all five circuits into one
+    feed; we re-derive the circuit from the document. About half of
+    opinions carry a clean signal; the remainder &mdash; mostly brief,
+    scan-quality writ dispositions &mdash; default to the First Circuit.
+    Treat the circuit facet as reliable for signed opinions and indicative
+    for writ rulings.</li>
+    <li><strong>Semantic search covers 1980 forward.</strong> Earlier text
+    (about a third of the corpus, back to 1809) is fully keyword-searchable
+    and linked into the citation graph, but does not appear in semantic
+    results or the similar-opinions panel.</li>
+    <li><strong>Outcome extraction runs at about two-thirds</strong> on
+    modern opinions &mdash; Louisiana's civil-law disposition vocabulary
+    (suspensive and devolutive appeals, writ grants and denials) is
+    transcribed, never mapped, and the pre-1980 tail largely predates the
+    vocabulary we match.</li>
+  </ul>
+
   <h2>Editorial review</h2>
   <p>Machine extraction does the bulk-work part &mdash; case number, disposition, panel composition, statute citations. A separate human editorial pass curates the doctrinal tags, catches parser misses, and flags edge cases. That pass is ongoing across a corpus of more than 119,000 opinions, and <strong>most records have not yet been read by an editor</strong>; the tag-review queue currently holds tens of thousands of pending suggestions.</p>
   <p>Rather than hide that, we publish it per record. Every opinion carries a status indicator showing whether it is <em>processed</em> (machine-parsed, awaiting review), <em>flagged</em> (queued for re-review), or <em>human-reviewed</em>, and every auto-applied tag is marked as such. You can see at a glance which records have been read by a human and which have not &mdash; including when the answer is "not yet."</p>
@@ -141,11 +180,13 @@
     <span class="status-pill status-pill--flagship">Flagship &middot; Minnesota</span>
     <span class="status-pill status-pill--live">Live &middot; New Hampshire</span>
     <span class="status-pill status-pill--live">Live &middot; Arizona</span>
+    <span class="status-pill status-pill--live">Live &middot; Louisiana</span>
   </p>
   <ul>
     <li><strong>Minnesota</strong> &mdash; <strong>68,000+ opinions</strong> spanning <strong>1851 to current</strong>, refreshed weekly as new opinions are released. Judge dossiers, outcome categorization, statute citation graph, semantic search, and tag-suggestion review pipeline are all live. <strong>2017&ndash;2025 was rebuilt from the State Law Library archive</strong>, so coverage is continuous through the present; see Known coverage gaps above for what rebuilt years still lack.</li>
     <li><strong>New Hampshire</strong> &mdash; full NH Supreme Court corpus loaded: <strong>20,000+ opinions</strong>. Byline-extracted judicial panel graph populated. Semantic search, citation graph, and tag-suggestion pipelines running. Opinions are read directly from the court's own releases, so NH is typically current within days.</li>
     <li><strong>Arizona</strong> &mdash; full Arizona Supreme Court + Court of Appeals corpus loaded: <strong>38,000+ opinions</strong>. Byline extraction live for both the Supreme Court and the Court of Appeals; disposition parsing covers modern opinions at roughly 90% and thins out on pre-1980 text.</li>
+    <li><strong>Louisiana</strong> &mdash; our largest corpus: <strong>341,000+ opinions</strong> spanning <strong>1809 to current</strong>, covering the Louisiana Supreme Court and all five Courts of Appeal, refreshed weekly. Statute citation graph (252,000 citations), verbatim holdings, a 1.5-million-edge text-extracted citation graph, and semantic search from 1980 forward are all live; the currently-seated bench of all six courts carries full names, roles, and official bio links. Louisiana has real, disclosed rough edges &mdash; read <a href="#coverage-gaps">Known coverage gaps</a> above before relying on completeness.</li>
   </ul>
   <p>Don't see your state? <a href="{% url 'opinions:request_state' %}">Request it &rarr;</a></p>
 

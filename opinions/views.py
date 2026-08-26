@@ -2226,8 +2226,7 @@ LLMS_TXT = """\
 
 ## What's covered
 
-Three states live as of August 2026; a fourth (Louisiana, 341,000+
-opinions) is loaded and in preparation:
+Four states live as of August 2026:
 
 - **Minnesota** (flagship): 69,000+ published opinions from the MN
   Supreme Court and MN Court of Appeals, 1851-present, continuous
@@ -2236,6 +2235,14 @@ opinions) is loaded and in preparation:
   1849-present.
 - **Arizona** (live): 37,800+ opinions of the AZ Supreme Court and
   Court of Appeals (Divisions One and Two).
+- **Louisiana** (live, our largest corpus): 341,000+ opinions of the
+  LA Supreme Court and all five Courts of Appeal, 1809-present.
+  Launched with disclosed gaps: the Supreme Court's 2020-2025 output
+  is ~97% absent upstream (direct-from-court backfill planned), there
+  are no reporter citations (docket lookup + search work; the
+  citation graph is text-extracted and unaffected), circuit labels
+  are approximate for older writ rulings, and semantic search covers
+  1980-forward. Full detail: https://docketdrift.com/about/
 
 Cross-cutting layers on every live state:
 

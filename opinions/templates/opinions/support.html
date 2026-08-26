@@ -31,21 +31,29 @@
     </li>
   </ul>
 
-  <h2>The next state is Louisiana</h2>
+  <h2>Louisiana is live &mdash; and it&rsquo;s the biggest one yet</h2>
   <p>
-    Roughly <strong>180,000 appellate opinions</strong> &mdash; more than the three
-    live states combined &mdash; including <strong>six years of Louisiana Supreme
-    Court decisions currently missing from every free legal database</strong>
-    (its feed into the big public archives broke in 2020 and never recovered;
-    we found the hole, and we know how to fill it). The funding goal is
-    <strong>$250</strong>, itemized: ~$100 of embedding for semantic search,
-    and the first year of added hosting and storage for a corpus that roughly
-    doubles this site. The scraping, parsing, and editorial review are the
-    maintainer&rsquo;s own labor, free.
+    <strong>341,000+ appellate opinions</strong> &mdash; more than the other
+    three states combined &mdash; covering the Louisiana Supreme Court and all
+    five Courts of Appeal, back to <strong>1809</strong>. It went live in
+    August 2026 with the statute graph, verbatim holdings, a 1.5-million-edge
+    citation graph, semantic search, and the sitting bench of all six courts
+    seated. Funded by readers: the <strong>$250</strong> goal covered the
+    embedding run and the first year of added hosting and storage for a corpus
+    that more than doubled this site. Thank you.
+  </p>
+  <p>
+    The work that remains there is the part we said we&rsquo;d do: six years of
+    Louisiana Supreme Court decisions are <strong>still missing from the big
+    public archives</strong> (their feed broke in 2020 and never recovered).
+    We found the hole, we published the gap honestly on
+    <a href="{% url 'opinions:about' %}#coverage-gaps">our About page</a>, and
+    the direct-from-the-court backfill is next. Continued support pays for that
+    and for the state after it.
   </p>
   {% if donate_url %}
     <p>
-      <a class="cta-primary" href="{{ donate_url }}" target="_blank" rel="noopener noreferrer">Fund Louisiana &rarr;</a>
+      <a class="cta-primary" href="{{ donate_url }}" target="_blank" rel="noopener noreferrer">Support the next state &rarr;</a>
     </p>
     {% comment %}
     Ko-fi's official interactive widget. Loads third-party JS from
