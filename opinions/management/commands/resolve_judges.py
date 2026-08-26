@@ -686,10 +686,17 @@ class Command(BaseCommand):
 
         # Build last_name -> [Judge,...] lookup for the state. Ambiguity
         # (multiple judges sharing a last name) gets logged + skipped.
+        # SUFFIX-AWARE surname (judge_merge.surname), not _last_name:
+        # _last_name("Albert Tate jr") is "jr", which made every suffixed
+        # judge unmatchable by their real surname -- the resolver then
+        # minted a bare-surname shadow beside the full row (36 LA pairs
+        # found by audit_judges, 2026-08-25). _last_name stays correct
+        # for BYLINE text, which carries roles, not generational rows.
+        from opinions.judge_merge import surname as _judge_surname
         judges = list(Judge.objects.filter(state__code=state_code))
         last_name_map: dict[str, list[Judge]] = defaultdict(list)
         for j in judges:
-            ln = _last_name(j.full_name)
+            ln = _judge_surname(j.full_name)
             if ln:
                 last_name_map[ln.lower()].append(j)
 
