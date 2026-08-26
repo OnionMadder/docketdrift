@@ -1163,5 +1163,22 @@ order:
   the sitting ones were re-created properly by the seeding, but the
   CL-people provenance of the historical stubs is gone until a CL
   people re-query. Always print the full list before a bulk delete.
+- [x] **Suffixed-judge resolver bug FIXED + 13 shadow folds (2026-08-25
+  late).** audit_judges found 36 "Tate ↔ Albert Tate jr" pairs: resolver
+  judge-mapping used `_last_name`, which returns "jr" for suffixed
+  names, so every suffixed judge was unmatchable and the sweep minted
+  bare-surname shadows beside the full rows (latent for MN/NH/AZ too;
+  fixed with judge_merge.surname). `merge_duplicate_judges` gained a
+  **span gate**: fold a shadow only when the survivor has votes and the
+  shadow's span fits the survivor's ±3y — it refused all 7 would-be
+  misfolds into today's zero-vote seated judges (1960s 'Miller' votes
+  nearly landed on Steven Miller) and 6 borderline historic pairs
+  (probable second persons: Tate/Ponder/Bailes/Hardy/Hall/Marcus —
+  editorial), and folded 13 clean pairs (1,379 votes onto real historic
+  judges). `suggest_tags` modernized for LA scale + placeholder safety:
+  scans the SLIM table (real embeddings only — the always-true
+  `embedding IS NOT NULL` would have scored LA's ~111K zero-vector
+  placeholders), state scope rides the clustered court key instead of a
+  341K-int IN-list. 8f LA run in flight.
 - MCP server LIVE + dark at /mcp; .mcp.json committed (tools work in-session).
   Privacy section + load test + connector directory still gated on LA launch.
