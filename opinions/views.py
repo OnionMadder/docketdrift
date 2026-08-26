@@ -209,6 +209,59 @@ def _state_landing_stats(state, court_ids):
     return bundle
 
 
+_COUNT_WORDS = {2: "two", 3: "three", 4: "four", 5: "five", 6: "six",
+                7: "seven", 8: "eight", 9: "nine", 10: "ten"}
+_DIVISION_NOUNS = {"division", "circuit", "district", "department"}
+
+
+def _state_courts_phrase(court_ids):
+    """Human phrase naming the courts we actually hold for a state.
+
+    The landing lede hardcoded "Supreme Court and Court of Appeals" for
+    every state, which is simply FALSE on New Hampshire -- it has no
+    intermediate appellate court, and NH is our most-crawled subdomain.
+    Derived from the Court rows instead, so it can't drift:
+
+      NH -> "the Supreme Court of New Hampshire"
+      MN -> "the Minnesota Supreme Court and the Minnesota Court of Appeals"
+      AZ -> "... and the Arizona Court of Appeals (both divisions)"
+      LA -> "... and the Louisiana Court of Appeal (all five circuits)"
+
+    Multi-panel systems are ONE court with divisions, not N courts, so
+    they render as a parenthetical rather than a plural -- which is also
+    what makes this generalize to CA's six districts and TX's fourteen.
+    """
+    courts = list(Court.objects.filter(id__in=court_ids))
+    supreme = [c for c in courts if c.level == "SUPREME"]
+    appeals = [c for c in courts if c.level == "APPEALS"]
+
+    parts = [f"the {c.name}" for c in sorted(supreme, key=lambda c: c.name)]
+    if len(appeals) == 1:
+        parts.append(f"the {appeals[0].name}")
+    elif len(appeals) > 1:
+        first = sorted(appeals, key=lambda c: c.division or "")[0]
+        base, _, tail = first.name.partition(",")
+        # Pull the division noun out of "Division One" / "First Circuit"
+        # so the parenthetical uses the court system's own word.
+        noun = "division"
+        for token in tail.replace(".", " ").split():
+            if token.lower() in _DIVISION_NOUNS:
+                noun = token.lower()
+                break
+        n = len(appeals)
+        qualifier = (
+            f"both {noun}s" if n == 2
+            else f"all {_COUNT_WORDS.get(n, n)} {noun}s"
+        )
+        parts.append(f"the {base.strip()} ({qualifier})")
+
+    if not parts:
+        return ""
+    if len(parts) == 1:
+        return parts[0]
+    return " and ".join([", ".join(parts[:-1]), parts[-1]])
+
+
 def _state_year_histogram(state, court_ids, compute=True):
     """Cached opinions-per-year rows for the landing hero band.
 
@@ -379,6 +432,7 @@ def home(request):
         "total_tags_available": total_tags_available,
         "coverage_note": coverage_note,
         "corpus_band": corpus_band,
+        "courts_phrase": _state_courts_phrase(court_ids),
         "active_nav": "home",
     })
 

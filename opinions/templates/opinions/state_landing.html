@@ -93,7 +93,7 @@
   <p class="lede">Free, searchable {{ state.name }} case law &mdash; no account, no paywall.</p>
   {% if date_range.first %}
     <p class="lede-secondary">
-      Opinions of the {{ state.name }} Supreme Court and Court of Appeals, {{ date_range.first|date:"Y" }}&ndash;present. A public-records project.
+      Opinions of {{ courts_phrase }}, {{ date_range.first|date:"Y" }}&ndash;present. A public-records project.
     </p>
   {% endif %}
   {% if corpus_band %}
