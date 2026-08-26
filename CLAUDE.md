@@ -140,6 +140,66 @@ generalizes to CA and TX.
 coverage trough visible (MN COA 114 opinions in 2013 vs 1,257 in 2015 —
 CL coverage, not caseload). See the starred TODO section.
 
+## 2026-08-26 (Wed) — /current-judges/ was 500ing; apex hero band
+
+**`/current-judges/` hard-500'd on MN and was one ingest from doing it
+everywhere.** Found by a routine Wednesday page sweep, not by a monitor
+(the 5xx check DID flag it — 15 of 32 5xx — but nobody had read it yet).
+Cause is the documented "non-covered column across a JOIN" family: the
+view computed each judge's active span live as
+`MIN/MAX(opinion__release_date)` over their panel votes, so every vote
+cost a clustered-row fetch on the 2.75GB table. Measured: **MN 27.4s
+(past the 25s cap → 500), AZ 23.9s, LA 14.7s, NH 7.7s** — and a killed
+statement poisons the pooled connection, so the blast radius was
+site-wide, not one page.
+
+**Fix: denormalize.** The span only changes when new opinions land, so
+it belongs on `Judge` (a ~900-row table), not in a request. Migration
+0041 adds `first_vote_date`/`last_vote_date`; `backfill_judge_spans`
+maintains them (chunked, uncapped, idempotent) and is **chained into
+`cron-ingest.sh` unconditionally** — the page now trusts these columns,
+so a stale value silently shows a judge's tenure ending early. Result:
+**MN 500@25.0s → 200@0.037s** (~680x), all four states <0.07s, and
+`?era=all` — historically the heaviest variant — 0.04s.
+NULL means "no votes on record", a real state, NOT "not yet computed".
+
+**Apex hero band — the whole corpus, stacked by state.** The per-state
+band earned its place, so the apex got the same graphic scaled up:
+`charts.build_stacked_corpus_band` + `_corpus_stack.html`, one ribbon
+per state stacked oldest-corpus-first (LA 1809 as the base), 467,633
+opinions, 1809–2025. Band colors come from the `--neon-*` BRAND family,
+deliberately NOT the `--dd-*` outcome key — a state identity carries no
+affirmed/reversed meaning. Same honesty rules as the state band:
+zero-filled years, ends at the last COMPLETE year.
+
+**Two traps hit building it, both already documented and both still
+caught me:**
+1. **`UnboundLocalError: charts`** — `home()` imports `charts`
+   function-locally in its state-landing branch, which makes the name
+   local to the WHOLE function; the apex branch runs first and 500'd the
+   front door. `manage.py check` cannot see this. It is the exact trap in
+   the gotcha list.
+2. **A graphic assembled from N cache entries flickers.** v1 built the
+   stack per request from the four per-state histograms and guarded
+   all-or-nothing; LA's entry vanished within minutes and the band
+   silently disappeared. Now `_apex_corpus_stack` caches the **finished
+   payload under ONE key** (built by `precompute_explore_tags`), so it is
+   atomic: the whole band or none, never a partial corpus — which would
+   draw what looks like a real coverage dip.
+
+**Ko-fi cover source now lives in the repo** (`scripts/brand/`): the old
+banner had no source, so the LA flip meant rebuilding it by eye from a
+screenshot. Now it is HTML + a Playwright renderer (local-only, never
+`requirements.txt`); the next state flip is one chip edit. LA moved from
+the amber NEXT slot to a green LIVE chip.
+
+**Worth Onion's judgment:** the apex band makes the post-2010 decline
+visible on the FRONT PAGE. Part of that is real filing volume, but part
+is our documented coverage thinning (LA Supreme 2020–25 ~97% missing
+upstream, MN's CL degradation). The caption says "busiest year 2009",
+which a visitor will read as caseload, not coverage. Consistent with
+"show the hole" — but it is now the first thing a visitor sees.
+
 ## LOUISIANA IS LIVE (2026-08-25) — four states
 
 `is_live=True` flipped, gunicorn restarted, verified end to end: apex
