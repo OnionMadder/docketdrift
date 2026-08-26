@@ -596,14 +596,22 @@ MN-specific bug.
     INDEX (skip rows read once per run, not per batch) + index-only counts
     (0.27s). Measured after: **12.5 op/s** (post-1980 LA docs are short,
     ~647 tok/op) → remaining ~161K ≈ 3.6h runtime ≈ **~$13**, not $60.
+  - [x] **8e embed — COMPLETE 2026-08-25.** Beacon 0; the walk's final
+    pass embedded 0. The 174 remaining 1980+ rows flagged pending all
+    have EMPTY raw_text (metadata stubs, nothing to embed, ever), so
+    the in-scope corpus is genuinely 100%. Final: **225,414 LA rows
+    embedded.** Pre-1980 (~111K) stays deliberately out of scope per
+    `.embed_since`; it is keyword-searchable and in the citation graph,
+    disclosed on /about/.
   - [x] **8f suggest_tags — DONE 2026-08-25 (embedded bulk).** After the
     slim-table/placeholder modernization (see below): 218K embedded LA
     opinions scored against 32 tags → **76,921 suggestions (1,575
     auto-applied, 75,346 pending review)**. Two-run shape: the first
     run's 30-min timeout cut the write phase (get_or_create made the
     resume trivially safe — size timeouts to scan≈23min + writes).
-    Re-run once after the embed tail lands to score the last ~5-8K
-    rows; idempotent, ~25 min.
+    Tail pass after the embed finished added 2,413 more.
+    **Final: 79,338 LA suggestions — 1,579 auto-applied, 77,759
+    pending editorial review** in the pile-picker admin.
   - [ ] **7b lasc.org Supreme backfill — RECON DONE 2026-08-25; hole
     re-verified REAL; unattended build.** Our DB: LA Supreme ~2,000-2,250/yr
     through 2018, then **2020=8 / 2021=0 / 2022=0 / 2023=11 / 2024=42 /

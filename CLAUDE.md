@@ -156,9 +156,12 @@ support page's "the next state is Louisiana" fundraising pitch was
 rewritten as delivered (it would have gone stale at the flip) with the
 lasc.org backfill named as what's next.
 
-**Still open on LA, in order:** the embed tail (~5K in-scope rows; the
-overnight tick finishes it, then re-run `suggest_tags --state LA`,
-idempotent ~25 min); the lasc.org Supreme backfill (recon done — no
+**Derived layers CLOSED same day:** embed 100% of in-scope LA (225,414
+rows; the 174 still flagged pending are empty-`raw_text` stubs with
+nothing to embed), and tags at **79,338 suggestions / 1,579
+auto-applied / 77,759 pending review**.
+
+**Still open on LA, in order:** the lasc.org Supreme backfill (recon done — no
 bot wall, Blazor SPA, `opinions?p=YYYY-NNN`, ~360 browser loads,
 unattended ~1 day); the editorial span-splits `merge_duplicate_judges`
 correctly refused (Tate/Ponder/Bailes/Hardy/Hall/Marcus, plus the
