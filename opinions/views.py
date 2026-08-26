@@ -352,6 +352,13 @@ def home(request):
                 s, _state_court_ids(s)
             )["total_opinions"]
 
+        # Module-scope name: `charts` is imported function-locally further
+        # down this same view (the state-landing branch), which makes the
+        # name local to the WHOLE function -- so referencing it here without
+        # its own import is the documented UnboundLocalError trap, and it
+        # 500'd the apex. Import inside this branch too.
+        from opinions import charts
+
         # Whole-corpus hero band, stacked by state. Composed from the SAME
         # per-state histograms the landing bands use, read-only -- so a warm
         # cache costs zero extra queries and a cold one costs the graphic,
