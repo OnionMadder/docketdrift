@@ -4,13 +4,23 @@ Survival kit for any Claude session working on this repo. Read once,
 re-read whenever a recurring gotcha bites. The goal of this document is
 to make the next session productive within the first 5 minutes.
 
-## Working tree state 2026-08-02 — READ THIS FIRST
+## Working tree state 2026-08-27 — READ THIS FIRST
 
 The tree is **clean**; main == origin/main. Backlog lives in `docs/TODO.md`
 (the authoritative to-do; keep it current). **`docs/TODO.md` outranks the
 "Open work, ranked" section far down this file** — that section is a frozen
 2026-06-12 snapshot kept for its rationale, and several of its "open" items
 have shipped. Trust TODO.md on priority; trust this file on gotchas.
+
+**Current state (2026-08-27):** FOUR states live (MN/NH/AZ/LA),
+**469,338 opinions**. Louisiana launched 2026-08-25 and its derived
+layers are closed (embed 100% of in-scope, 79,338 tag suggestions).
+The MCP server is live at `/mcp` and now carries tool annotations, a
+search-concurrency cap, and a privacy-page section — two of its three
+launch gates are done; the third (connector directory) is BLOCKED on
+Onion being on an individual Anthropic plan. See the 2026-08-26 → 27
+block for the plugin-via-Console workaround and for two silent ingest
+failures found that morning.
 
 **MN 2020–2022 IS FIXED (2026-08-03): 0 → 3,102 opinions.** 2020=1,040,
 2021=1,092, 2022=970, read directly from the mn.gov State Law Library archive.
@@ -139,6 +149,160 @@ generalizes to CA and TX.
 **The band immediately earned its keep:** it made an undisclosed MN/AZ
 coverage trough visible (MN COA 114 opinions in 2013 vs 1,257 in 2015 —
 CL coverage, not caseload). See the starred TODO section.
+
+## 2026-08-26 → 27 — two silent ingest failures; MCP hardened for launch
+
+Wednesday-morning status check that turned into finding two pipelines
+quietly broken and closing two of the three MCP launch gates.
+
+**THE MN WEEKLY SCRAPER HAD BEEN DEAD FOR TWO WEEKS WHILE REPORTING
+SUCCESS.** MN sat at 2026-08-12 while the court kept filing. Two
+different failures, and the second is the dangerous one:
+- **Aug 17:** `NFSN FETCH/INGEST FAILED (exit 255)` — an ssh drop. The
+  wrapper caught it and said so. Working as designed.
+- **Aug 24:** the scrape worked (101 PDFs downloaded, 0 failed), then
+  the remote ingest died on `-bash: line 1: [: too many arguments` — a
+  PowerShell-mangled bash one-liner. `$LASTEXITCODE` came back **0**, so
+  the wrapper logged `=== MN weekly run DONE ===` **and stamped the
+  success beacon**. The freshness monitor read that beacon and reported
+  healthy for two weeks. **A beacon stamped by a run that ingested
+  nothing is worse than no beacon at all** — it is the exact
+  false-health signal beacons exist to kill.
+
+Fixed by replacing the inline remote one-liner with a real script on the
+server (`scripts/mn_scraper/nfsn_ingest_manifest.sh`), so ONE remote
+command means `$LASTEXITCODE` is meaningful, and the beacon is stamped
+only after a verified ingest. Catch-up swept Aug 3–26 (deliberately
+overlapping both failed runs; dedup makes re-ingest a no-op): 140
+listed, 0 windows skipped, 0 CAPTCHAs → **99 created** (95 COA + 4
+Supreme), 40 correctly skipped, 0 errors. MN **2026-08-12 → 2026-08-24**.
+Derived layers for the new rows: statutes 602 (already extracted at
+ingest), holdings, judges (+76 authors / +155 joined / +3 dissent / +2
+concur, 22 resolved by date-window disambiguation), **1,349 citation
+edges**, judge spans refreshed.
+
+**AZ COURT OF APPEALS WAS SIX DAYS BEHIND, AND THE CRON GAP WAS REAL.**
+CL had `arizctapp` opinions through the same day; we stopped at Aug 20.
+Ingested 19 clusters (10 created / 9 updated) → Div One current to
+2026-08-26. CL threw 429s throughout and `resilient_sleep` rode them out
+— that fix doing its job under real throttling.
+**`assign_az_divisions` is now chained into `cron-ingest.sh`** after an
+`arizctapp` ingest. Both AZ COA divisions arrive down CL's single feed
+and land on Div One (the court holding the CL id) — the identical shape
+already handled for LA's five circuits, sitting as "filed, not fixed
+blind" since 2026-08-19. No `--since` (the command has no such flag and
+needs none: AZ COA is ~24K rows, not LA's 341K, and a full pass measures
+**1.5s**). Measured 0 misfiled rows before and after, so nothing was
+wrong in the data yet — chained on the evidence of the catch-up rather
+than waiting for a Div-2 opinion to surface misfiled on a live page.
+
+**NH verified HEALTHY, not stale.** CL has **zero** `nh` clusters since
+2026-07-25, so our 2026-07-31 newest is the court being quiet. Its
+60-day staleness threshold exists for exactly this. Do not "fix" NH
+freshness without checking the source first.
+
+**PRIVACY PAGE: MCP section + a false claim corrected + a latent leak
+closed** (`1c640ea`). Writing the MCP disclosure surfaced two things the
+disclosure itself was not about:
+1. **The page said "Nothing about your visit is sent to any other
+   company." That was FALSE** — semantic search POSTs the query text to
+   Voyage to embed it. Now scoped to what is true (no in-browser script
+   reports your visit) with the Voyage hop named outright, plus what is
+   NOT sent: the request originates from our server, so the vendor sees
+   the server and never the user, and no identifier is attached because
+   none exists. Same posture as the `/24` paragraph — explain the
+   compromise, don't hide it. **Third overstatement of this class** after
+   goatcounter and eyecite, and like both of those it was found while
+   doing unrelated work, never by an audit.
+2. **`semantic.get_query_embedding` logged the query VERBATIM on a
+   Voyage failure** (`"embed failed for %r"`). One timeout would write a
+   research query to disk — precisely the artifact the `QueryEmbedding`
+   drop existed to prevent. Verified **0 occurrences on prod** (nothing
+   leaked); now logs length + error only.
+
+**MCP LOAD-TESTED, AND IT COULD HAVE TAKEN THE WEBSITE DOWN.** Measured
+on the server against internal gunicorn:
+
+| | result |
+|---|---|
+| get_opinion / lookup_citation / get_judge / citing_opinions | **3–17ms** |
+| search_opinions, narrow query | 0.9s |
+| search_opinions, common term (NH) | **~10s** |
+| 4 / 8 / 16 concurrent, mixed | clean; site landing 0.02s |
+| **32 concurrent, mixed** | median 7.0s, **LA landing 0.02s → 6.3s** |
+
+No 5xx and no poisoned connections at any level, so the failure mode is
+**starvation, not corruption**: `/mcp` shares ONE gunicorn worker (8
+threads) with the public site. Fixed with an in-process semaphore
+capping concurrent `search_opinions` (default 3,
+`settings.MCP_SEARCH_CONCURRENCY`); the millisecond lookups stay
+unthrottled, since throttling them costs availability and buys nothing.
+Refusals **shed rather than queue** — a queued search still pins the
+thread being protected — and return `isError` content the model reads
+and retries on. After: at 32 concurrent, median **7.0s → 0.079s**, LA
+landing **6.3s → 0.16s**; a 12-way search-only burst serves exactly 3
+and sheds 9 with the site at 0.16s. **The semaphore works only because
+`workers=1`** (the same property that makes the query-embedding cache
+work); if workers ever exceeds 1 it must become a shared counter.
+
+**★ NH COMMON-TERM SEARCH DOUBLED (~5s → ~10s) BECAUSE LOUISIANA
+LAUNCHED.** The FULLTEXT index spans the whole shared table, so an NH
+query wades corpus-wide postings and discards non-NH rows; adding LA's
+341K rows made the SMALLEST state's search materially slower. The "NH is
+slowest BECAUSE smallest" gotcha predicted this in so many words ("its
+cost grows when OTHER states' corpora grow") — it is now **measured, not
+theoretical, and state #5 will do it again**. Check it before the next
+rollout; the dial is per-state candidate caps proportional to corpus
+share, and the trap is that lowering the global cap reclassifies every
+51–200-match search as capped.
+
+**MCP tool annotations shipped** (`6a2c89c`) — the connector directory
+requires every tool to carry a `title` and
+`readOnlyHint`/`destructiveHint`, and we shipped none. All six now have
+them, applied in a LOOP over a name→title map that **raises at import**
+on an unknown tool, so a tool added later cannot silently ship
+unannotated (`manage.py check` catches it before deploy). Every
+DocketDrift tool is read-only by construction; a future write tool needs
+`destructiveHint`, not a blind map entry. `readOnlyHint` also buys
+auto-permissions — a read-only tool runs without a per-call confirmation
+prompt.
+
+**CONNECTOR DIRECTORY IS BLOCKED ON ACCOUNT TYPE — and there is a
+documented way around it.** Verified against Anthropic's own docs, not
+blog posts:
+- **No-auth IS accepted** ("OAuth 2.0 for authenticated services"); the
+  portal's Authentication step lists "no authentication". The widely
+  repeated "OAuth 2.1 is mandatory" is WRONG.
+- **Submission needs a Team/Enterprise org** — organization settings do
+  not exist on individual plans. **Onion is on an individual plan, so
+  the Connectors Directory is CLOSED for now.**
+- **The plugin directory is the individual-friendly path:** "Individual
+  authors who aren't part of a claude.ai Team or Enterprise organization
+  can sign up for Console at platform.claude.com and submit there," and
+  plugins "can contain any MCP, including remote MCPs." Requires a
+  PUBLIC GitHub repo — we have one (AGPL).
+- **But the audiences differ, and it matters:** the Connectors Directory
+  surfaces in **Claude.ai** (where lawyers are); the plugin directory
+  surfaces in **Claude Code + Cowork** (developers). A plugin bundling a
+  non-directory MCP also shows users extra warnings.
+- **What already works with zero gatekeeping:** anyone can add
+  `https://docketdrift.com/mcp` as a custom connector today. The only
+  thing missing is a page telling them so — which is ALSO required for
+  both directories. **Build `/connect/` first; it is the common
+  prerequisite.**
+
+**Also this session:** `.embed_state` switched LA → MN (LA's in-scope
+corpus is fully embedded; MN's new rows queue first, AZ's 76 behind
+them). Corpus **469,338**.
+
+**Method notes worth keeping:** a wrapper's exit code is only meaningful
+if the remote work is ONE command — a PowerShell-built bash one-liner
+mangles quotes and can fail while the wrapper reports success; when load
+testing, the number that matters is what the PUBLIC SITE does during the
+burst, not what the endpoint reports; and `Court.short_label` is a Python
+`@property`, so `filter(short_label=...)` raises `FieldError` — filter on
+`division` (documented gotcha, hit again).
+
 
 ## 2026-08-26 (Wed) — /current-judges/ was 500ing; apex hero band
 
@@ -849,6 +1013,12 @@ a probe through `grep` filters the WARNING lines out of the saved output —
 capture full output, filter at read time.
 
 ### NH search is slowest BECAUSE it's smallest (2026-08-06) — accepted, not a bug
+
+> **UPDATE 2026-08-26: no longer just accepted — it got measurably
+> WORSE when Louisiana launched (~5s → ~10s on a common term).** The
+> prediction below ("its cost grows when OTHER states' corpora grow")
+> came true. See the corpus-wide FULLTEXT gotcha near the top of the
+> gotcha section before the next state rollout.
 
 Thursday audit flagged NH as the slowest search (4.8s) despite the smallest
 corpus. Per-phase profile: it is ENTIRELY the FULLTEXT candidate fetch on
@@ -1875,19 +2045,25 @@ identity decoupled; semantic/keyword alerts refused-by-design, not stored).
 
 ## Where things stand right now
 
-(Numbers refreshed 2026-08-25. **Re-measure before quoting these
+(Numbers refreshed 2026-08-27. **Re-measure before quoting these
 anywhere public** — stale numbers on a public page are the exact class
 of problem the 2026-08-02 audit was cleaning up.)
 
-Three states live + one dark, all on subdomains of `docketdrift.com`.
-MN is the **Flagship**; NH + AZ carry a green **Live** pill.
+**FOUR states live**, all on subdomains of `docketdrift.com`. MN is the
+**Flagship**; NH, AZ and LA carry a green **Live** pill.
 
 | State | Subdomain | Opinions | Newest | Notes |
 |---|---|---|---|---|
-| MN (flagship) | `mn.docketdrift.com` | 69,607 | 2026-08-12 | disp 97% / emb 99%; CONTINUOUS 2015–2026 |
-| AZ (live) | `az.docketdrift.com` | 37,834 | current | disp 64% / emb 99%; COA Div One/Two split |
-| NH (live) | `nh.docketdrift.com` | 20,682 | 2026-07-31 (court quiet) | disp 78% / emb 99%; roster FINISHED 2026-08-23 (5 seated, 30 RETIRED, slugs fixed w/ 301s) |
-| LA (**LIVE 2026-08-25**) | `la.docketdrift.com` | 341,104 | current (weekly cron live) | Largest corpus, 1809–present, Supreme + all 5 COA circuits. disp 65% / emb 66% (1980+ scope) / tags 76.9K suggestions; cite graph 1.54M edges; statutes 252K; holdings 34.6K; panel votes ~144K; judges 560 incl. **all 6 benches seated (60 sitting)**. Gaps DISCLOSED on /about/#coverage-gaps — do not remove |
+| MN (flagship) | `mn.docketdrift.com` | 69,706 | 2026-08-24 | disp 97% / emb 99%; CONTINUOUS 2015–2026. Weekly scraper wrapper FIXED 2026-08-26 after a 2-week silent failure |
+| AZ (live) | `az.docketdrift.com` | 37,846 | 2026-08-26 (Div One) | disp 64% / emb 99%; COA Div One/Two split. **Div Two newest 2026-07-30** — quiet or an upstream gap, unresolved (see below) |
+| NH (live) | `nh.docketdrift.com` | 20,682 | 2026-07-31 (court quiet — CL has ZERO newer, verified) | disp 78% / emb 99%; roster FINISHED 2026-08-23 (5 seated, 30 RETIRED, slugs fixed w/ 301s) |
+| LA (**LIVE 2026-08-25**) | `la.docketdrift.com` | 341,104 | current (weekly cron live) | Largest corpus, 1809–present, Supreme + all 5 COA circuits. disp 65% / **emb 100% of in-scope (1980+)** / tags 79,338 suggestions (1,579 auto / 77,759 pending); cite graph 1.54M edges; statutes 252K; holdings 34.6K; panel votes ~144K; judges 560 incl. **all 6 benches seated (60 sitting)**. Gaps DISCLOSED on /about/#coverage-gaps — do not remove |
+
+**Corpus-wide: 469,338 opinions.** Citation graph ~1.54M+ edges in LA
+alone on top of the earlier 1,462,119 (605,353 CL bulk + 856,766
+text-extracted across MN/AZ/NH) with context quotes; **5,188 non-default
+treatments** (was 0 in every state before 2026-08-04). Parallel cites
+180,652 (MN/AZ/NH only — CL has **none** for LA, permanent upstream gap).
 
 **AZ judge roster rebuilt 2026-08-07 (247 → 194).** Court split into Supreme +
 COA Division One + Division Two; the current bench is fully seated — **35
@@ -1895,12 +2071,16 @@ judges** (Supreme 7, Div One 19, Div Two 9), each with full name / role /
 division / official-bio link, from the courts' own rosters. `Court.division`
 now models multi-panel systems. See the 2026-08-07→08 session block.
 
-Corpus-wide: **~127,563 opinions** (−605 from the 2026-08-07 duplicate merge),
-all embedded (slim table in exact sync).
-Citation graph **1,462,119 edges** — 605,353 CL bulk + **856,766
-text-extracted** (MN 468,595 / AZ 313,120 / NH 75,051) with context quotes;
-**5,188 non-default treatments** (was 0 in every state before 2026-08-04).
-Parallel cites 180,652. Holdings 41K+. Tags 2,116 applied / ~50K pending.
+**Open question, unresolved on purpose (2026-08-27): AZ COA Division Two
+has had nothing since 2026-07-30.** Checked the specific failure mode
+first — Div Two opinions arrive down the Div One feed and need
+re-homing — and found **0 misfiled rows** before and after a catch-up,
+so nothing is sitting in the wrong court. That leaves two possibilities:
+a genuinely quiet Tucson division (historically ~1/week, so 27 days is
+unusual but possible) or an upstream CL feed gap starting ~Jul 30.
+Telling them apart needs a check against `appeals2.az.gov`; it was NOT
+guessed, because CL was actively 429-throttling and more probing risked
+stalling the weekly cron. Do this before assuming AZ is fully current.
 
 Caveats that stay load-bearing:
 - **Rebuilt MN years are substantially covered, not provably complete**
@@ -2088,6 +2268,69 @@ what a user was researching?* If yes, don't create it. "Store it securely"
 is not good enough — "never store it" is the bar.
 
 ## Recurring gotchas — DO NOT MAKE THESE AGAIN
+
+### A remote command built as a PowerShell string can fail while the wrapper reports SUCCESS
+
+Found 2026-08-26 after the MN weekly scraper had been dead for two weeks.
+`run_mn_weekly.ps1` built a bash one-liner in a PowerShell string and
+passed it to `ssh`. PowerShell mangled the quoting, the remote shell died
+on `[: too many arguments` — and **`$LASTEXITCODE` came back 0**, so the
+wrapper logged `run DONE` and **stamped its success beacon**. The
+freshness monitor then read that beacon and reported healthy while
+nothing had been ingested.
+
+Two rules, both cheap:
+
+1. **One remote command, defined server-side.** Put the remote work in a
+   real `.sh` file on the server and invoke it as a single command
+   (`ssh host '/bin/sh /path/script.sh ARGS'`). Then the exit code
+   actually describes the work. Never assemble multi-statement bash
+   inside a PowerShell string.
+2. **A success beacon is stamped only after VERIFIED work**, never merely
+   after the wrapper reaches its last line. A beacon written by a run
+   that did nothing is worse than no beacon: it converts a loud failure
+   into a silent one and defeats the monitor built to catch it.
+
+Corollary for diagnosis: when a scheduled job "runs" but nothing changes,
+read its LOG, not its status/beacon. Both lied here.
+
+### `/mcp` shares the web worker — an MCP flood can starve the website
+
+Measured 2026-08-26. The MCP endpoint runs in the same gunicorn worker
+(`workers=1`, 8 threads) as every public page. Five of the six tools are
+indexed lookups at 3–17ms, but `search_opinions` runs the corpus-wide
+FULLTEXT candidate scan (~0.9s narrow, ~10s on a common term). At **32
+concurrent** tool calls the public LA landing page went **0.02s → 6.3s**.
+No 5xx and no poisoned connections — the failure mode is **starvation,
+not corruption**, which is why nothing alerted.
+
+`opinions/mcp.py` now caps concurrent `search_opinions` with an
+in-process `BoundedSemaphore` (default 3, `settings.MCP_SEARCH_CONCURRENCY`),
+leaving the millisecond tools unthrottled. Refusals **shed rather than
+queue** — a queued search still pins the thread being protected — and
+return `isError` content, which an LLM reads and retries on.
+
+**The semaphore is only effective because `workers=1`** (the same
+property that makes the query-embedding cache work). If workers ever goes
+above 1 this must become a shared counter, or the cap silently multiplies
+by the worker count.
+
+### FULLTEXT cost is CORPUS-WIDE — adding a state slows every other state
+
+The gotcha "NH is slowest BECAUSE smallest" stopped being theoretical on
+2026-08-26: **NH common-term search roughly doubled (~5s → ~10s) because
+LOUISIANA launched.** The FULLTEXT index spans the whole shared
+`opinions_opinion` table, so an NH query wades corpus-wide postings and
+discards non-NH rows, each discard costing a clustered-row fetch. Adding
+LA's 341K rows therefore made the SMALLEST state's search materially
+slower without touching a line of NH code.
+
+**State #5 will do it again.** Re-measure per-state search latency before
+and after any rollout. The dial is per-state candidate caps proportional
+to corpus share — and the trap is that simply lowering the global
+`FULLTEXT_CANDIDATE_CAP` reclassifies every 51–200-match search as
+"capped", stripping semantic + snippets from exactly the mid-size
+searches that are most useful.
 
 ### Sending email from NFSN (report-error form) — three traps, all measured 2026-08-06
 
