@@ -148,7 +148,16 @@ def get_query_embedding(query: str) -> list[float] | None:
         payload = response.json()
         embedding = payload["data"][0]["embedding"]
     except Exception as exc:
-        logger.warning("Voyage query embed failed for %r: %s", normalized, exc)
+        # NEVER log the query itself. A Voyage timeout is a routine
+        # transient, and writing the user's research query to disk to
+        # record one would recreate exactly the artifact the privacy
+        # posture exists to prevent (same reason the QueryEmbedding
+        # table was dropped, 2026-08-05). Length + error is enough to
+        # debug; content is not ours to keep.
+        logger.warning(
+            "Voyage query embed failed (query %d chars): %s",
+            len(normalized), exc,
+        )
         return None
 
     if len(normalized) <= QUERY_LENGTH_CAP:

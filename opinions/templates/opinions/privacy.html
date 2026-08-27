@@ -17,7 +17,11 @@
 
   <p>We do not log search queries. We do not record what opinions you read, which judges you look up, or how you navigate the site. There are no user accounts. There are no cookies that identify you across visits. There is nothing on our side that could reconstruct your research history.</p>
 
-  <p><strong>There is no analytics script on this site.</strong> No Google Analytics, no third-party counter, no tracking pixel, no beacon of any kind. We removed the last one (GoatCounter) in August 2026. Nothing about your visit is sent to any other company.</p>
+  <p><strong>There is no analytics script on this site.</strong> No Google Analytics, no third-party counter, no tracking pixel, no beacon of any kind. We removed the last one (GoatCounter) in August 2026. No script running in your browser reports your visit to anyone.</p>
+
+  <p>There is exactly one case where anything you type leaves our server, and we would rather name it than let the sentence above imply otherwise. <strong>Semantic search</strong> &mdash; the "find cases that mean something similar" half of search, as opposed to keyword matching &mdash; works by converting your query into a numeric vector, and that conversion is done by an outside service (<a href="https://www.voyageai.com/" target="_blank" rel="noopener">Voyage AI</a>). So the text of that query is sent to them.</p>
+
+  <p>What is <em>not</em> sent matters as much: the request goes out from our server, not your browser. Voyage sees our server making a request, never your address, your browser, or anything identifying you, and we attach no account, session, or identifier &mdash; because we don't have one to attach. The query arrives detached from any notion of who asked it. We also keep a short-lived in-memory cache of recent query vectors, so a repeated query usually isn't sent at all; that cache holds no record of who searched and is wiped whenever the server restarts. Keyword search, citation lookup, and every other page involve no outside service whatsoever.</p>
 
   <p>What remains is the web server's own log, which every web server keeps in order to run. Ours is deliberately narrowed. It records:</p>
 
@@ -30,6 +34,19 @@
   <p>That last one is a deliberate compromise, and we would rather explain it than hide it. We need to tell a data-center crawler apart from a person, and to know roughly which parts of the country are reading, so we know which state to add next. A network block answers both. Your full address is never written down, so the log cannot point at you: a block covers hundreds of addresses, and on home internet connections it is shared and reassigned constantly.</p>
 
   <p>We do not set tracking cookies, do not build profiles, and do not share logs with anyone.</p>
+
+  <h2>Connecting DocketDrift to an AI assistant</h2>
+
+  <p>DocketDrift runs a read-only <a href="https://modelcontextprotocol.io/" target="_blank" rel="noopener">Model Context Protocol</a> server at <code>/mcp</code>, so an AI assistant such as Claude can look up real opinions and quote the court's actual words instead of inventing a citation. The same promises apply there, and a few are worth spelling out.</p>
+
+  <ul>
+    <li><strong>Nothing is logged.</strong> A tool call's arguments &mdash; the question being researched &mdash; travel in the request body, which our access log does not record. We do not write them down anywhere else either.</li>
+    <li><strong>There are no accounts and no sessions.</strong> The server is stateless: every request is answered on its own and nothing is remembered between them. There is no identifier tying one lookup to the next.</li>
+    <li><strong>It can only read.</strong> The six tools search opinions, fetch an opinion, resolve a citation, pull a judge's record, list the cases citing an opinion, and look up a statute. None of them write anything.</li>
+    <li><strong>Nothing leaves our server.</strong> These tools use keyword search, not semantic search, so the Voyage hop described above does not apply. An MCP query is answered entirely from our own database.</li>
+  </ul>
+
+  <p>One thing we cannot promise, because it isn't ours: whoever runs the assistant you're using can see your conversation with it. That's between you and them. Our part of the exchange keeps no record.</p>
 
   <p>Whatever you search, whoever you read about, whichever cases you bookmark &mdash; that's yours. We don't see it, we don't save it, and we have nothing to hand over if anyone asks.</p>
 
