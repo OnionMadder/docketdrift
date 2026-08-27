@@ -544,6 +544,44 @@ TOOLS = [
     },
 ]
 
+# Connector-directory requirement: every tool must carry a `title` and the
+# applicable hint. Anthropic's pre-submission checklist rejects servers
+# whose tools lack them, and the hints drive auto-permissions in Claude --
+# a read-only tool runs without a per-call confirmation prompt, which is
+# most of the value of being a research tool rather than a chore.
+#
+# Applied in a loop rather than hand-written into six dicts so that a tool
+# added later cannot silently ship unannotated: an unknown name raises at
+# import, which `manage.py check` will surface before deploy.
+#
+# EVERY DocketDrift tool is read-only by construction -- the server has no
+# write path at all -- so readOnlyHint is unconditionally true here. If a
+# write tool is ever added it needs destructiveHint instead and must NOT
+# be pasted into this map without changing that. openWorldHint is false:
+# these tools read our own corpus, never a third-party service.
+_TOOL_TITLES = {
+    "search_opinions": "Search opinions",
+    "get_opinion": "Get opinion",
+    "lookup_citation": "Look up citation",
+    "get_judge": "Get judge",
+    "citing_opinions": "Get citing opinions",
+    "get_statute": "Get statute",
+}
+for _tool in TOOLS:
+    if _tool["name"] not in _TOOL_TITLES:
+        raise RuntimeError(
+            f"MCP tool {_tool['name']!r} has no entry in _TOOL_TITLES. "
+            "The connector directory rejects tools without a title and "
+            "a read-only/destructive hint; add one (and confirm the tool "
+            "really is read-only) before shipping."
+        )
+    _tool["title"] = _TOOL_TITLES[_tool["name"]]
+    _tool["annotations"] = {
+        "title": _tool["title"],
+        "readOnlyHint": True,
+        "openWorldHint": False,
+    }
+
 _TOOL_BY_NAME = {t["name"]: t for t in TOOLS}
 
 
@@ -609,7 +647,10 @@ def mcp_endpoint(request):
     if method == "tools/list":
         return _rpc_result(msg_id, {
             "tools": [
-                {k: t[k] for k in ("name", "description", "inputSchema")}
+                {k: t[k] for k in (
+                    "name", "title", "description", "inputSchema",
+                    "annotations",
+                )}
                 for t in TOOLS
             ]
         })
