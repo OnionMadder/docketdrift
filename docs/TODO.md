@@ -572,6 +572,28 @@ MN-specific bug.
     same Voyage-embed + cosine path as the site; verify the process-
     local query-embedding cache is enough at expected volumes.
 
+  **GATE 1 of 3 CLEARED 2026-08-26 — privacy section SHIPPED.** /privacy/
+  now carries a "Connecting DocketDrift to an AI assistant" section (six
+  read-only tools, arguments ride the body the access log never records,
+  stateless/no accounts, and the honest caveat that the assistant's
+  operator sees the conversation even though we keep no record).
+  Writing it surfaced two things worth keeping:
+  - **A false claim, now corrected.** The page said "Nothing about your
+    visit is sent to any other company." Semantic search POSTs the query
+    text to Voyage to embed it, so that was untrue as written. The page
+    now names the Voyage hop outright plus what is NOT sent (request
+    originates from our server, so the vendor never sees the user; no
+    identifier attached because none exists). **Third overstatement of
+    this class** after goatcounter and eyecite — all three found while
+    doing unrelated work, none by an audit.
+  - **A latent query leak, closed.** `semantic.get_query_embedding`
+    logged the query verbatim on a Voyage failure ("embed failed for
+    %r") — one timeout would write a research query to disk, the exact
+    artifact the QueryEmbedding drop existed to prevent. Verified 0
+    occurrences on prod (nothing leaked); now logs length + error.
+  Remaining gates: **load-test tools/call concurrency**, then the
+  connector-directory submission.
+
   **Distribution (the actual point):** submit to Anthropic's MCP
   connector directory; README + llms.txt mention; a "Connect DocketDrift
   to Claude" page on the site with the one-line config. Sizing: the
