@@ -39,7 +39,9 @@ section to /privacy/ and load-test tools/call concurrency.
 from __future__ import annotations
 
 import json
+import threading
 
+from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
@@ -62,6 +64,25 @@ SERVER_INFO = {"name": "docketdrift", "version": "1.0.0"}
 MAX_FULL_TEXT_CHARS = 150_000
 MAX_LIST_LIMIT = 50
 MAX_QUOTE_CHARS = 500
+
+# /mcp shares ONE gunicorn worker (8 threads) with the public website, so
+# a busy connector can starve the site. Load-tested 2026-08-26 against
+# internal gunicorn: the five indexed tools answer in 3-17ms, but
+# search_opinions runs the corpus-wide FULLTEXT candidate scan --
+# ~0.9s on a narrow query, ~10s on a common term. Mixed tool calls stayed
+# clean at 4/8/16 concurrent (site landing 0.02s), but at 32 the LA
+# landing page degraded to 6.3s. No 5xx and no poisoned connections at
+# any level, so the failure mode is starvation, not corruption.
+#
+# Cap the ONE expensive path rather than all of tools/call: throttling
+# the millisecond lookups would cost availability and buy nothing. An
+# in-process semaphore is genuinely effective here because the
+# deployment is workers=1 (same reason the query-embedding cache works).
+# Refused calls come back as isError content, which the model reads and
+# can act on, rather than a transport error it cannot.
+MCP_SEARCH_CONCURRENCY = getattr(settings, "MCP_SEARCH_CONCURRENCY", 3)
+_SEARCH_SLOTS = threading.BoundedSemaphore(MCP_SEARCH_CONCURRENCY)
+_THROTTLED_TOOLS = {"search_opinions"}
 
 
 def _live_state_codes() -> list[str]:
@@ -600,6 +621,18 @@ def mcp_endpoint(request):
         if tool is None:
             return _rpc_error(msg_id, -32602, f"unknown tool: {name}")
         args = params.get("arguments") or {}
+        throttled = name in _THROTTLED_TOOLS
+        if throttled and not _SEARCH_SLOTS.acquire(blocking=False):
+            # Shed rather than queue: a queued search still pins a worker
+            # thread, which is the exact resource we are protecting.
+            return _rpc_result(msg_id, {
+                "content": [{"type": "text", "text": (
+                    "search is busy right now -- retry in a few seconds, or "
+                    "send a narrower query (a broad common-law term scans "
+                    "the whole corpus). Other tools are unaffected."
+                )}],
+                "isError": True,
+            })
         try:
             result = tool["fn"](args)
         except ValueError as exc:
@@ -614,6 +647,9 @@ def mcp_endpoint(request):
                              "text": "internal error; try a narrower request"}],
                 "isError": True,
             })
+        finally:
+            if throttled:
+                _SEARCH_SLOTS.release()
         return _rpc_result(msg_id, {
             "content": [{
                 "type": "text",
