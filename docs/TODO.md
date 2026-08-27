@@ -591,8 +591,44 @@ MN-specific bug.
     %r") — one timeout would write a research query to disk, the exact
     artifact the QueryEmbedding drop existed to prevent. Verified 0
     occurrences on prod (nothing leaked); now logs length + error.
-  Remaining gates: **load-test tools/call concurrency**, then the
-  connector-directory submission.
+  **GATE 2 of 3 CLEARED 2026-08-26 — load test RUN, and it found a real
+  problem.** Measured on the server against internal gunicorn:
+
+  | | result |
+  |---|---|
+  | get_opinion / lookup_citation / get_judge / citing_opinions | 3-17ms |
+  | search_opinions, narrow query | 0.9s |
+  | search_opinions, common term (NH) | **~10s** |
+  | 4 / 8 / 16 concurrent, mixed | clean; site landing 0.02s |
+  | **32 concurrent, mixed** | median 7.0s, **LA landing 0.02s -> 6.3s** |
+
+  No 5xx and no poisoned connections at any level, so the failure mode
+  is **starvation, not corruption**: /mcp shares one gunicorn worker (8
+  threads) with the public site, and a busy connector takes the website
+  down with it. Unacceptable once a connector directory points traffic
+  at us.
+  **Fixed:** an in-process semaphore caps concurrent `search_opinions`
+  (default 3, `settings.MCP_SEARCH_CONCURRENCY`); the millisecond
+  lookups stay unthrottled. Refusals **shed rather than queue** — a
+  queued search still pins the thread being protected — and return
+  `isError` content the model can read and retry on. Re-measured after:
+  at 32 concurrent, median **7.0s -> 0.079s** and the **LA landing
+  6.3s -> 0.16s**; a 12-way search-only burst serves exactly 3 and sheds
+  9 with the site at 0.16s. NB the semaphore is only effective because
+  the deployment is `workers=1` — if that ever changes it must become a
+  shared counter.
+
+  **Side finding, and it will recur: NH common-term search roughly
+  DOUBLED (~5s -> ~10s) because LOUISIANA launched.** The FULLTEXT index
+  spans the whole shared table, so an NH query wades corpus-wide
+  postings and discards non-NH rows; adding LA's 341K rows made the
+  smallest state's search materially slower. The "NH is slowest BECAUSE
+  smallest" gotcha predicted exactly this ("its cost grows when OTHER
+  states' corpora grow") — it is now measured, not theoretical, and
+  state #5 will do it again. Watch it before the next rollout; the dial
+  is per-state candidate caps proportional to corpus share.
+
+  Remaining gate: the connector-directory submission.
 
   **Distribution (the actual point):** submit to Anthropic's MCP
   connector directory; README + llms.txt mention; a "Connect DocketDrift
