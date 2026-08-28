@@ -2432,6 +2432,24 @@ Cross-cutting layers on every live state:
 New states are added one at a time. See https://docketdrift.com/ for
 the apex picker; each state lives on its own subdomain.
 
+## Connect as a tool (MCP)
+
+DocketDrift runs a read-only Model Context Protocol server, so an AI
+assistant can look up real opinions instead of recalling them:
+
+    https://docketdrift.com/mcp
+
+Streamable HTTP, stateless, no authentication, no account, no API key.
+Six read-only tools: search_opinions, get_opinion, lookup_citation,
+get_judge, citing_opinions, get_statute. Every one returns verbatim
+court text or a fact extracted from it -- there is no generation step.
+Tool arguments ride in the request body, which is never logged.
+
+Setup instructions: https://docketdrift.com/connect/
+
+Keyword search is capped for concurrency; if a search is refused as
+busy, narrow the query and retry. The other five tools are unaffected.
+
 ## URL grammar (same on every state subdomain)
 
 - `https://<state>.docketdrift.com/` -- state landing
@@ -2624,7 +2642,7 @@ def sitemap_index(request):
 @vary_on_headers("Host")
 def sitemap_static(request):
     """Static-page sitemap: home, about, how-we-differ, privacy, support,
-    request-state, current-judges, tags, compare-judges. Per-state
+    request-state, connect, current-judges, tags, compare-judges. Per-state
     subdomains add the state-only paths; apex sticks to the cross-state
     static pages.
     """
@@ -2633,7 +2651,7 @@ def sitemap_static(request):
 
     urls = [
         "/", "/about/", "/how-we-differ/", "/privacy/",
-        "/support/", "/request-state/",
+        "/support/", "/request-state/", "/connect/",
     ]
     if state is not None:
         urls.extend([
