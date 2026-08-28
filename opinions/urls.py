@@ -11,6 +11,7 @@ urlpatterns = [
     path("opinions/", views.opinion_list, name="opinion_list"),
     path("about/", views.about, name="about"),
     path("how-we-differ/", views.how_we_differ, name="how_we_differ"),
+    path("connect/", views.connect, name="connect"),
     path("privacy/", views.privacy, name="privacy"),
     path("support/", views.support, name="support"),
     path("report-error/", views.report_error, name="report_error"),

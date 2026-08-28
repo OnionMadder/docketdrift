@@ -3687,3 +3687,13 @@ button.cta-primary {
   color: var(--neon-cyan);
   text-decoration-color: var(--neon-cyan);
 }
+
+/* /connect/ -- the MCP endpoint URL is the single thing a reader came for,
+   so it gets the emphasis a bare <code> block would not. Uses the brand
+   neon family, NOT the --dd-* outcome key: an endpoint carries no
+   affirmed/reversed meaning. */
+.connect-url {
+  font-size: 1.15rem;
+  border-color: rgba(var(--neon-cyan-rgb, 16, 254, 226), 0.45);
+  --strip: var(--neon-cyan, #10fee2);
+}

@@ -1288,6 +1288,20 @@ def how_we_differ(request):
 
 
 @cache_control(public=True, max_age=CACHE_SEC_STATIC)
+def connect(request):
+    """How to attach the /mcp server to Claude or any MCP client.
+
+    Static by design: it documents a URL and a posture, not state. This
+    page is also the prerequisite for every distribution path -- the
+    connector directory and the plugin directory both require a public
+    documentation URL, and until one of those lands it is the only way a
+    reader learns the endpoint exists at all."""
+    return render(request, "opinions/connect.html", {
+        "active_nav": "connect",
+    })
+
+
+@cache_control(public=True, max_age=CACHE_SEC_STATIC)
 def privacy(request):
     """Privacy policy. Static page; copy is intentionally short and stark
     because the privacy posture itself is short and stark: we don't log,

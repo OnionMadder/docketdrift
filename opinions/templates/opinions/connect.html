@@ -1,0 +1,87 @@
+{% extends "opinions/base.html" %}
+{% block title %}Connect DocketDrift to Claude &middot; DocketDrift{% endblock %}
+{% block description %}Connect DocketDrift to Claude or any MCP client. Read-only access to verbatim state appellate opinions, so an AI assistant can quote real cases instead of inventing citations. No account, no API key.{% endblock %}
+
+{% block og_title %}Connect DocketDrift to Claude{% endblock %}
+{% block og_description %}A read-only MCP server over four states of appellate case law. Let an AI assistant look up real opinions and quote the court's own words. No account, no API key.{% endblock %}
+
+{% block content %}
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+  <ol>
+    <li><a href="{% url 'opinions:home' %}">Home</a></li>
+    <li aria-current="page">Connect to Claude</li>
+  </ol>
+</nav>
+
+<div class="glossy-frame">
+  <h1>Connect DocketDrift to Claude</h1>
+
+  <p class="lede">Give an AI assistant the ability to look up real appellate opinions &mdash; and quote the court's own words instead of inventing a citation.</p>
+
+  <p>DocketDrift runs a <a href="https://modelcontextprotocol.io/" target="_blank" rel="noopener">Model Context Protocol</a> server: a standard way for an AI assistant to call out to a real data source. Connect it and Claude can search opinions, pull a case by docket number, resolve a citation, and read a judge's record &mdash; all against the actual corpus, all verbatim.</p>
+
+  <p><strong>No account, no API key, no sign-up.</strong> The server is public and read-only.</p>
+
+  <h2>The address</h2>
+
+  <p>Everything below uses one URL:</p>
+
+  <pre class="connect-url"><code>https://docketdrift.com/mcp</code></pre>
+
+  <h3>Claude.ai and Claude Desktop</h3>
+  <p>Open <strong>Settings &rarr; Connectors &rarr; Add custom connector</strong>, paste the URL above, and save. Leave the authentication fields empty &mdash; there is nothing to authenticate.</p>
+
+  <h3>Claude Code</h3>
+  <p>From your project directory:</p>
+  <pre><code>claude mcp add --transport http docketdrift https://docketdrift.com/mcp</code></pre>
+  <p>Or commit a <code>.mcp.json</code> at the repo root so the whole team picks it up:</p>
+  <pre><code>{
+  "mcpServers": {
+    "docketdrift": {
+      "type": "http",
+      "url": "https://docketdrift.com/mcp"
+    }
+  }
+}</code></pre>
+
+  <h3>Anything else</h3>
+  <p>It is a standard streamable-HTTP MCP server, so any compliant client works. Point it at the URL; it speaks <code>initialize</code>, <code>tools/list</code>, and <code>tools/call</code>.</p>
+
+  <h2>What it can do</h2>
+
+  <p>Six tools, all read-only. None of them can write, change, or delete anything &mdash; the server has no write path at all.</p>
+
+  <ul>
+    <li><strong>Search opinions</strong> &mdash; keyword search across one state's corpus.</li>
+    <li><strong>Get opinion</strong> &mdash; a case by docket number, with its disposition, panel, and full text.</li>
+    <li><strong>Look up citation</strong> &mdash; paste a reporter cite or docket and land on the case.</li>
+    <li><strong>Get judge</strong> &mdash; a judge's record: how they vote, who they sit with, where they split.</li>
+    <li><strong>Get citing opinions</strong> &mdash; what later cases said about this one, in their own words.</li>
+    <li><strong>Get statute</strong> &mdash; the opinions construing a given statute.</li>
+  </ul>
+
+  <p>Coverage is <strong>Minnesota, New Hampshire, Arizona, and Louisiana</strong> &mdash; Supreme Courts and Courts of Appeal, roughly 469,000 opinions, the oldest from 1809. <a href="{% url 'opinions:about' %}#coverage-gaps">Known coverage gaps are documented</a>; please read them before relying on completeness.</p>
+
+  <h2>What it will not do</h2>
+
+  <p>The same posture as the rest of the site, and it is the whole point of connecting this rather than asking an AI to recall case law from memory:</p>
+
+  <ul>
+    <li><strong>Nothing is generated.</strong> Every field is either verbatim court text or a fact extracted from it. Holdings quote the court's own sentence. There is no summarization step for a model to get creative in.</li>
+    <li><strong>Nothing is logged.</strong> Tool arguments &mdash; the thing being researched &mdash; travel in the request body, which our access log does not record, and we do not write them down anywhere else. See the <a href="{% url 'opinions:privacy' %}">privacy statement</a>.</li>
+    <li><strong>Nothing is remembered.</strong> The server is stateless. There are no accounts and no sessions, so there is no identifier tying one lookup to the next.</li>
+  </ul>
+
+  <p>One caveat we cannot fix from our side: whoever operates the assistant you are using can see your conversation with it. That is between you and them. Our half of the exchange keeps no record.</p>
+
+  <h2>If a search comes back busy</h2>
+
+  <p>Keyword search over half a million opinions is the one expensive thing here, so a small number of searches run at once and the rest are asked to retry rather than queued. If you see that, narrow the query &mdash; a broad common-law term matches tens of thousands of cases and is rarely what you wanted anyway. The other five tools are unaffected and answer in milliseconds.</p>
+
+  <h2>Bulk access</h2>
+
+  <p>If you want the corpus rather than a lookup tool, don't scrape it &mdash; <a href="{% url 'opinions:about' %}">ask us</a> and we will send you a copy. There is a Minnesota bundle on the <a href="https://archive.org/details/minnesota-appellate-opinions-2017-2026" target="_blank" rel="noopener">Internet Archive</a> already, and other cuts are free for the asking. It is public-record data; a better door is a more useful answer than a lock.</p>
+
+  <p class="signature">&mdash; DocketDrift</p>
+</div>
+{% endblock %}
