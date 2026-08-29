@@ -97,6 +97,16 @@ while [ "$i" -lt "$CHUNKS" ]; do
         exit "$rc"
     fi
     date -u +%Y-%m-%dT%H:%M:%SZ > "$stamp"
+
+    # Drop the downloaded PDFs as soon as they are ingested. ingest_pdfs
+    # has already copied each one into media storage, so keeping the
+    # working copy doubles the disk cost of the whole run for nothing --
+    # and this account has a storage quota well below the filesystem's
+    # free space. Holding all ~10,700 at once exhausted it mid-run and
+    # took the WEBSITE DOWN: gunicorn could not write its cache
+    # ("[Errno 69] Disc quota exceeded"). The stamp above is what makes
+    # a chunk resumable, not the files.
+    rm -rf "$dir"
 done
 
 echo "=== all $CHUNKS chunk(s) complete ==="
