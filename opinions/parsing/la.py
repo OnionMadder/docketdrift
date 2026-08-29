@@ -56,8 +56,24 @@ from .base import ParsedOpinion, StateParser
 
 # ---------- Court identification ----------------------------------------
 
+def _loose_phrase(phrase: str) -> str:
+    """Whitespace-tolerant pattern for a fixed phrase.
+
+    pypdf splits a word across a line break often enough to matter: a real
+    2021 dissent PDF extracted as "SUPRE\nME COURT OF LOUISIANA", which
+    defeated a \bSUPREME\b match, left is_supreme False, and silently
+    skipped the ENTIRE Supreme branch -- no docket, no date, no
+    disposition. Tolerating whitespace between characters costs nothing
+    on a phrase this distinctive, and is the same trick
+    SUPREME_PER_CURIAM_RE already uses for "P E R  C U R I A M".
+    """
+    return r"\s+".join(
+        r"\s*".join(re.escape(ch) for ch in word) for word in phrase.split()
+    )
+
+
 LA_SUPREME_RE = re.compile(
-    r"SUPREME\s+COURT\s+OF\s+LOUISIANA", re.IGNORECASE)
+    _loose_phrase("SUPREME COURT OF LOUISIANA"), re.IGNORECASE)
 LA_COA_RE = re.compile(
     r"COURT\s+OF\s+APPEAL(?:[,\s]|$)", re.IGNORECASE)
 
@@ -163,6 +179,79 @@ SUPREME_DISP_BLOCK_RE = re.compile(
     + _DISP_CONNECTIVE + r")\b[\s.,]*){2,}",
     re.MULTILINE,
 )
+
+# News-release disposition, ANCHORED to its structural slot rather than
+# matched by vocabulary. The cover page reads:
+#
+#   2020-C-00815 IN RE: SUCCESSION OF ... (Parish of Livingston)
+#   REVERSED; SEE OPINION.
+#   Crichton, J., concurs and assigns reasons.
+#
+# so the disposition is the ALL-CAPS sentence run between the parish
+# parenthetical and the first mixed-case line. Vocabulary matching over
+# the whole cover page picked words out of the caption instead -- it
+# read the REVERSED case above as "Writ of."
+SUPREME_NEWS_DISP_RE = re.compile(
+    # Scoped case-insensitivity: real captions use both "(PARISH OF
+    # ORLEANS CIVIL)" and "(Parish of Livingston)". The flag must NOT
+    # extend to the caps-run below, which relies on case to know where
+    # the disposition ends.
+    r"\((?i:parish\s+of)[^)]*\)[ \t]*\n"
+    # Consume ALL-CAPS lines. NOT "lines ending in a period": a real
+    # disposition wraps mid-sentence ("... REMANDED. SEE \nOPINION."), so
+    # a period-terminated rule dropped the whole run. A line containing any
+    # lowercase is the concur/dissent block ("Hughes, J., dissents"), which
+    # is where the disposition ends.
+    r"((?:[ \t]*[A-Z][^a-z\n]*\n){1,8})"
+)
+
+# The anchored tier is for lasc.org news-release PDFs ONLY. Gating on
+# this marker is not belt-and-braces: ungated, the caps-run pattern found
+# a DIFFERENT slot in CourtListener reporter text and truncated
+# "Affirmed in part, reversed in part, remanded." to "Remanded." on a
+# real row (measured over 400 existing rows, 2026-08-28). Reporter text
+# keeps the proven tail/prose tiers.
+NEWS_RELEASE_MARKER_RE = re.compile(
+    r"FOR\s+IMMEDIATE\s+NEWS\s+RELEASE|"
+    r"The\s+Opinions?\s+handed\s+down\s+on\s+the\b",
+    re.IGNORECASE)
+
+
+def _news_release_disposition(text: str) -> str | None:
+    """Transcribe the ALL-CAPS disposition run from a news-release cover.
+
+    Pointer sentences ("SEE OPINION", "SEE PER CURIAM") are cross-
+    references to the body, not dispositions, so they are dropped -- but
+    everything else is kept verbatim in the court's own order. Louisiana
+    disposes of the appeal as well as the judgment, so a multi-sentence
+    run is normal and must not be truncated to its first clause.
+    """
+    if not NEWS_RELEASE_MARKER_RE.search(text):
+        return None
+    # Parenthesised-parish anchor ONLY. A looser "skip a few lines then
+    # find a caps disposition verb" fallback matched a LATER disposition
+    # line in full opinion text and truncated a real row's
+    # "Affirmed in part, reversed in part, remanded." to "Remanded."
+    # A release without the parish parenthetical falls through to the
+    # proven tiers instead -- blank or old-path beats wrong.
+    m = SUPREME_NEWS_DISP_RE.search(text)
+    if not m:
+        return None
+    block = " ".join(m.group(1).split())
+    # The caps run must actually contain a disposition word. Without this
+    # it swallowed a docket cross-reference line -- a real row's
+    # "Affirmed." became "C/w." ("consolidated with"). Structural position
+    # says WHERE to look; vocabulary says whether we found it.
+    if not re.search(r"\b(?:" + _DISP_VERB + r")\b", block, re.IGNORECASE):
+        return None
+    sentences = [s.strip(" ,;") for s in block.split(".") if s.strip(" ,;")]
+    sentences = [s for s in sentences
+                 if not re.match(r"^SEE\b", s, re.IGNORECASE)]
+    if not sentences:
+        return None
+    sentences = [s[:1].upper() + s[1:].lower() for s in sentences]
+    return (". ".join(sentences) + ".")[:255]
+
 
 # ---- Tail fallback tier (reporter-style CL bulk texts) ------------------
 #
@@ -388,6 +477,15 @@ TAIL_WRIT_SENTENCE_RE = re.compile(
 SUPREME_PER_CURIAM_RE = re.compile(
     r"P\s*E\s*R\s+C\s*U\s*R\s*I\s*A\s*M\s*:",
     re.IGNORECASE)
+# News-release opinion block: "BY Weimer, C.J.:" / "BY Crain, J.:".
+# SUPREME_SIGNED_RE anchors the surname to the start of a line, so the
+# "BY " prefix made it miss every opinion released this way -- which is
+# every signed opinion on lasc.org. That is why author came back None on
+# all of them and LA panel coverage sat at 13%.
+SUPREME_BY_AUTHOR_RE = re.compile(
+    r"\bBY\s+([A-Z][A-Za-z'\-]{1,20}),\s*(C\.?J\.?|J\.?)\s*:",
+)
+
 SUPREME_SIGNED_RE = re.compile(
     r"^[ \t]*([A-Z][A-Z'\-]{1,20}),\s*(C\.?J\.?|J\.?)\s*:",
     re.MULTILINE)
@@ -492,6 +590,74 @@ def _space_name_particles(chunk: str) -> str:
                   flags=re.IGNORECASE)
 
 
+# Caption shape A -- news-release opinion block. The docket is followed
+# immediately by the parties, which wrap across lines, and the block ends
+# at the parenthesised parish or at the ALL-CAPS disposition line:
+#   2020-CC-01167 ANN MARIE AURICCHIO AND PATRICK HOGAN  VS.  LYNEIGH J.
+#   HARRISTON (PARISH OF ORLEANS CIVIL)
+SUPREME_CAPTION_NEWS_RE = re.compile(
+    r"\d{4}-[A-Z]{1,3}-\d{4,5}\s+(.{4,400}?)\s*\((?:PARISH|Parish)\s+OF|"
+    r"\d{4}-[A-Z]{1,3}-\d{4,5}\s+(.{4,400}?)\s*\n\s*[A-Z][A-Z .;,]{6,}\.",
+    re.DOTALL)
+
+# Caption shape B -- court-document header (per curiam / writ action).
+# Parties sit between the court name and the "No. <docket>" line:
+#   The Supreme Court of the State of Louisiana
+#   HELENA SHEAR
+#   VS.
+#   TRAIL BLAZERS, INC., ET AL.
+#   No. 2021-CC-00873
+SUPREME_CAPTION_DOC_RE = re.compile(
+    _loose_phrase("The Supreme Court of the State of Louisiana")
+    + r"\s*(.{4,400}?)\s*\bNo\.\s*\d{4}-[A-Z]{1,3}-\d{4,5}",
+    re.IGNORECASE | re.DOTALL)
+
+_VS_SPLIT_RE = re.compile(r"\s+(?:VS?\.|VERSUS)\s+", re.IGNORECASE)
+
+
+def _clean_party(s: str) -> str:
+    """Collapse a wrapped, ALL-CAPS party blob into one tidy line."""
+    s = re.sub(r"\s+", " ", s or "").strip(" ,;:")
+    # Drop trailing parish/court parentheticals the caption sometimes keeps.
+    s = re.sub(r"\s*\((?:PARISH|Parish)[^)]*\)\s*$", "", s).strip(" ,;:")
+    return s
+
+
+def _extract_case_name(head: str) -> str | None:
+    """Build "A v. B" from either Supreme caption shape.
+
+    Returns None rather than a guess: a blank title is honest, and every
+    row ingested before this existed carried one, because CourtListener
+    supplied the name and this parser never had to.
+    """
+    raw = None
+    m = SUPREME_CAPTION_DOC_RE.search(head)
+    if m:
+        raw = m.group(1)
+    else:
+        m = SUPREME_CAPTION_NEWS_RE.search(head)
+        if m:
+            raw = m.group(1) or m.group(2)
+    if not raw:
+        return None
+
+    # "IN RE: ..." captions have no VS. side and are already a full name.
+    parts = _VS_SPLIT_RE.split(raw, maxsplit=1)
+    if len(parts) == 2:
+        left, right = _clean_party(parts[0]), _clean_party(parts[1])
+        if not left or not right:
+            return None
+        name = "%s v. %s" % (_titlecase_caps(left), _titlecase_caps(right))
+    else:
+        only = _clean_party(raw)
+        if len(only) < 4:
+            return None
+        name = _titlecase_caps(only)
+
+    name = re.sub(r"\s+", " ", name).strip()
+    return name[:250] or None
+
+
 def _titlecase_caps(s: str) -> str:
     """Title-case an ALL-CAPS token/name for display ('WEIMER' -> 'Weimer')."""
     return " ".join(w[:1] + w[1:].lower() if w.isupper() else w
@@ -550,6 +716,17 @@ class LouisianaParser(StateParser):
                     result.confidence["case_number"] = header_conf
                     break
 
+        # --- Case name --------------------------------------------------
+        # Supreme only for now. Every LA row in the corpus got its title
+        # from CourtListener's bulk CSV, so this parser never needed to
+        # read a caption -- and lasc.org PDFs come with no such gift.
+        # Without this, a backfilled opinion ingests with a blank title.
+        if is_supreme:
+            name = _extract_case_name(head)
+            if name:
+                result.case_name = name
+                result.confidence["case_name"] = 0.85
+
         # --- Release date ----------------------------------------------
         if is_supreme:
             m = SUPREME_DATE_RE.search(head)
@@ -596,10 +773,16 @@ class LouisianaParser(StateParser):
 
         # --- Disposition -----------------------------------------------
         if is_supreme:
-            # The disposition sits in the news-release block on the cover
-            # page, before "SEE PER CURIAM" if present. Grab a run of
-            # disposition sentences and normalize.
-            cover = raw_text[:2000]
+            # Tier 1: the anchored news-release slot. Structural position
+            # beats vocabulary matching -- see SUPREME_NEWS_DISP_RE.
+            news = _news_release_disposition(raw_text[:3000])
+            if news:
+                result.disposition = news
+                result.confidence["disposition"] = 0.95
+
+            # Tier 2 (only if the anchored slot is absent): the original
+            # vocabulary-run scan over the cover page.
+            cover = raw_text[:2000] if not news else ""
             # Cut off after PER CURIAM marker if it appears (Supreme
             # cover pages end with "SEE PER CURIAM." then the concur/
             # dissent lines, which are not the disposition).
@@ -699,7 +882,8 @@ class LouisianaParser(StateParser):
             # concurring justice's separate opinion also begins with a
             # signed heading). Check signed FIRST, then fall back to
             # per curiam.
-            sm = SUPREME_SIGNED_RE.search(raw_text[:4000])
+            sm = (SUPREME_BY_AUTHOR_RE.search(raw_text[:4000])
+                  or SUPREME_SIGNED_RE.search(raw_text[:4000]))
             if sm:
                 surname = _titlecase_caps(sm.group(1))
                 role = ("Chief Justice" if "C" in sm.group(2).upper()
