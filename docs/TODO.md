@@ -628,7 +628,56 @@ MN-specific bug.
   state #5 will do it again. Watch it before the next rollout; the dial
   is per-state candidate caps proportional to corpus share.
 
-  Remaining gate: the connector-directory submission.
+  **GATE 3 — SUBMITTED 2026-08-28, as a PLUGIN rather than a connector.**
+  The Connectors Directory needs a Team/Enterprise org (organization
+  settings do not exist on individual plans) and Onion is on an
+  individual plan, so that route is closed. Plugin submission has a
+  second form on **Console** that explicitly serves individual authors,
+  and plugins "can contain any MCP, including remote MCPs" — so the
+  plugin directory is the available path. Verified against Anthropic's
+  own docs, not blog posts; the widely repeated "OAuth 2.1 is mandatory"
+  is also WRONG (the portal lists "no authentication" as a choice).
+
+  Shipped at the repo root so the marketplace picks up pushes to main
+  automatically: `.claude-plugin/plugin.json` beside the `.mcp.json`
+  that was already there, plus **`skills/case-law-research/SKILL.md`**.
+  The skill is the point — Anthropic's guidance says a single-connector
+  plugin is the weak form ("a good plugin combines skills, connectors,
+  slash commands"), so the skill encodes the editorial posture: quote
+  the court instead of paraphrasing a holding, never invent a pinpoint
+  paragraph, run `citing_opinions` before calling a case authority and
+  quote the citing passage rather than trusting the treatment label,
+  transcribe dispositions instead of translating them, name WHICH
+  coverage gap applies when a lookup is empty, and never fall back on
+  recalled case law when a lookup fails. `claude plugin validate` passes.
+
+  Submitted for: Claude Code + Cowork. License AGPL-3.0, privacy URL
+  `/privacy/` (the MCP section written 2026-08-27 exists for this
+  field), homepage `/connect/`. **Awaiting review; no action until they
+  respond.** Updates pushed to main are picked up automatically — no
+  resubmission needed.
+
+  **Caught while writing the listing:** the skill shipped "New Hampshire
+  1816–present" — an unverified span. Measured: NH's earliest is
+  **1843-07-05**. Fixed before submitting. Spans are MN 1851, NH 1843,
+  AZ 1866, LA 1809; corpus 469,343. The skill telling the model not to
+  state unverified facts had itself stated one.
+
+  **Known trade-off, accepted:** the plugin directory surfaces in Claude
+  Code + Cowork (developers); the Connectors Directory surfaces in
+  Claude.ai (where lawyers are). Bundling an MCP that is not in the
+  Connectors Directory also shows users extra warnings and lowers the
+  odds of the "Anthropic Verified" badge.
+
+  **The Team upgrade is deliberately NOT being bought yet** (~$20/user/mo
+  annual, 2-seat minimum, so ~$480–600/yr — verify on Anthropic's own
+  pricing page before committing). Measured first: `/mcp` had **zero
+  organic usage** at submission time (240 requests in the log, 174 of
+  them one load test, the rest probes) — expected, since it was dark and
+  undocumented until `/connect/` shipped 2026-08-27. Watch `/connect/`
+  and `/mcp` traffic for a few weeks; real usage turns the upgrade into
+  an evidenced decision instead of a bet, and no usage means the
+  directory would not have rescued it either.
 
   **Distribution (the actual point):** submit to Anthropic's MCP
   connector directory; README + llms.txt mention; a "Connect DocketDrift
