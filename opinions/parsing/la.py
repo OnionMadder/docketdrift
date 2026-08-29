@@ -253,6 +253,47 @@ def _news_release_disposition(text: str) -> str | None:
     return (". ".join(sentences) + ".")[:255]
 
 
+# Clerk's action block on a writ-action / per curiam PDF. Anchored to the
+# underscore rule + date line that precede it, so it cannot drift into the
+# per curiam body below (which states the SUBSTANTIVE outcome and is found
+# by the earlier tiers -- this tier is a last resort and must not preempt
+# them).
+SUPREME_WRIT_ACTION_RE = re.compile(
+    r"_[ _]*_[ \t]*\n"                       # "_ _ _ _ _ _"
+    r"[ \t]*[A-Z][a-z]+\s+\d{1,2},\s*\d{4}[ \t]*\n"   # "December 21, 2021"
+    r"[ \t]*([A-Z][^\n]{3,120})\n"           # the disposition sentence
+)
+
+# A justice's separate vote ("Griffin, J., would deny.") can follow the
+# disposition; it is a vote, not the disposition, and must never be
+# captured as one.
+_WRIT_VOTE_LINE_RE = re.compile(
+    r"^[A-Z][A-Za-z'\-]+,\s*(?:C\.)?J\.,", re.IGNORECASE)
+
+
+def _writ_action_disposition(text: str) -> str | None:
+    """Transcribe the clerk's action line from a writ-action PDF."""
+    m = SUPREME_WRIT_ACTION_RE.search(text)
+    if not m:
+        return None
+    line = " ".join(m.group(1).split())
+    if _WRIT_VOTE_LINE_RE.match(line):
+        return None
+    # Drop pointer sentences -- "See per curiam" / "See briefing notice
+    # and Order" redirect to another document, they do not state the
+    # outcome. Same rule the news-release tier applies.
+    sentences = [x.strip(" ,;") for x in line.split(".") if x.strip(" ,;")]
+    sentences = [x for x in sentences
+                 if not re.match(r"^SEE\b", x, re.IGNORECASE)]
+    if not sentences:
+        return None
+    if not re.search(r"\b(?:" + _DISP_VERB + r")\b", " ".join(sentences),
+                     re.IGNORECASE):
+        return None
+    sentences = [x[:1].upper() + x[1:].lower() for x in sentences]
+    return (". ".join(sentences) + ".")[:255]
+
+
 # ---- Tail fallback tier (reporter-style CL bulk texts) ------------------
 #
 # The head-zone patterns above were built against the modern lasc.gov /
@@ -875,6 +916,18 @@ class LouisianaParser(StateParser):
                 if prose:
                     result.disposition = prose
                     result.confidence["disposition"] = 0.75
+
+        # Tier D (0.8), Supreme only, LAST resort: the clerk's action line
+        # on a writ-action / per curiam PDF. Deliberately after every other
+        # tier -- when the attached per curiam states a substantive outcome
+        # ("Reversed"), that is the better answer and the earlier tiers
+        # already found it. This fills the blank for the ~38 Actions
+        # releases a year that carry only the procedural action.
+        if is_supreme and not result.disposition:
+            writ = _writ_action_disposition(raw_text[:6000])
+            if writ:
+                result.disposition = writ
+                result.confidence["disposition"] = 0.8
 
         # --- Author byline ---------------------------------------------
         if is_supreme:
