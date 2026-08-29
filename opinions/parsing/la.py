@@ -313,7 +313,12 @@ def _news_release_disposition(text: str) -> str | None:
 # them).
 SUPREME_WRIT_ACTION_RE = re.compile(
     r"_[ _]*_[ \t]*\n"                       # "_ _ _ _ _ _"
+    # Later releases space these apart with blank lines; earlier ones
+    # stack them tight. Requiring adjacency cost 2024-2025 most of
+    # their dispositions (24.7%% / 33.6%% filled vs 93.3%% in 2021).
+    r"(?:[ \t]*\n)*"
     r"[ \t]*[A-Z][a-z]+\s+\d{1,2},\s*\d{4}[ \t]*\n"   # "December 21, 2021"
+    r"(?:[ \t]*\n)*"
     r"[ \t]*([A-Z][^\n]{3,120})\n"           # the disposition sentence
 )
 
