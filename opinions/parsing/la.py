@@ -653,7 +653,28 @@ SUPREME_CAPTION_DOC_RE = re.compile(
     + r"\s*(.{4,400}?)\s*\bNo\.\s*\d{4}-[A-Z]{1,3}-\d{4,5}",
     re.IGNORECASE | re.DOTALL)
 
-_VS_SPLIT_RE = re.compile(r"\s+(?:VS?\.|VERSUS)\s+", re.IGNORECASE)
+# Real captions stack the parties around a "VS." line, and pypdf renders
+# it several ways -- "VS.", "VS .", a bare "VS", or "versus". Requiring
+# the period tight against the letters left the separator IN the title:
+# "State Of Louisiana Vs . Randall Paul Burton". Criminal writ actions
+# are most of the Supreme corpus, so this shape is the common case, not
+# an edge case.
+_VS_SPLIT_RE = re.compile(r"\s+(?:VS\s*\.?|VERSUS)\s+", re.IGNORECASE)
+
+# Title-casing a shouted caption mangles two things a reader notices:
+# generational suffixes ("III" -> "Iii") and lettered abbreviations
+# ("M.D." -> "M.d."). Both are restored after the general pass rather
+# than by complicating _titlecase_caps, which judge names also use.
+_ROMAN_RE = re.compile(
+    r"\b(I{2,3}|IV|VI{0,3}|IX|XI{0,2})\b", re.IGNORECASE)
+_DOTTED_INITIALS_RE = re.compile(
+    r"\b((?:[A-Za-z]\.){2,})(?=\s|$|,)")
+
+
+def _fix_name_caps(name: str) -> str:
+    """Restore caps that title-casing flattens."""
+    name = _ROMAN_RE.sub(lambda m: m.group(1).upper(), name)
+    return _DOTTED_INITIALS_RE.sub(lambda m: m.group(1).upper(), name)
 
 
 def _clean_party(s: str) -> str:
@@ -688,12 +709,16 @@ def _extract_case_name(head: str) -> str | None:
         left, right = _clean_party(parts[0]), _clean_party(parts[1])
         if not left or not right:
             return None
-        name = "%s v. %s" % (_titlecase_caps(left), _titlecase_caps(right))
+        # Repair each party BEFORE joining: the " v. " separator is not
+        # part of a party name, and a bare "V" is a Roman numeral to
+        # _ROMAN_RE, which turned every "v." into "V."
+        name = "%s v. %s" % (_fix_name_caps(_titlecase_caps(left)),
+                             _fix_name_caps(_titlecase_caps(right)))
     else:
         only = _clean_party(raw)
         if len(only) < 4:
             return None
-        name = _titlecase_caps(only)
+        name = _fix_name_caps(_titlecase_caps(only))
 
     name = re.sub(r"\s+", " ", name).strip()
     return name[:250] or None
