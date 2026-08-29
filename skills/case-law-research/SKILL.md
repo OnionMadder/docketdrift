@@ -18,7 +18,7 @@ Roughly 470,000 opinions across four states:
 | State | Span | Courts |
 |---|---|---|
 | Minnesota | 1851–present | Supreme Court, Court of Appeals |
-| New Hampshire | 1816–present | Supreme Court (no intermediate appellate court) |
+| New Hampshire | 1843–present | Supreme Court (no intermediate appellate court) |
 | Arizona | 1866–present | Supreme Court, Court of Appeals Div. One and Div. Two |
 | Louisiana | 1809–present | Supreme Court, all five Circuit Courts of Appeal |
 
