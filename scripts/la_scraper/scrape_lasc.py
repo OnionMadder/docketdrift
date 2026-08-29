@@ -204,7 +204,13 @@ def main() -> int:
         print("manifest already holds %d URL(s); they will be skipped"
               % len(seen))
 
-    out = open(args.manifest, "a", encoding="utf-8") if args.manifest else None
+    # newline is load-bearing: this manifest is read by a POSIX shell on
+    # the server, and Python text mode on Windows writes CRLF. The stray
+    # carriage return then rides on the URL field and every fetch fails --
+    # invisibly, because a CR just returns the cursor, so the error line
+    # prints the URL looking perfectly correct.
+    out = (open(args.manifest, "a", encoding="utf-8", newline="\n")
+           if args.manifest else None)
     total = 0
     try:
         with sync_playwright() as p:

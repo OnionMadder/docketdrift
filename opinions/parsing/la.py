@@ -91,7 +91,51 @@ NONPRECEDENTIAL_RE = re.compile(
 # Supreme: "No. 2026-CD-00927" (also appears as bare "2026-CD-00927" in the
 # news-release block on page 1 before the "No." prefix on page 2).
 SUPREME_DOCKET_RE = re.compile(
-    r"\b(?:No\.\s+)?(\d{4}-[A-Z]{1,3}-\d{4,5})\b")
+    r"\b(?:No\.\s*)?(\d{4}-[A-Z]{1,3}-\d{4,5})\b")
+
+# Older Supreme documents write the docket SHORT -- "No. 19-KH-1240" for
+# what the corpus stores canonically as "2019-KH-01240". Matching it
+# without normalizing would be worse than not matching at all: it would
+# create a SECOND row for a case we already hold, under a spelling no
+# lawyer would paste. Long form is tried first, because a long docket
+# contains a valid-looking short one ("2019-KH-01240" ends in
+# "19-KH-01240").
+SUPREME_DOCKET_SHORT_RE = re.compile(
+    # "No" and its period can be split by a line break ("No\n. 19-KH-1240"),
+    # so whitespace is allowed on BOTH sides of the dot.
+    r"\bNo\s*\.?\s*(\d{2})-([A-Z]{1,3})-(\d{3,5})\b")
+
+
+def _canonical_supreme_docket(head: str) -> str | None:
+    """Return the canonical "YYYY-XX-NNNNN" docket, or None.
+
+    Retries on a newline-stripped copy, because pypdf splits the docket
+    itself across a line break often enough to matter: a real order reads
+    "NO. 20" / "20-B-0368", which is 2020-B-0368 with a break inside the
+    YEAR. Only newlines are removed, never spaces -- collapsing all
+    whitespace would fuse unrelated tokens into invented dockets.
+    """
+    for candidate in (head, head.replace(chr(10), "").replace(chr(13), "")):
+        found = _match_supreme_docket(candidate)
+        if found:
+            return found
+    return None
+
+
+def _match_supreme_docket(head: str) -> str | None:
+    m = SUPREME_DOCKET_RE.search(head)
+    if m:
+        year, rest = m.group(1).split("-", 1)
+        kind, num = rest.split("-", 1)
+        return "%s-%s-%05d" % (year, kind, int(num))
+    m = SUPREME_DOCKET_SHORT_RE.search(head)
+    if m:
+        yy = int(m.group(1))
+        # This corpus is 20th/21st century filings; a two-digit year at or
+        # below 30 is the 2000s. Anything higher is 19xx.
+        year = 2000 + yy if yy <= 30 else 1900 + yy
+        return "%d-%s-%05d" % (year, m.group(2).upper(), int(m.group(3)))
+    return None
 
 # COA -- three per-circuit formats. Try in order of specificity; the first
 # match wins. All use a leading "NO." (occasionally lowercase after OCR).
@@ -115,8 +159,17 @@ SUPREME_DATE_RE = re.compile(
 # One combined regex, then case-normalize before parsing.
 COA_DATE_RE = re.compile(
     r"\b(January|February|March|April|May|June|July|August|September|October"
-    r"|November|December)\s+(\d{1,2}),?\s+(\d{4})\b",
+    r"|November|December)\s+(\d{1,2})(?:,\s*|\s+)(\d{4})\b",
     re.IGNORECASE)
+
+
+# Some Supreme per curiam PDFs carry no spelled-out date at all -- they
+# open with a numeric stamp:
+#   03/16/2020 "See News Release 010 for any Concurrences and/or Dissents."
+# Scoped to the head of the document on purpose. An unanchored numeric
+# date would match docket fragments and record dates the court never
+# entered; this one is the release stamp, in a fixed position.
+SUPREME_NUMERIC_DATE_RE = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b")
 
 
 # ---------- Disposition --------------------------------------------------
@@ -767,9 +820,9 @@ class LouisianaParser(StateParser):
 
         # --- Docket number ---------------------------------------------
         if is_supreme:
-            m = SUPREME_DOCKET_RE.search(head)
-            if m:
-                result.case_number = m.group(1)
+            docket = _canonical_supreme_docket(head)
+            if docket:
+                result.case_number = docket
                 result.confidence["case_number"] = header_conf
         elif is_coa:
             for pat in (COA_DOCKET_LONG_RE, COA_DOCKET_SPACE_RE,
@@ -806,6 +859,17 @@ class LouisianaParser(StateParser):
                         result.confidence["release_date"] = 0.95
                     except ValueError:
                         pass
+        if result.release_date is None and is_supreme:
+            nm = SUPREME_NUMERIC_DATE_RE.search(raw_text[:300])
+            if nm:
+                try:
+                    result.release_date = datetime(
+                        int(nm.group(3)), int(nm.group(1)),
+                        int(nm.group(2))).date()
+                    result.confidence["release_date"] = 0.85
+                except ValueError:
+                    pass
+
         if result.release_date is None:
             # COA and Supreme fallback: "December 30, 2024" / "DECEMBER
             # 30, 2025". Take the FIRST valid date in the head region --
