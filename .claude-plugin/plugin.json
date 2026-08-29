@@ -1,0 +1,21 @@
+{
+  "name": "docketdrift",
+  "displayName": "DocketDrift — state appellate case law",
+  "version": "1.0.0",
+  "description": "Search and read verbatim U.S. state appellate opinions from Minnesota, New Hampshire, Arizona, and Louisiana. Nothing is generated or summarized, so a citation either resolves to a real opinion or it does not resolve at all.",
+  "author": {
+    "name": "DocketDrift",
+    "email": "hello@docketdrift.com",
+    "url": "https://docketdrift.com/"
+  },
+  "homepage": "https://docketdrift.com/connect/",
+  "repository": "https://github.com/OnionMadder/docketdrift",
+  "license": "AGPL-3.0",
+  "keywords": [
+    "legal",
+    "case-law",
+    "citations",
+    "court-opinions",
+    "legal-research"
+  ]
+}
