@@ -150,6 +150,76 @@ generalizes to CA and TX.
 coverage trough visible (MN COA 114 opinions in 2013 vs 1,257 in 2015 —
 CL coverage, not caseload). See the starred TODO section.
 
+## 2026-09-08 — ten days unattended: automation held; the LA backfill was never embedded
+
+First look after ~10 days away. **The headline is that nothing broke.**
+All four states current with zero intervention — MN 2026-09-02, NH
+2026-09-03 (the court published again), AZ 2026-09-03, LA 2026-09-04;
+corpus **479,961**. Every scraper, cron and beacon ran. That is the first
+long unattended stretch since the two silent failures of 2026-08-26, and
+the fixes from that day held.
+
+The rewritten 5xx monitor also proved itself in the quiet case: 15
+scattered 5xx across 46K requests reported as *"no page type is broken
+(worst shape is background noise)"* with per-shape rates. No false alarm.
+
+**THE LA BACKFILL WAS NEVER EMBEDDED — and the embedder could not do
+it.** LA's pending-embed count had jumped by almost exactly the backfill
+size: **10,576 rows, 1980+, with text** — in scope, so missing from
+semantic search and carrying no tag suggestions. Pointing the embedder
+at them died outright:
+
+    Voyage API 400: max allowed tokens per submitted batch is 120000.
+    Your batch has 135540 tokens after truncation.
+
+Two layered defects:
+1. **`_estimate_tokens` assumes 4 chars/token.** LA writ-action documents
+   are dense with docket numbers and abbreviations and run closer to
+   **2.7**, so a batch packed under the 90,000 ESTIMATED cap was really
+   135,540 — a ~1.5x undercount. The estimator was always a heuristic;
+   this document class is just outside its assumption.
+2. **The retry loop retried the identical payload `MAX_RETRIES` times.**
+   That is the real bug. A size rejection is DETERMINISTIC — the same
+   bytes fail the same way — so it burned all three attempts and exited
+   with CommandError. It would have failed every overnight tick, visible
+   only as an NFSN email.
+
+Fixed by making Voyage's own tokenizer the authority: on
+`TOO_MANY_TOKENS_IN_BATCH` the batch is **halved** (up to
+`MAX_BATCH_SPLITS=4`) and retried, and a size error no longer consumes a
+transient-retry attempt. Rows dropped by halving stay `embedding_pending`
+and are re-fetched next iteration. Measured live: two batches caught and
+recovered (187→93, 140→70), **10,440 opinions embedded at ~12/s for
+$0.83**, LA 1980+ unembedded → **0**.
+
+**Second, quieter bug fixed in the same change:** the per-court cursor
+was advanced BEFORE the API call. A halved batch would have stepped the
+cursor past the rows halving dropped — silently skipping them for the
+rest of the run even though they stayed pending. Now advanced only after
+a successful embed.
+
+`suggest_tags --state LA` then scored the new rows: **+1,884 suggestions**
+(1,868 pending / 16 auto), LA total **81,222**. With that, every derived
+layer of the lasc.org backfill is closed — dispositions, statutes,
+citations, judges, holdings, embeddings, tags.
+
+**OPEN, not yet actioned: the gunicorn access log is SPARSE.** `ls` says
+1.19 GB, `du` says 121 MB. A past truncation happened while gunicorn held
+the file open, so it kept writing at its old offset and left ~1 GB of NUL
+bytes in the middle. Consequences hit repeatedly this session before it
+was diagnosed: greps returned July data, `tail` output cut off mid-line,
+and lifecycle greps reported the last worker boot as 2026-08-20. **Do not
+trust that log's grep/tail output until it is rotated.** Nothing rotates
+it and it grows ~15 MB/day at ~75-88K requests/day. The fix is a rotation
+script plus a gunicorn restart so it opens a fresh inode — deferred
+pending Onion's timing call, since it drops a few seconds of live traffic.
+
+**Also seen:** the docketdrift MCP server failed to connect at session
+start (503, then a 5s negotiation timeout) but the endpoint tested
+healthy minutes later — 200 in 0.27s with all six annotated tools. Second
+transient blip observed; if it recurs, check whether it correlates with
+the semantic `1969` timeouts appearing steadily in the log.
+
 ## 2026-08-26 → 27 — two silent ingest failures; MCP hardened for launch
 
 Wednesday-morning status check that turned into finding two pipelines
@@ -2268,6 +2338,29 @@ what a user was researching?* If yes, don't create it. "Store it securely"
 is not good enough — "never store it" is the bar.
 
 ## Recurring gotchas — DO NOT MAKE THESE AGAIN
+
+### A retry loop must tell a DETERMINISTIC failure from a transient one
+
+`embed_opinions` retried an oversized Voyage batch `MAX_RETRIES` times
+and exited (2026-09-08). The same bytes fail the same way, so every
+attempt was spent re-sending a payload that could never succeed — and
+the CommandError blocked the whole LA backfill embed.
+
+Before adding a retry, ask what class the error is:
+
+- **Transient** (5xx, 429, network blip, SSL EINTR, MariaDB 2013) —
+  retry the same input; that is what retries are for.
+- **Deterministic** (payload too large, malformed input, bad parameter) —
+  retrying unchanged is guaranteed to fail. CHANGE the input, or give up
+  immediately with a useful message. Do not let it consume the retry
+  budget that transient errors need.
+
+The fix pattern worth copying: the remote service's own answer is ground
+truth about its own limits. On `TOO_MANY_TOKENS_IN_BATCH` the batch is
+halved and retried, so a wrong local estimate self-corrects instead of
+needing a hand-tuned constant. Our estimator assumed 4 chars/token; LA
+writ documents run ~2.7. Any constant would have been wrong for some
+future document class.
 
 ### A remote command built as a PowerShell string can fail while the wrapper reports SUCCESS
 
