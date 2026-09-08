@@ -80,6 +80,9 @@ MODEL_CONTEXT_TOKENS = 16_000
 # Heuristic: legal English averages ~4 chars per token (between code-3
 # and prose-4.5). Generous enough to not under-estimate badly.
 EST_CHARS_PER_TOKEN = 4
+# How many times a single batch may be halved when Voyage says it is
+# over the token cap. 4 halvings takes a 256-doc batch to 16.
+MAX_BATCH_SPLITS = 4
 # Voyage free tier: 60 requests/minute. Paid tier: 600+. Adjust via --rpm.
 DEFAULT_RPM = 60
 # Voyage-law-2 list price per 1M tokens. Used only to estimate cumulative
@@ -123,6 +126,17 @@ REQUEST_TIMEOUT_SECONDS = 180
 def _estimate_tokens(text: str) -> int:
     """Rough token count for a single document, capped at the model context."""
     return min(len(text) // EST_CHARS_PER_TOKEN, MODEL_CONTEXT_TOKENS)
+
+
+def _is_batch_too_large(exc: BaseException) -> bool:
+    """True when Voyage rejected the batch for exceeding its token cap.
+
+    Matched on Voyage's own error_code plus its prose, so a reworded
+    message still trips one of the two.
+    """
+    msg = str(exc)
+    return ("TOO_MANY_TOKENS_IN_BATCH" in msg
+            or "max allowed tokens per submitted batch" in msg)
 
 
 def _voyage_embed(texts: list[str], model: str, api_key: str) -> tuple[list[list[float]], int]:
@@ -501,12 +515,11 @@ class Command(BaseCommand):
                 batch = [fetched[0]]
                 batch_estimated_tokens = _estimate_tokens(fetched[0][1])
             rows = batch  # name the inner loop expects
-            # Advance the per-court cursor only past rows actually taken
-            # into this batch: the token-cap may leave a tail of `fetched`
-            # unprocessed, and those must be re-fetched next iteration
-            # (they are still embedding_pending, so they will be).
-            if current_court is not None:
-                court_cursor = rows[-1][0]
+            # NB: the per-court cursor is advanced AFTER a successful
+            # embed, not here. An oversized batch gets halved below, and
+            # advancing first would step the cursor past the rows that
+            # halving dropped -- silently skipping them for the rest of
+            # the run even though they are still embedding_pending.
 
             # Rate limit -- wait between batches if we'd exceed RPM
             elapsed = time.time() - last_call_ts
@@ -523,11 +536,32 @@ class Command(BaseCommand):
             # interrupts every few hours of a long background process.)
             # Real SIGTERM/SIGKILL still take the process down.
             embeddings, batch_tokens = None, 0
-            for attempt in range(1, MAX_RETRIES + 1):
+            attempt = 0
+            splits = 0
+            while True:
                 try:
                     embeddings, batch_tokens = _voyage_embed(texts, model, api_key)
                     break
                 except BaseException as exc:
+                    # A too-large batch is a DETERMINISTIC failure: the same
+                    # payload fails identically every time, so the plain retry
+                    # below would burn all three attempts and exit. Voyage's
+                    # own tokenizer is ground truth, so halve and let it
+                    # correct our estimate. Dropped rows stay
+                    # embedding_pending and are re-fetched next iteration.
+                    if (_is_batch_too_large(exc) and len(rows) > 1
+                            and splits < MAX_BATCH_SPLITS):
+                        splits += 1
+                        keep = max(1, len(rows) // 2)
+                        self.stderr.write(self.style.WARNING(
+                            f"  batch over Voyage's token cap at {len(rows)} "
+                            f"docs; halving to {keep} "
+                            f"(split {splits}/{MAX_BATCH_SPLITS})"
+                        ))
+                        rows = rows[:keep]
+                        texts = [r[1] for r in rows]
+                        continue  # a size error must not consume a retry
+                    attempt += 1
                     if attempt >= MAX_RETRIES:
                         # Raise CommandError instead of `return` so the
                         # process exits non-zero. The supervisor wrapper
@@ -546,6 +580,10 @@ class Command(BaseCommand):
                     ))
                     time.sleep(RETRY_SLEEP_SECONDS)
 
+            # Batch succeeded (possibly after halving) -- only now is it
+            # safe to say which rows were consumed.
+            if current_court is not None:
+                court_cursor = rows[-1][0]
             last_call_ts = time.time()
             tokens_total += batch_tokens
 
