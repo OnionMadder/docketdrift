@@ -203,16 +203,30 @@ a successful embed.
 layer of the lasc.org backfill is closed — dispositions, statutes,
 citations, judges, holdings, embeddings, tags.
 
-**OPEN, not yet actioned: the gunicorn access log is SPARSE.** `ls` says
-1.19 GB, `du` says 121 MB. A past truncation happened while gunicorn held
-the file open, so it kept writing at its old offset and left ~1 GB of NUL
-bytes in the middle. Consequences hit repeatedly this session before it
-was diagnosed: greps returned July data, `tail` output cut off mid-line,
-and lifecycle greps reported the last worker boot as 2026-08-20. **Do not
-trust that log's grep/tail output until it is rotated.** Nothing rotates
-it and it grows ~15 MB/day at ~75-88K requests/day. The fix is a rotation
-script plus a gunicorn restart so it opens a fresh inode — deferred
-pending Onion's timing call, since it drops a few seconds of live traffic.
+**THE GUNICORN ACCESS LOG WAS SPARSE — ROTATED + FIXED.** `ls` said
+1.19 GB, `du` said 121 MB. A past truncation happened while the writer
+held the file open, so it kept appending at its old offset and left ~1 GB
+of NUL bytes in the middle. This is not cosmetic: it burned time three
+separate ways this session before diagnosis — greps returned July data,
+`tail` cut off mid-line, and a lifecycle grep reported the last worker
+boot as three weeks stale while the log was current to the second.
+Anything diagnosing an incident from that log was reading fiction.
+
+**NEVER TRUNCATE THAT FILE IN PLACE.** `run.sh` passes gunicorn
+`--access-logfile -`, so gunicorn writes to STDOUT and NFSN's daemon
+supervisor owns the file descriptor — truncating cannot make the
+supervisor seek back to zero, only a respawn re-opens the path. That is
+precisely how the hole was created in the first place.
+
+New `scripts/rotate_access_log.sh` does it safely: archive the real
+(NUL-stripped) content compressed, MOVE the file (a move never creates a
+hole), restart the daemon so the supervisor opens a fresh path, then
+VERIFY a new log actually appears — and restore the old one if it does
+not, because a silently unlogged daemon loses the only monitoring
+surface. Keeps 2 archives. Ran 2026-09-08: 121 MB archived to 32 MB, new
+log verified non-sparse (apparent bytes == non-NUL bytes), all four
+states 200 after the restart. Worth re-running when the log passes ~1 GB
+apparent; at ~75-88K requests/day that is every few months.
 
 **Also seen:** the docketdrift MCP server failed to connect at session
 start (503, then a 5s negotiation timeout) but the endpoint tested
