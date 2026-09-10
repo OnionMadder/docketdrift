@@ -1302,6 +1302,20 @@ def connect(request):
 
 
 @cache_control(public=True, max_age=CACHE_SEC_STATIC)
+def takedown(request):
+    """Removal / de-indexing policy. Static page.
+
+    Exists so the answer to "please take my name off this opinion" is the
+    same for everyone and can be given as one link. Written after the first
+    such request (2026-09), which was a template letter -- there will be
+    more, and deciding each one fresh is how a project ends up with an
+    inconsistent, unwritten policy it cannot defend.
+    """
+    return render(request, "opinions/takedown.html", {
+        "active_nav": "takedown",
+    })
+
+
 def privacy(request):
     """Privacy policy. Static page; copy is intentionally short and stark
     because the privacy posture itself is short and stark: we don't log,

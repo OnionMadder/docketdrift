@@ -13,6 +13,7 @@ urlpatterns = [
     path("how-we-differ/", views.how_we_differ, name="how_we_differ"),
     path("connect/", views.connect, name="connect"),
     path("privacy/", views.privacy, name="privacy"),
+    path("takedown/", views.takedown, name="takedown"),
     path("support/", views.support, name="support"),
     path("report-error/", views.report_error, name="report_error"),
     path("report-error/thanks/", views.report_error_thanks, name="report_error_thanks"),

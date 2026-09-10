@@ -1,0 +1,120 @@
+{% extends "opinions/base.html" %}
+{% block title %}Removal and de-indexing requests &middot; DocketDrift{% endblock %}
+{% block description %}How DocketDrift handles requests to remove, anonymize, or de-index a published court opinion. We correct our own errors and honor sealing orders; we do not edit the court's record.{% endblock %}
+
+{% block og_title %}Removal and de-indexing requests &middot; DocketDrift{% endblock %}
+{% block og_description %}What we will and won't do when someone asks to have their name taken off a published opinion &mdash; and why.{% endblock %}
+
+{% block content %}
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+  <ol>
+    <li><a href="{% url 'opinions:home' %}">Home</a></li>
+    <li aria-current="page">Removal requests</li>
+  </ol>
+</nav>
+
+<div class="glossy-frame">
+  <h1>Removal and de-indexing requests</h1>
+
+  <p>People sometimes ask us to take their name off an opinion. This page says
+  what we do about it, so the answer is the same for everyone and you don't
+  have to guess before writing.</p>
+
+  <p>The short version: <strong>we will fix our own mistakes immediately, we
+  will act on a court order, and we will consider hiding a page from search
+  engines. We will not edit the court's opinion.</strong></p>
+
+  <h2>Four different requests, four different answers</h2>
+
+  <h3>1. Something on our page is wrong</h3>
+  <p><strong>We fix it, always, and quickly.</strong> Our pages are assembled
+  by software that reads the court's PDF, and software makes mistakes: a name
+  attached to the wrong case, a docket number misparsed, a judge credited with
+  an opinion they did not write. That is our error, not the court's record,
+  and correcting it is simply owed.</p>
+  <p>This is the most important thing on this page. If a page says something
+  untrue about you, tell us &mdash; <a href="{% url 'opinions:report_error' %}">report
+  an error</a> or email
+  <a href="mailto:hello@docketdrift.com">hello@docketdrift.com</a>. You do not
+  need to make an argument; just point at what is wrong.</p>
+  <p>The same applies with special urgency to <strong>anyone the court itself
+  protected</strong>. Courts routinely refer to children and to victims of
+  certain offenses by initials. If our processing has surfaced a name the court
+  deliberately withheld, that is a serious bug. Tell us and we will act the
+  same day.</p>
+
+  <h3>2. A court sealed, expunged, or vacated the record</h3>
+  <p><strong>We remove it on being shown the order.</strong> If a court has
+  sealed or expunged a matter, or ordered an opinion withdrawn, the record has
+  changed and we should follow it. Send the order (a case number and date is
+  usually enough for us to verify it ourselves).</p>
+  <p>We do this because our job is to reflect the public record accurately. An
+  opinion a court has withdrawn is no longer part of it.</p>
+
+  <h3>3. You want the page hidden from Google</h3>
+  <p><strong>We may do this. It is discretionary, decided case by case, and we
+  do not promise it.</strong></p>
+  <p>We can mark an individual page so search engines are asked not to list it.
+  The opinion stays on the site and stays reachable by docket number &mdash;
+  what changes is whether it surfaces when someone searches your name.</p>
+  <p>What we weigh, honestly, though it is judgment and not a formula:</p>
+  <ul>
+    <li>How strong the public interest in this particular matter is. Cases
+    involving public office, professional licensure, or public safety weigh
+    heavily against hiding.</li>
+    <li>Whether the matter resolved in your favor &mdash; an acquittal, a
+    dismissal, a reversal.</li>
+    <li>Whether you were the person whose conduct the court was ruling on, or
+    someone swept in around the edges.</li>
+    <li>How old it is.</li>
+    <li>Whether de-indexing us would actually change anything, given where else
+    the opinion is published.</li>
+  </ul>
+  <p>That last point is worth being blunt about: appellate opinions are
+  published by the court itself and mirrored by several other services. We are
+  usually not the only place, and often not the first. De-indexing one site may
+  accomplish very little, and we would rather say so up front than take an
+  action that leaves you thinking a problem is solved.</p>
+
+  <h3>4. You want the opinion removed, or your name edited out of it</h3>
+  <p><strong>We decline.</strong></p>
+  <p>A published appellate opinion is the court's own account of what it decided
+  and why. It is a public record, published by the court, and it is not ours to
+  rewrite. Editing a party's name out of an opinion would leave a document that
+  looks like the court's words but is not, which is the one thing this project
+  exists not to do &mdash; everything here is the court's text, unaltered, and
+  that promise is worth nothing if it has exceptions.</p>
+  <p>If you believe the opinion itself is wrong, that is a matter for the court
+  that issued it, not for us. We cannot correct a judicial record and would be
+  wrong to try.</p>
+
+  <h2>Writing to us</h2>
+  <p>Email <a href="mailto:hello@docketdrift.com">hello@docketdrift.com</a>.
+  Please include the docket number and the link to the page. If you are asking
+  under category 2 or 3, tell us which and say briefly why &mdash; a few
+  sentences from you is worth more than a formal-sounding letter, and we read
+  every one.</p>
+  <p>We may ask you to verify that you are who you say you are before acting on
+  a request about a named person. We are not trying to make it difficult; we
+  simply have no way to know, and acting on an unverified request about someone
+  else's name would be its own harm.</p>
+  <p>We answer, and we tell you the actual reason. We do not promise a timeline
+  &mdash; this is a small project &mdash; except in category 1, which we treat
+  as urgent.</p>
+
+  <h2>What this page is not</h2>
+  <p>This is not legal advice, and it is not a statement about anyone's legal
+  rights. It is a description of what we do, published so it is predictable.
+  DocketDrift is a United States project publishing United States public court
+  records.</p>
+
+  <p>One thing worth separating, because both get called privacy: our
+  <a href="{% url 'opinions:privacy' %}">privacy statement</a> is a promise
+  about <em>people who use this site</em> &mdash; we never store what you
+  searched. This page is about <em>people named in the opinions</em>. They are
+  genuinely different questions, and the strength of the first does not depend
+  on the second.</p>
+
+  <p class="signature">&mdash; DocketDrift</p>
+</div>
+{% endblock %}
