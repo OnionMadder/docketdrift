@@ -2353,6 +2353,52 @@ is not good enough — "never store it" is the bar.
 
 ## Recurring gotchas — DO NOT MAKE THESE AGAIN
 
+### `2>&1 | tail -N` REORDERS the output — the reassuring line prints last
+
+A deploy silently did not happen on 2026-09-09 and reported success. The
+command was the usual `git pull 2>&1 | tail -1`, which printed:
+
+```
+Updating 407956e..6a5a7a0
+```
+
+The actual output was:
+
+```
+error: Your local changes to the following files would be overwritten by merge:
+        opinions/management/commands/embed_opinions.py
+error: The following untracked working tree files would be overwritten by merge:
+        scripts/rotate_access_log.sh
+Aborting
+Updating 407956e..6a5a7a0
+```
+
+**The mechanism is buffering, not luck.** When stdout is a PIPE it becomes
+block-buffered and flushes at exit; stderr stays unbuffered and arrives
+immediately. So `2>&1` merges them out of order — every stderr line lands
+BEFORE the stdout lines no matter when it was written, and `tail -1` returns
+the last line of *stdout*, not the chronological last line. Here that was
+git's optimistic `Updating` banner, printed while it was aborting.
+
+It compounded: `manage.py check` passed (on the OLD code, which was fine) and
+`signal-daemon` returned `{"success":true}` (restarting the OLD code), so the
+whole chain looked green. The server had been stuck four commits back for
+DAYS, and yesterday's embed fix + rotation script existed there only as files
+scp'd by hand — which is what blocked the pull in the first place.
+
+Rules:
+
+1. **Never truncate `git pull`.** Print it whole. It is four lines.
+2. **Verify STATE, not the command's own summary** — `git log --oneline -1`
+   after a pull, and grep for the thing you expect to have arrived. This is
+   the same rule as the MN beacon (a wrapper's report is not evidence the
+   work happened) and the LA derive loop (a failed pass is not a finished
+   pass). Third instance of one lesson in two weeks.
+3. **Do not scp a file onto prod that also lives in git.** It leaves the
+   working tree dirty and blocks every future pull, silently. If a hotfix
+   must go out by scp, commit it and pull, or `git checkout --` the file
+   afterward.
+
 ### A retry loop must tell a DETERMINISTIC failure from a transient one
 
 `embed_opinions` retried an oversized Voyage batch `MAX_RETRIES` times
