@@ -143,6 +143,19 @@ def _strip_caption_tail(s: str) -> str:
     return s
 
 
+# A caption region can open with the docket number itself (consolidated
+# appeals repeat it), which is OUR boundary artifact, not part of the case
+# name. Strip a LEADING docket token only -- parenthesized dockets inside the
+# caption are the court's own text and stay.
+_LEADING_DOCKET_RE = re.compile(r"^[,\s]*A\d{2}-\d{3,4}\b[,\s]*", re.IGNORECASE)
+
+# "Smith, vs" -- the split found a "vs" but the opposing party never made it
+# into the caption region. That is a FRAGMENT, not a name. Returning it would
+# publish half a caption as if it were the case; returning nothing leaves the
+# stored title alone, which is the honest failure.
+_DANGLING_VS_RE = re.compile(r"[,\s]+vs?\.?$", re.IGNORECASE)
+
+
 def _order_caption_name(caption: str) -> str:
     """Turn an order-opinion caption block into a clean case name.
 
@@ -151,7 +164,9 @@ def _order_caption_name(caption: str) -> str:
     role words, and rejoin as "Party1 v. Party2". Captions with no "vs." (e.g.
     "In re the Marriage of ...") keep their text, roles removed.
     """
-    flat = " ".join(caption.split())
+    flat = _LEADING_DOCKET_RE.sub("", " ".join(caption.split()))
+    if _DANGLING_VS_RE.search(flat):
+        return ""
     sides = re.split(r"\bvs?\.\s*", flat, maxsplit=1)
     if len(sides) == 2:
         left = _strip_caption_tail(_CAPTION_ROLE_RE.sub("", sides[0]))

@@ -94,6 +94,7 @@ class Command(BaseCommand):
 
         scanned = changed = unchanged = blank = refused = 0
         shrink_examples = []
+        change_examples = []
         pending = []
         last_pk = int(min_id or 0)
         t0 = time.time()
@@ -144,6 +145,8 @@ class Command(BaseCommand):
                     continue
 
                 changed += 1
+                if len(change_examples) < 8:
+                    change_examples.append((op.pk, old[:60], new[:60]))
                 op.title = new[:500]
                 pending.append(op)
                 if len(pending) >= 200:
@@ -170,6 +173,14 @@ class Command(BaseCommand):
             "  REFUSED (would shrink >%d%%): %d"
             % (scanned, changed, "" if apply else " (dry run, not written)",
                unchanged, blank, max_shrink, refused))
+        if change_examples:
+            self.stdout.write("\n  sample of what %s:"
+                              % ("changed" if apply else "WOULD change"))
+            for pk, o, n in change_examples:
+                self.stdout.write("    id=%s\n      was %r\n      now %r"
+                                  % (pk, o, n))
+        if shrink_examples:
+            self.stdout.write("\n  sample of REFUSALS (guard held):")
         for pk, old, new in shrink_examples:
             self.stdout.write("    id=%s\n      was %r\n      now %r"
                               % (pk, old, new))
