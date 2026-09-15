@@ -150,6 +150,90 @@ generalizes to CA and TX.
 coverage trough visible (MN COA 114 opinions in 2013 vs 1,257 in 2015 —
 CL coverage, not caseload). See the starred TODO section.
 
+## 2026-09-14 — a removal request found a real bug: 10,420 MN captions were truncated
+
+A man emailed asking us to de-index the opinion he is named in. Onion
+declined (correctly — see `/takedown/`) but offered the one thing the
+policy always offers: *if anything on the page is factually wrong, tell
+us and we fix it.* **He took the offer seriously and found a real
+defect**, then argued the defect justified de-indexing.
+
+The de-indexing answer stayed no — the remedy for a parsing error is to
+fix the parsing — and there is an irony worth keeping: **correcting the
+title made his page MORE name-complete**, "Marcel Moses v. State of
+Minnesota" where it had read "Marcel Moses, petitioner, Appellant,".
+The fix he asked for works against the outcome he wanted. Fix it anyway;
+it was broken.
+
+**THE BUG: the regular-opinion caption path kept only `paragraphs[0]`.**
+A regular MN caption wraps across blank lines exactly like an order's:
+
+    Marcel Moses, petitioner,
+    Appellant,
+
+    vs.
+
+    State of Minnesota,
+    Respondent.
+
+The ORDER path already joined every block (`_order_caption_name`); the
+REGULAR path took the first and discarded the opposing party. Result:
+**10,420 Minnesota opinions titled with one side of the caption** — often
+just the appellant, sometimes nothing but "In re the Marriage of:".
+Party-role truncations 6,779 → **4**; dangling fragments → **0**; empty
+titles unchanged at 73 (all pre-existing, verified by `created_at`, not
+assumed).
+
+**Three further bugs, every one found by the regression and NOT by
+reading code** — the documented rule that fuzzy paths are where the bugs
+live, demonstrated three times in one afternoon:
+
+1. **The first scale estimate was wrong.** A `LIKE '%Appellant,'` count
+   said 6,779. The regression's "control" set — titles that looked fine —
+   changed at 136/150, because those were truncated at `:` or `;`
+   instead ("In re the Marriage of:"). Never size a defect by the one
+   spelling of it you happened to notice.
+2. **Blind `.strip(" ,.")` ate abbreviation periods** — "The Emily
+   Program, P.C." → "P.C". Same class as the holdings extractor
+   splitting "rule 24.03" at "24.". `_strip_caption_tail` now spares
+   `P.C.` / `Inc.` / `Bros.` / `Jr.` while still trimming the caption's
+   own closing punctuation. A party's name is part of the record;
+   shaving a character off it is a misquote, however small.
+3. **Dangling-`vs` fragments.** "Laurissa Wredberg, vs" — the split found
+   a "vs" whose opposing party never reached the caption region. The
+   parser now returns NOTHING there, so the stored title is left alone.
+   The length guard was catching these only by luck (the old titles
+   happened to be longer); a row with an equally bad old title would
+   have taken the fragment.
+
+**`backfill_case_names` (new)** repairs stored rows: dry-run default,
+never writes an empty name, and REFUSES a new title more than
+`--max-shrink`% shorter than the stored one. **That guard earned its keep
+immediately** — 42 refusals, all low-id CourtListener rows whose caption
+region holds only part of the caption ("State of Minnesota v. Adam Taylor
+Fravel" would have become "State of Minnesota, vs"). CL-sourced rows
+mostly return no parse at all (54,589 of the first 58,800) and are
+correctly left alone.
+
+**Still open from the same report, both real:**
+- **`OpinionCitation` has no field for the cited case NAME.** We store
+  `cited_reference` ("937 N.W.2d 418") and drop "State v. Thompson",
+  which sits right beside it in the text we parsed. So an out-of-corpus
+  authority renders as a bare number labeled "not in our corpus" —
+  accurate but close to useless. Needs a migration + extractor change +
+  re-sweep; helps every state.
+- **pypdf spacing artifacts** ("12-year -old", "t hen", "cross
+  -examination") are real and are OURS, not the court's — the PDF
+  renders them correctly. This sits in tension with "the court's text,
+  unaltered". Do NOT auto-de-space: that is editing the record on a
+  guess. A better extractor is the honest path and it is a project, not
+  a patch.
+
+**The durable lesson:** the person most motivated to audit a page is the
+person named on it. That is an unpleasant source of QA and it is still
+QA. Take the bug report on its merits, separately from the remedy being
+requested.
+
 ## 2026-09-08 — ten days unattended: automation held; the LA backfill was never embedded
 
 First look after ~10 days away. **The headline is that nothing broke.**
