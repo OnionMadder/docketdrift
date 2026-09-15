@@ -122,6 +122,27 @@ def _looks_like_judge_block(par: str) -> bool:
     return bool(_JUDGE_BLOCK_RE.search(par))
 
 
+# Trailing tokens whose period belongs to the NAME, not to the caption's
+# closing punctuation: "The Emily Program, P.C." / "Acme Holdings, Inc."
+# Blind .strip(" ,.") took those periods off -- the same defect class as the
+# holdings extractor splitting "rule 24.03" at "24." (see CLAUDE.md). A
+# party's name is part of the record; trimming a character off it is a
+# misquote, however small.
+_ABBREV_TAIL_RE = re.compile(
+    r"(?:[A-Za-z]\.(?:[A-Za-z]\.)+"          # P.C., L.L.C., U.S.A.
+    r"|\b(?:Inc|Corp|Co|Ltd|LLC|LLP|PLLC|PA|Assn|Bros|Jr|Sr|No)\.)$",
+    re.IGNORECASE,
+)
+
+
+def _strip_caption_tail(s: str) -> str:
+    """Trim a caption fragment's trailing punctuation, sparing abbreviations."""
+    s = s.strip().rstrip(",").strip()
+    if s.endswith(".") and not _ABBREV_TAIL_RE.search(s):
+        s = s[:-1].strip().rstrip(",").strip()
+    return s
+
+
 def _order_caption_name(caption: str) -> str:
     """Turn an order-opinion caption block into a clean case name.
 
@@ -133,11 +154,11 @@ def _order_caption_name(caption: str) -> str:
     flat = " ".join(caption.split())
     sides = re.split(r"\bvs?\.\s*", flat, maxsplit=1)
     if len(sides) == 2:
-        left = _CAPTION_ROLE_RE.sub("", sides[0]).strip(" ,.")
-        right = _CAPTION_ROLE_RE.sub("", sides[1]).strip(" ,.")
+        left = _strip_caption_tail(_CAPTION_ROLE_RE.sub("", sides[0]))
+        right = _strip_caption_tail(_CAPTION_ROLE_RE.sub("", sides[1]))
         if left and right:
             return f"{left} v. {right}"
-    return _CAPTION_ROLE_RE.sub("", flat).strip(" ,.")
+    return _strip_caption_tail(_CAPTION_ROLE_RE.sub("", flat))
 
 
 # Footer marker that flips is_precedential to False. Regular opinions say "This
@@ -296,7 +317,24 @@ class MinnesotaParser(StateParser):
                     caption_ps = [p for p in paragraphs
                                   if not _looks_like_judge_block(p)
                                   and not _looks_like_role_label(p)] or paragraphs
-                    candidate = " ".join(caption_ps[0].split()) if caption_ps else ""
+                    # JOIN every caption block, don't take only the first.
+                    # A regular opinion's caption wraps across blank lines
+                    # exactly like an order's does:
+                    #     Joseph T. Green, Appellant,
+                    #
+                    #     vs.
+                    #
+                    #     State National Insurance Company, Inc., Respondents.
+                    # Taking paragraphs[0] kept only the appellant and threw
+                    # the opposing party away, titling 6,779 MN opinions
+                    # (9.7%) with one side of the caption -- reported by a
+                    # party who noticed his own page named him and not the
+                    # State (2026-09-14). Normalizing through
+                    # _order_caption_name gives "X v. Y", which is both the
+                    # standard case-name form and what every other row in the
+                    # corpus already looks like.
+                    candidate = _order_caption_name(
+                        " ".join(caption_ps)) if caption_ps else ""
                     conf = 0.7
                 else:
                     # Order opinion: the caption is split across blank lines
