@@ -25,13 +25,30 @@ from django.utils.functional import cached_property
 # Seconds the COUNT gets before we stop waiting. Deliberately well under
 # settings.py's 25s session cap: a KILLed statement poisons the pooled
 # connection and cascades 500s onto unrelated pages, so the count must fail
-# on OUR terms, early, not MariaDB's.
-COUNT_TIMEOUT_S = 8
+# on OUR terms, early, not MariaDB's. A healthy count is sub-second, so this
+# is already generous -- it is a ceiling, not a target.
+COUNT_TIMEOUT_S = 5
 
-# When the exact count times out, count this many rows instead. The page
-# still paginates and still renders; it just reports "N+" rather than a
-# precise total.
-COUNT_CAP = 5000
+# When the exact count times out, count this many rows instead.
+#
+# SIZED BY MEASUREMENT, not taste. A capped count still has to walk until it
+# finds CAP matching rows, so the cap IS the cost. On LA's 351K rows with a
+# disposition filter (2026-09-14):
+#
+#     cap 5000 -> 12.1s      cap 1000 -> 2.8s
+#     cap 2000 ->  4.9s      cap  500 -> 1.3s
+#
+# The first version of this fallback used 5,000 and cost 12s, which turned a
+# 500 into a 44-second page -- not a fix, just a quieter failure. 1,000 keeps
+# it under 3s and still offers 20 pages of pagination, which is far more than
+# anyone browses. Do NOT add an ORDER BY to the capped query: measured 5.9s
+# vs 2.8s, and the order of a floor-count is meaningless anyway.
+COUNT_CAP = 1000
+
+# The fallback gets its own (shorter) bound. A filter shape we have not seen
+# could make even the capped count slow, and the whole point here is that the
+# page renders.
+FALLBACK_TIMEOUT_S = 4
 
 
 class NoJoinCountPaginator(Paginator):
@@ -111,8 +128,16 @@ class NoJoinCountPaginator(Paginator):
             connection.close()
 
         # Capped fallback: COUNT over a LIMITed subquery, which stops early.
+        # Bounded too -- see FALLBACK_TIMEOUT_S.
         try:
-            n = cleaner[:COUNT_CAP].count()
+            with connection.cursor() as cur:
+                cur.execute("SET SESSION max_statement_time = %s",
+                            [FALLBACK_TIMEOUT_S])
+            try:
+                n = cleaner[:COUNT_CAP].count()
+            finally:
+                with connection.cursor() as cur:
+                    cur.execute("SET SESSION max_statement_time = 25")
         except BaseException:
             connection.close()
             n = 0
