@@ -809,6 +809,14 @@ def opinion_list(request):
         page_obj = paginator.get_page(request.GET.get("page", 1))
         opinions = page_obj.object_list
         total_count = paginator.count
+        # The paginator bounds its own COUNT and falls back to a capped
+        # figure when the exact one is unaffordable (see paginators.py --
+        # a disposition filter beside court_id has no composite index and
+        # measured 66s on LA). "fulltext_capped" already means exactly
+        # "this total is a floor, render it as N+", so reuse it rather
+        # than teach the template a second flag for the same idea.
+        if getattr(paginator, "count_is_capped", False):
+            fulltext_capped = True
     else:
         # Default landing: just the most recent N. No paginator object so
         # the template knows we're in landing mode. Even here we count

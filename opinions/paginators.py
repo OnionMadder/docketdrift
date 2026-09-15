@@ -19,7 +19,19 @@ Used by:
 - ``opinions.views.opinion_list`` (public search results pagination)
 """
 from django.core.paginator import Paginator
+from django.db import connection
 from django.utils.functional import cached_property
+
+# Seconds the COUNT gets before we stop waiting. Deliberately well under
+# settings.py's 25s session cap: a KILLed statement poisons the pooled
+# connection and cascades 500s onto unrelated pages, so the count must fail
+# on OUR terms, early, not MariaDB's.
+COUNT_TIMEOUT_S = 8
+
+# When the exact count times out, count this many rows instead. The page
+# still paginates and still renders; it just reports "N+" rather than a
+# precise total.
+COUNT_CAP = 5000
 
 
 class NoJoinCountPaginator(Paginator):
@@ -45,7 +57,64 @@ class NoJoinCountPaginator(Paginator):
     are preserved, so filtered counts stay accurate.
     """
 
+    #: True when ``count`` gave up and returned the capped figure instead of
+    #: an exact total. Templates should render "N+" rather than "N" -- a
+    #: number we know is wrong must not be shown as if it were right.
+    count_is_capped = False
+
     @cached_property
     def count(self):
-        cleaner = self.object_list.select_related(None).order_by()
-        return cleaner.values("pk").count()
+        """Exact count when it is affordable, a capped one when it is not.
+
+        Stripping the joins is no longer enough. A filtered count can be
+        slow for a reason `.values("pk")` cannot fix -- there is no
+        composite index for the filter. Measured 2026-09-14:
+        `court_id IN (LA) AND disposition_bucket='affirmed'` counts 70,708
+        rows in **66s**, and the MN equivalent in 28s, because a
+        single-column `disposition_bucket` index beside a `court_id` filter
+        degenerates into a clustered walk of the 2.75GB table (the
+        documented "one non-covered column beside a court_id filter"
+        gotcha). Both blew the 25s cap and **500'd `/opinions/` on 14% of
+        its requests** until this bound was added.
+
+        So: bound it, and degrade rather than die. A capped count keeps the
+        page rendering and keeps the failure OURS -- a MariaDB KILL at the
+        session cap poisons the pooled connection and takes unrelated pages
+        down with it.
+
+        The real fix is a composite `(court_id, disposition_bucket)` index,
+        which is a deliberate big-table migration; this is the guard that
+        should stay regardless, because the next filter without an index
+        will land here too.
+        """
+        cleaner = self.object_list.select_related(None).order_by().values("pk")
+
+        if connection.vendor != "mysql":
+            return cleaner.count()
+
+        try:
+            with connection.cursor() as cur:
+                cur.execute("SET SESSION max_statement_time = %s",
+                            [COUNT_TIMEOUT_S])
+            try:
+                n = cleaner.count()
+            finally:
+                with connection.cursor() as cur:
+                    cur.execute("SET SESSION max_statement_time = 25")
+            return n
+        except BaseException:
+            # Bare BaseException, not Exception: the KILL often lands during
+            # fetch and surfaces as a raw pymysql error that is not a
+            # DatabaseError subclass (same reason semantic.py catches wide).
+            # Drop the connection -- a fresh one re-applies the 25s cap from
+            # init_command.
+            connection.close()
+
+        # Capped fallback: COUNT over a LIMITed subquery, which stops early.
+        try:
+            n = cleaner[:COUNT_CAP].count()
+        except BaseException:
+            connection.close()
+            n = 0
+        self.count_is_capped = True
+        return n
