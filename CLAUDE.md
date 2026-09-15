@@ -4,7 +4,7 @@ Survival kit for any Claude session working on this repo. Read once,
 re-read whenever a recurring gotcha bites. The goal of this document is
 to make the next session productive within the first 5 minutes.
 
-## Working tree state 2026-08-27 — READ THIS FIRST
+## Working tree state 2026-09-14 — READ THIS FIRST
 
 The tree is **clean**; main == origin/main. Backlog lives in `docs/TODO.md`
 (the authoritative to-do; keep it current). **`docs/TODO.md` outranks the
@@ -12,15 +12,15 @@ The tree is **clean**; main == origin/main. Backlog lives in `docs/TODO.md`
 2026-06-12 snapshot kept for its rationale, and several of its "open" items
 have shipped. Trust TODO.md on priority; trust this file on gotchas.
 
-**Current state (2026-08-27):** FOUR states live (MN/NH/AZ/LA),
-**469,338 opinions**. Louisiana launched 2026-08-25 and its derived
-layers are closed (embed 100% of in-scope, 79,338 tag suggestions).
-The MCP server is live at `/mcp` and now carries tool annotations, a
-search-concurrency cap, and a privacy-page section — two of its three
-launch gates are done; the third (connector directory) is BLOCKED on
-Onion being on an individual Anthropic plan. See the 2026-08-26 → 27
-block for the plugin-via-Console workaround and for two silent ingest
-failures found that morning.
+**Current state (2026-09-14):** FOUR states live (MN/NH/AZ/LA),
+**480,030 opinions**. The Louisiana lasc.org Supreme backfill is DONE
+(~10.3K opinions; 2021 and 2022 went from ZERO to ~1,800 each) and every
+LA derived layer is closed. The MCP server is live at `/mcp`, documented
+at `/connect/`, and shipped as a Claude PLUGIN (the Connectors Directory
+needs a Team org, which Onion does not have; plugin-via-Console is the
+individual path). A public removal/de-indexing policy lives at
+`/takedown/`. See the 2026-09-14 blocks: a removal request turned into a
+10,420-row caption fix, and the 5xx monitor caught `/opinions/` 500ing.
 
 **MN 2020–2022 IS FIXED (2026-08-03): 0 → 3,102 opinions.** 2020=1,040,
 2021=1,092, 2022=970, read directly from the mn.gov State Law Library archive.
@@ -149,6 +149,71 @@ generalizes to CA and TX.
 **The band immediately earned its keep:** it made an undisclosed MN/AZ
 coverage trough visible (MN COA 114 opinions in 2013 vs 1,257 in 2015 —
 CL coverage, not caseload). See the starred TODO section.
+
+## 2026-09-14b — the 5xx monitor fired on concentration and was RIGHT
+
+The monitor rewritten 2026-09-08 (alert on a broken page TYPE, not a raw
+count) had only ever reported "no page type is broken". Today it fired:
+
+    ERROR-RATE: 1 page type(s) BROKEN: /opinions/ (15/111 = 14%)
+
+**It was correct.** `/opinions/` was 500ing on errno 1969 for crawlers and
+real browsers alike. The rewrite paid for itself: the old absolute-count
+rule would have buried a 14%-broken core page under the same background
+noise it fired on every week.
+
+**Cause, measured not guessed.** The traceback lands on
+`views.py:opinion_list` -> `paginator.get_page` -> `validate_number` ->
+`count`. There IS a single-column `disposition_bucket` index but **no
+composite `(court_id, disposition_bucket)`**, so a filtered count
+degenerates into a clustered walk of the 2.75GB table -- the documented
+"one non-covered column beside a court_id filter" gotcha, now fatal:
+
+| filter | rows | time |
+|---|---|---|
+| `court_id IN (LA) AND disposition_bucket='affirmed'` | 70,708 | **66.0s** |
+| same shape on MN | 29,222 | **28.3s** |
+
+Both past the 25s cap. `NoJoinCountPaginator`'s `.values("pk")` trick
+could not help -- the JOINs were never the problem this time.
+
+**Fix: the paginator bounds its OWN count and degrades.** 5s for the
+exact count; on timeout drop the connection (a MariaDB KILL at the
+session cap poisons the pooled connection and cascades 500s onto
+unrelated pages -- the failure has to be ours, early, not theirs) and
+fall back to a capped count. A capped total is a FLOOR, so it renders as
+"N+" via the flag the template already had for capped fulltext searches;
+a number known to be wrong must never render as if it were right.
+
+**The first version of that fallback was itself a bug worth keeping.**
+It capped at 5,000 and turned a 500 into a **44-second page** -- a
+quieter failure, not a fix. A capped count still walks until it finds CAP
+matching rows, so **the cap IS the cost**:
+
+    cap 5000 -> 12.1s     cap 1000 -> 2.8s
+    cap 2000 ->  4.9s     cap  500 -> 1.3s
+
+Cap is 1,000 (20 pages of pagination, under 3s). Do NOT add an ORDER BY
+to the capped query -- 5.9s vs 2.8s, and the ordering of a floor-count
+means nothing.
+
+**Measure warm AND cold.** Post-fix the page read 25.9s, which looked
+like the fix had failed; it was cold-start right after the restart.
+Warm steady state is **0.42s MN / 0.27s LA**. The row fetch was never the
+problem (0.89s -- it uses the release_date index and stops at LIMIT 50);
+only the COUNT was.
+
+**STILL OPEN -- the real fix is a composite `(court_id,
+disposition_bucket)` index.** The bound stops the 500 and keeps warm
+pages fast; a cold filtered page still pays ~5s + fallback. That index is
+a deliberate big-table migration and NOT a hotfix: `ADD VECTOR INDEX` on
+this table was a 9-hour unkillable COPY (see that gotcha). A plain
+secondary index is a different operation -- `ALGORITHM=INPLACE,
+LOCK=NONE` builds by sort rather than table copy, and is killable -- but
+it is still a 2.75GB build through an 8MB buffer pool and wants a quiet
+window and an explicit decision. **The bound should stay even after the
+index lands**, because the next filter without a composite index will
+arrive at exactly the same place.
 
 ## 2026-09-14 — a removal request found a real bug: 10,420 MN captions were truncated
 
@@ -2213,54 +2278,41 @@ identity decoupled; semantic/keyword alerts refused-by-design, not stored).
 
 ## Where things stand right now
 
-(Numbers refreshed 2026-08-27. **Re-measure before quoting these
-anywhere public** — stale numbers on a public page are the exact class
-of problem the 2026-08-02 audit was cleaning up.)
+(Numbers pulled live 2026-09-14. **Re-measure before quoting these
+anywhere public** — stale numbers on a public page are the exact class of
+problem the 2026-08-02 audit was cleaning up.)
 
 **FOUR states live**, all on subdomains of `docketdrift.com`. MN is the
 **Flagship**; NH, AZ and LA carry a green **Live** pill.
 
 | State | Subdomain | Opinions | Newest | Notes |
 |---|---|---|---|---|
-| MN (flagship) | `mn.docketdrift.com` | 69,706 | 2026-08-24 | disp 97% / emb 99%; CONTINUOUS 2015–2026. Weekly scraper wrapper FIXED 2026-08-26 after a 2-week silent failure |
-| AZ (live) | `az.docketdrift.com` | 37,846 | 2026-08-26 (Div One) | disp 64% / emb 99%; COA Div One/Two split. **Div Two newest 2026-07-30** — quiet or an upstream gap, unresolved (see below) |
-| NH (live) | `nh.docketdrift.com` | 20,682 | 2026-07-31 (court quiet — CL has ZERO newer, verified) | disp 78% / emb 99%; roster FINISHED 2026-08-23 (5 seated, 30 RETIRED, slugs fixed w/ 301s) |
-| LA (**LIVE 2026-08-25**) | `la.docketdrift.com` | 341,104 | current (weekly cron live) | Largest corpus, 1809–present, Supreme + all 5 COA circuits. disp 65% / **emb 100% of in-scope (1980+)** / tags 79,338 suggestions (1,579 auto / 77,759 pending); cite graph 1.54M edges; statutes 252K; holdings 34.6K; panel votes ~144K; judges 560 incl. **all 6 benches seated (60 sitting)**. Gaps DISCLOSED on /about/#coverage-gaps — do not remove |
+| MN (flagship) | `mn.docketdrift.com` | 69,779 | 2026-09-14 | disp 97%; CONTINUOUS 2015–2026. **10,420 captions repaired 2026-09-14** — see that session block |
+| AZ (live) | `az.docketdrift.com` | 37,877 | 2026-09-10 | disp 64%; COA Div One/Two split. Div Two was quiet Jul–Aug; recheck against `appeals2.az.gov` before calling AZ fully current |
+| NH (live) | `nh.docketdrift.com` | 20,686 | 2026-09-03 | disp 78%; roster FINISHED 2026-08-23 (5 seated, 30 RETIRED, slugs fixed w/ 301s) |
+| LA (LIVE 2026-08-25) | `la.docketdrift.com` | 351,688 | 2026-09-10 | Largest corpus, 1809–present, Supreme + all 5 COA circuits. **lasc.org backfill DONE 2026-08-28** (~10.3K opinions; 2021/2022 went 0 → ~1,800 each). Embed 100% of in-scope (1980+); the 110,945 "pending" are deliberate pre-1980 out-of-scope rows. Tags 81,222. Gaps DISCLOSED on /about/#coverage-gaps — do not remove |
 
-**Corpus-wide: 469,338 opinions.** Citation graph ~1.54M+ edges in LA
-alone on top of the earlier 1,462,119 (605,353 CL bulk + 856,766
-text-extracted across MN/AZ/NH) with context quotes; **5,188 non-default
-treatments** (was 0 in every state before 2026-08-04). Parallel cites
-180,652 (MN/AZ/NH only — CL has **none** for LA, permanent upstream gap).
+**Corpus-wide: 480,030 opinions.** Citation graph 1.54M+ LA edges on top
+of 1,462,119 across MN/AZ/NH; 5,188 non-default treatments. Parallel
+cites 180,652 (MN/AZ/NH only — CL has **none** for LA, permanent upstream
+gap).
 
-**AZ judge roster rebuilt 2026-08-07 (247 → 194).** Court split into Supreme +
-COA Division One + Division Two; the current bench is fully seated — **35
-judges** (Supreme 7, Div One 19, Div Two 9), each with full name / role /
-division / official-bio link, from the courts' own rosters. `Court.division`
-now models multi-panel systems. See the 2026-08-07→08 session block.
-
-**Open question, unresolved on purpose (2026-08-27): AZ COA Division Two
-has had nothing since 2026-07-30.** Checked the specific failure mode
-first — Div Two opinions arrive down the Div One feed and need
-re-homing — and found **0 misfiled rows** before and after a catch-up,
-so nothing is sitting in the wrong court. That leaves two possibilities:
-a genuinely quiet Tucson division (historically ~1/week, so 27 days is
-unusual but possible) or an upstream CL feed gap starting ~Jul 30.
-Telling them apart needs a check against `appeals2.az.gov`; it was NOT
-guessed, because CL was actively 429-throttling and more probing risked
-stalling the weekly cron. Do this before assuming AZ is fully current.
+**Public-facing policy surfaces** (both new, both load-bearing):
+`/takedown/` states what we do about removal / de-indexing requests —
+we fix our own errors and honor sealing orders, we do not edit the
+court's opinion, and de-indexing is rare and discretionary. `/connect/`
+documents the MCP server. Neither is in the top nav by design; they
+exist to be one-link answers.
 
 Caveats that stay load-bearing:
 - **Rebuilt MN years are substantially covered, not provably complete**
   (~83% COA vs control; ~53% Supreme — the archive carries no Supreme
-  ORDERS), and they have no reporter cites until CL backfills. Disclosed on
-  /about/; keep it that way.
-- **AZ judges 247 → 194 and NH 69 → 36 are CORRECTIONS, not losses.** The old
-  counts included citation false-positives (a whole class of parenthetical-cite
-  leaks fixed at the source 2026-08-07) and OCR/hyphenation duplicate rows.
-  Same for AZ panel votes 142 → 29K+, which was a ReDoS bug, not a gap.
-- **IA publication is a ZIP, not 10K loose files** — individual-file upload is
-  ~9.6h and fragile on IA; the item holds one 1.63GB archive + manifest + README.
+  ORDERS), and they have no reporter cites until CL backfills. Disclosed
+  on /about/; keep it that way.
+- **AZ judges 247 → 194 and NH 69 → 36 are CORRECTIONS, not losses** —
+  the old counts included citation false-positives and OCR duplicates.
+- **A filtered `/opinions/` count has no composite index** and is bounded
+  rather than fast; see the 2026-09-14b block before "optimizing" it.
 
 (Opinion counts as of 2026-06-27: 119,159 total, all embedded. The 2026-06-27
 VECTOR-INDEX retry deleted 12 zero-`raw_text` metadata stubs — MN ids 2618,
@@ -3275,6 +3327,8 @@ ssh docketdrift 'ps -axww | grep -E "embed_tick|manage.py embed_opinions" | grep
 | `localize_judge_photos [--dry-run]` | Repoint every judge's `photo_url` to a SELF-HOSTED `/static/opinions/judges/` portrait (no hotlinks to court sites that could go down) + apply scraped NH bios, from the committed `opinions/data/judge_localization.json` manifest. Run after `collectstatic` + restart. Portraits are downloaded locally by `scripts/fetch_judge_photos.py`. | global | yes |
 | `reconcile_az_judges [--dry-run]` | One-shot merge of duplicate AZ Judge rows from the first scrape_judges run | AZ-specific | yes (no-op after merge) |
 | `backfill_dispositions` | Parse dispositions from raw_text into `disposition` field | global | yes |
+| `backfill_case_names --state <CODE> [--apply] [--min-id N] [--max-runtime N] [--max-shrink N]` | Recompute `Opinion.title` from the state parser for stored rows. **Dry-run by default.** Never writes an empty name; REFUSES a new title more than `--max-shrink`%% shorter than the stored one (that guard caught 42 real regressions on its first run). Repaired 10,420 MN captions 2026-09-14. | per state | yes |
+| `scripts/rotate_access_log.sh [--dry-run]` | Safely rotate `/home/logs/daemon_gunicorn.log`: archive the NUL-stripped content compressed, MOVE the file, restart the daemon so the supervisor re-opens the path, VERIFY a new log appears. **Never truncate that file in place** — that is what made it sparse. Run when it passes ~1GB apparent. | global | yes |
 | `check_freshness [--today YYYY-MM-DD]` | Per-state ingest freshness monitor. Non-zero exit (NFSN-emailed) when any live state's newest opinion exceeds its staleness threshold (MN/AZ 45d, NH 60d). Wrapper `scripts/freshness_check.sh` runs weekly via NFSN scheduled task (register in member panel). Uses indexed `ORDER BY release_date LIMIT 1`, not aggregate Max. | global | yes |
 | `manage.py check` | Django system checks (incl. opinions.E001 multi-line `{# #}` guard) | global | n/a |
 
