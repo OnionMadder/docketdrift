@@ -437,15 +437,30 @@ def tool_get_statute(args: dict) -> dict:
 
     meta = (
         StatuteCitation.objects.filter(reference_slug=reference)
-        .values("reference_display").first()
+        .values("reference_display", "section", "subdivision").first()
     )
     if not meta:
         raise ValueError(f"no citations found for statute {reference!r}")
 
+    # Roll subdivisions up onto a section reference, exactly as the web
+    # statute page does. Without this the MCP and the public page
+    # disagree about the same statute -- Minn. Stat. 563.01 is 17
+    # opinions cited bare and 35 counting its subdivisions -- and
+    # search_opinions points callers HERE for "the complete list", so a
+    # narrower answer would make that pointer a lie.
+    #
+    # Trailing "." keeps 563.011 out of 563.01. Gated on a section-level
+    # reference so chapter/article slugs keep exact scoping.
+    if meta["section"] and not meta["subdivision"]:
+        scope = Q(reference_slug=reference) | Q(
+            reference_slug__startswith=reference + ".")
+    else:
+        scope = Q(reference_slug=reference)
+
     # Materialize distinct opinion ids first (index-only), then one
     # literal id__in fetch -- the statute_detail strategy.
     opinion_ids = list(
-        StatuteCitation.objects.filter(reference_slug=reference)
+        StatuteCitation.objects.filter(scope)
         .order_by().values_list("opinion_id", flat=True).distinct()[:500]
     )
     court_ids = set(_court_ids(state))
