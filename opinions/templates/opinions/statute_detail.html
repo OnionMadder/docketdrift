@@ -81,8 +81,22 @@
     {% if mention_count > total_count %}
       with <strong>{{ mention_count }}</strong> mentions
     {% endif %}
-    {% if request.state %} in {{ request.state.name }}{% endif %}.
+    {% if request.state %} in {{ request.state.name }}{% endif %}{% if subdivision_slugs %},
+    counting citations to this section&rsquo;s subdivisions{% endif %}.
   </p>
+
+  {% comment %}
+    Say WHICH subdivisions are folded in. This page used to show only the
+    opinions that cited the section bare -- 17 of 35 for the IFP statute --
+    with nothing on the page to suggest anything was missing. Rolling them
+    up is the fix; naming them is what keeps the count auditable.
+  {% endcomment %}
+  {% if subdivision_slugs %}
+    <p class="subtle-lead statute-subdivisions">
+      Includes:
+      {% for sub in subdivision_slugs %}{{ sub }}{% if not forloop.last %} &middot; {% endif %}{% endfor %}
+    </p>
+  {% endif %}
 
   <div class="opinion-actions">
     <a href="https://www.revisor.mn.gov/statutes/cite/{{ chapter }}{% if section %}.{{ section }}{% endif %}"

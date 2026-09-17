@@ -21,6 +21,7 @@ from django.db import connection, models
 from django.db.models import Q
 from django.http import Http404, HttpResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.cache import cache_control, cache_page
 from django.views.decorators.csrf import csrf_exempt
@@ -107,6 +108,43 @@ def _boolean_and_expr(search_q):
             if len(piece) >= FULLTEXT_MIN_TOKEN_LEN and piece.lower() not in _INNODB_FT_STOPWORDS:
                 terms.append("+" + piece)
     return " ".join(terms)
+
+
+def _unindexable_cite_terms(search_q):
+    """Terms the FULLTEXT index physically cannot match, e.g. "109.02".
+
+    InnoDB's tokenizer splits at the period and then DISCARDS any
+    fragment shorter than ``innodb_ft_min_token_size`` (3 on this
+    server), so a citation with a one- or two-digit fractional part
+    indexes as its chapter alone:
+
+        109.02  -> "109" + "02"(dropped)  -> matches every "109"
+        563.01  -> "563" + "01"(dropped)
+        609.185 -> "609" + "185"          -> both kept, matches fine
+
+    That variable is server config: changing it needs a restart AND a
+    rebuild of the FULLTEXT index on the 2.75GB opinions table. We have
+    neither SUPER nor a survivable rebuild on NFSN's shared DB (same
+    wall as the VECTOR INDEX), so this is permanent and the honest move
+    is to SAY so rather than present false matches as a broad result.
+
+    Returns the offending terms so the page can name them. Terms whose
+    fragments are all >= 3 chars are NOT reported -- those really do
+    match, and warning about them would be its own falsehood.
+    """
+    flagged = []
+    for raw in (search_q or "").split():
+        token = raw.strip(",;:()[]“”\"'")
+        if "." not in token:
+            continue
+        parts = [p for p in token.split(".") if p]
+        if len(parts) < 2 or not any(ch.isdigit() for ch in token):
+            continue
+        if not all(p.isalnum() for p in parts):
+            continue
+        if any(len(p) < FULLTEXT_MIN_TOKEN_LEN for p in parts):
+            flagged.append(token)
+    return flagged
 
 
 # Page size when the user has filtered or searched (power-user mode).
@@ -716,14 +754,44 @@ def opinion_list(request):
         #   AZ:  "A.R.S. § 13-1103"
         # The statute parser itself decides what counts -- same code that
         # populated the statute pages now also routes the search box.
+        from opinions.parsing.statutes import bare_cite_slugs
         from opinions.parsing.statutes import extract_statutes as _parse_statutes
         cites = _parse_statutes(state.code, search_q) if state else []
         if cites:
-            from django.urls import reverse
             return redirect(reverse(
                 "opinions:statute_detail",
                 kwargs={"reference": cites[0].reference_slug},
             ))
+
+        # BARE section-number shortcut: "563.01", "§ 563.01",
+        # "563.01, subd. 3", "section 609.185".
+        #
+        # This is the query the text index physically CANNOT answer.
+        # InnoDB tokenizes "563.01" into "563" + "01" and discards any
+        # fragment shorter than innodb_ft_min_token_size (= 3 on this
+        # server), so the cite degenerates to a bare "563". Measured on
+        # prod 2026-09-16: "109.02" matched 501+ MN opinions and ZERO of
+        # the first 25 contained the string; the true answer is 5.
+        #
+        # Phrase-quoting fixes precision (5/5, 25/25) but costs 33-58s
+        # against the 12s self-bound in _fulltext_candidate_ids -- it
+        # would be KILLed every time, turning wrong answers into no
+        # answers plus a poisoned connection. The structured route is
+        # the only correct fix, and it is also just what a legal search
+        # engine should do with a citation.
+        #
+        # Each candidate is VERIFIED against the corpus before we
+        # redirect, so a number-shaped query that isn't a real cite
+        # falls through to ordinary search instead of hitting a 404.
+        if state is not None:
+            for _cand in bare_cite_slugs(state.code, search_q):
+                if StatuteCitation.objects.filter(
+                    Q(reference_slug=_cand)
+                    | Q(reference_slug__startswith=_cand + ".")
+                ).exists():
+                    return redirect(reverse(
+                        "opinions:statute_detail", kwargs={"reference": _cand},
+                    ))
 
         use_fulltext = (
             connection.vendor == "mysql"
@@ -927,6 +995,7 @@ def opinion_list(request):
         "from_opinion_list": True,
         # Over-broad term: results are a bounded subset of the matches.
         "fulltext_capped": fulltext_capped,
+        "unindexable_cites": _unindexable_cite_terms(search_q),
         # FULLTEXT query was killed; we degraded instead of 500ing.
         "search_degraded": search_degraded,
     })
@@ -1145,7 +1214,7 @@ def opinion_detail(request, case_number):
     # into the GROUP BY (the StatuteCitation .distinct()/aggregate gotcha).
     cluster_sizes = {
         r["cluster_label"]: r["n"]
-        for r in received.values("cluster_label").annotate(n=Count("id")).order_by()
+        for r in received.values("cluster_label").annotate(n=models.Count("id")).order_by()
     }
     cited_how = list(
         received.filter(is_cluster_lead=True)
@@ -1195,7 +1264,7 @@ def opinion_detail(request, case_number):
     cites.sort(key=lambda e: e.text_offset or 0)
     _counts = {
         r["treatment"]: r["n"]
-        for r in received.values("treatment").annotate(n=Count("id")).order_by()
+        for r in received.values("treatment").annotate(n=models.Count("id")).order_by()
     }
     _labels = [("OVERRULED", "Overruled"), ("DISTINGUISHED", "Distinguished"),
                ("CRITICIZED", "Criticized"), ("FOLLOWED", "Followed"),
@@ -1640,26 +1709,98 @@ def statute_detail(request, reference):
         .first()
     )
     if cite_meta is None:
-        raise Http404("Statute not cited in corpus")
+        # The section itself may never have been cited BARE while its
+        # subdivisions were ("Minn. Stat. § 563.01, subd. 3" with no
+        # plain "§ 563.01" anywhere). That statute IS in the corpus, so
+        # 404 would be a lie. Send them to the most-cited subdivision
+        # rather than synthesizing a display string we never parsed --
+        # we don't invent citation text, even a heading.
+        child = (
+            StatuteCitation.objects
+            .filter(reference_slug__startswith=reference + ".")
+            .order_by()
+            .values("reference_slug")
+            .annotate(n=models.Count("id"))
+            .order_by("-n")
+            .first()
+        )
+        if child is None:
+            raise Http404("Statute not cited in corpus")
+        return redirect(
+            reverse("opinions:statute_detail",
+                    kwargs={"reference": child["reference_slug"]})
+        )
 
-    # (2) Mention-level tally -- index-only count, ~10ms.
-    mention_count = StatuteCitation.objects.filter(
-        reference_slug=reference,
-    ).count()
+    # (1b) Roll subdivisions up onto the section page.
+    #
+    # A lawyer looking up "§ 563.01" wants the whole section, not only
+    # the opinions that happened to omit a subdivision. Measured on the
+    # IFP statute: exact-slug = 17 citing opinions, rolled up = 35. The
+    # page was showing under half the law and giving no sign of it.
+    # (On a statute usually cited bare the difference is noise --
+    # § 609.185 is 606 vs 615 -- so this costs nothing where it doesn't
+    # help.)
+    #
+    # The trailing "." is load-bearing: a bare ``startswith(reference)``
+    # would pull "minn.stat.563.011" -- a DIFFERENT statute -- into
+    # § 563.01's page. With the dot, only true descendants match.
+    #
+    # Gated on a section-level cite so this never over-reaches: chapter
+    # -only slugs (``minn.stat.ch.169``) and LA article slugs
+    # (``la.const.art-1``) have an empty ``section`` and keep exact
+    # scoping, because rolling every section up under its chapter is a
+    # different feature with a different meaning.
+    rolls_up = bool(cite_meta["section"]) and not cite_meta["subdivision"]
+    if rolls_up:
+        scope = Q(reference_slug=reference) | Q(
+            reference_slug__startswith=reference + ".")
+    else:
+        scope = Q(reference_slug=reference)
 
-    # (3) Distinct opinion_ids. The explicit ``.order_by()`` is load-
-    # bearing: StatuteCitation.Meta.ordering = ["opinion", "text_offset"]
-    # bleeds into ``.distinct()`` and joins back to Opinion's own ordering
-    # (release_date DESC), turning a single-table index scan into a
-    # 2-table scan + sort. Clearing the order_by drops it back to ~10ms.
-    # Cap at 50K to bound the IN clause; no real statute cites more.
-    opinion_ids = list(
+    # (2+3) ONE range scan over the slug index yields all three things
+    # this page needs: the mention tally, the distinct opinion ids, and
+    # the subdivision list. Measured on prod (2026-09-16) against the
+    # heaviest section, minn.stat.590.01 (1,897 descendant rows): as
+    # three separate queries this cost 1.07s + 1.26s + 0.97s = ~3.3s,
+    # every one of them re-walking the SAME index range and two of them
+    # paying "Using temporary" for a DISTINCT. Folded into a single
+    # fetch it is one scan and the de-duplication happens in Python over
+    # a few thousand tuples.
+    #
+    # The explicit ``.order_by()`` is load-bearing: StatuteCitation.Meta
+    # .ordering = ["opinion", "text_offset"] otherwise joins back to
+    # Opinion, turning a single-table index scan into a 2-table scan +
+    # filesort.
+    ROW_CAP = 50_000
+    rows = list(
         StatuteCitation.objects
-        .filter(reference_slug=reference)
+        .filter(scope)
         .order_by()  # <-- clear default Meta.ordering, keep this query simple
-        .values_list("opinion_id", flat=True)
-        .distinct()[:50_000]
+        .values_list("opinion_id", "reference_display", "reference_slug")
+        [:ROW_CAP]
     )
+
+    opinion_ids, _seen = [], set()
+    subdivision_slugs, _seen_sub = [], set()
+    for _oid, _display, _slug in rows:
+        if _oid not in _seen:
+            _seen.add(_oid)
+            opinion_ids.append(_oid)
+        if rolls_up and _slug != reference and _display not in _seen_sub:
+            _seen_sub.add(_display)
+            subdivision_slugs.append(_display)
+    subdivision_slugs.sort()
+    subdivision_slugs = subdivision_slugs[:60]
+
+    # len(rows) IS the exact mention count unless we hit the cap, in
+    # which case fall back to a real COUNT rather than render a number
+    # that is quietly a floor. (No statute is anywhere near this today --
+    # the largest is ~1.9K rows -- but a count shown as exact must be
+    # exact, same rule as the capped /opinions/ paginator.)
+    if len(rows) < ROW_CAP:
+        mention_count = len(rows)
+    else:
+        mention_count = StatuteCitation.objects.filter(scope).count()
 
     # (4) Opinion list -- literal IN-list, MariaDB picks the PK index.
     # ``.defer("raw_text", "html_content")`` keeps the two giant TEXT
@@ -1689,6 +1830,8 @@ def statute_detail(request, reference):
         "chapter": cite_meta["chapter"],
         "section": cite_meta["section"],
         "subdivision": cite_meta["subdivision"],
+        "rolls_up": rolls_up,
+        "subdivision_slugs": subdivision_slugs,
         "opinions": page_obj.object_list,
         "page_obj": page_obj,
         "total_count": paginator.count,
@@ -1750,7 +1893,7 @@ def _yearly_panel_votes(judge_id):
         )
         .annotate(year=ExtractYear("opinion__release_date"))
         .values("year")
-        .annotate(n=Count("id"))
+        .annotate(n=models.Count("id"))
         .order_by("year")
     )
     return [{"year": r["year"], "n": r["n"]} for r in rows]
@@ -1896,7 +2039,7 @@ def _judge_stats(judge, recent_limit=15, cohort_limit=10):
     vote_counts = dict(
         PanelVote.objects.filter(judge=judge)
         .values_list("vote_type")
-        .annotate(n=Count("id"))
+        .annotate(n=models.Count("id"))
         .values_list("vote_type", "n")
     )
     role_summary = {
@@ -1919,7 +2062,7 @@ def _judge_stats(judge, recent_limit=15, cohort_limit=10):
     # @property so it can't appear in .values().
     court_breakdown_rows = list(
         opinions_qs.values("court_id")
-        .annotate(n=Count("id"))
+        .annotate(n=models.Count("id"))
         .order_by("-n")
     )
     courts_map = {
@@ -1936,7 +2079,7 @@ def _judge_stats(judge, recent_limit=15, cohort_limit=10):
     disposition_breakdown = list(
         opinions_qs.exclude(disposition_bucket="")
         .values("disposition_bucket")
-        .annotate(n=Count("id"))
+        .annotate(n=models.Count("id"))
         .order_by("-n")
     )
 

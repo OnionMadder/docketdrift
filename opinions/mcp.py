@@ -42,6 +42,7 @@ import json
 import threading
 
 from django.conf import settings
+from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
@@ -125,7 +126,8 @@ def _opinion_brief(op: Opinion) -> dict:
 
 def tool_search_opinions(args: dict) -> dict:
     """Keyword search over one state's corpus (FULLTEXT, bounded)."""
-    from opinions.views import _fulltext_candidate_ids
+    from opinions.parsing.statutes import bare_cite_slugs
+    from opinions.views import _fulltext_candidate_ids, _unindexable_cite_terms
 
     query = (args.get("query") or "").strip()
     if not query:
@@ -138,6 +140,42 @@ def tool_search_opinions(args: dict) -> dict:
     limit = min(int(args.get("limit") or 10), MAX_LIST_LIMIT)
     year_from = args.get("year_from")
     year_to = args.get("year_to")
+
+    # A citation the FULLTEXT index cannot represent ("109.02" indexes as
+    # "109", because InnoDB splits at the period and drops fragments
+    # under innodb_ft_min_token_size = 3). Left unsaid, this is the worst
+    # possible failure for a tool caller: the matches look like ordinary
+    # results, an LLM has no way to tell they are false, and it will cite
+    # them. Refuse instead, and name the tool that CAN answer -- for a
+    # statute, get_statute is exact.
+    bad_cites = _unindexable_cite_terms(query)
+    if bad_cites:
+        hint = ""
+        for term in bad_cites:
+            for cand in bare_cite_slugs(state.code, term):
+                if StatuteCitation.objects.filter(
+                    Q(reference_slug=cand)
+                    | Q(reference_slug__startswith=cand + ".")
+                ).exists():
+                    hint = (
+                        f" {term} is a cited statute in {state.code}: call "
+                        f"get_statute with reference='{cand}' for the exact,"
+                        " complete list."
+                    )
+                    break
+            if hint:
+                break
+        raise ValueError(
+            "keyword search cannot match the citation(s) "
+            + ", ".join(bad_cites)
+            + ": the full-text index splits a citation at the period and "
+            "discards fragments shorter than 3 characters, so this query "
+            "would silently match only the digits before the dot. Any "
+            "results would be false." + (hint or
+            " If it is a court RULE, DocketDrift does not index rule "
+            "citations yet -- search distinctive words from the rule's "
+            "text instead.")
+        )
 
     ids, capped = _fulltext_candidate_ids(query, _court_ids(state))
     if ids is None:

@@ -48,7 +48,25 @@
     <strong>{{ total_count }}{% if fulltext_capped %}+{% endif %}</strong> opinion{{ total_count|pluralize }}{% if is_filtered %} matched{% else %} indexed{% endif %}{% if page_obj and page_obj.paginator.num_pages > 1 %}; showing {{ page_obj.start_index }}&ndash;{{ page_obj.end_index }}{% elif not is_filtered %}; ten most recent below{% endif %}.
   </p>
 
-  {% if search_degraded %}
+  {% comment %}
+    The citation notice comes FIRST and replaces the "narrow your search"
+    advice, because for these terms that advice is false: the keyword
+    index splits a citation at the period and drops any fragment under
+    three characters, so "109.02" is really searching for "109". Adding
+    another word narrows a result set that was never right to begin with.
+    Say what happened and point at the layer that can actually answer it.
+  {% endcomment %}
+  {% if unindexable_cites %}
+    <p class="search-notice search-notice--warn">
+      Keyword search can&rsquo;t match
+      {% for term in unindexable_cites %}<strong>{{ term }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %}
+      exactly &mdash; the index splits a citation at the period and drops the short
+      half, so these results are matching only the number before the dot.
+      If it&rsquo;s a statute, searching the citation on its own jumps straight to that
+      statute&rsquo;s page, where the citations <em>are</em> indexed. Court <em>rules</em>
+      aren&rsquo;t indexed as citations yet.
+    </p>
+  {% elif search_degraded %}
     <p class="search-notice search-notice--warn">
       That search was too broad to finish in time. Add another word, or use the
       <strong>Outcomes</strong> filter in the sidebar, to narrow it down.

@@ -91,4 +91,26 @@ def extract_statutes(state_code: str, text: str) -> list[ExtractedStatute]:
     return module.extract(text)
 
 
-__all__ = ["ExtractedStatute", "extract_statutes"]
+def bare_cite_slugs(state_code: str, query: str) -> list[str]:
+    """Slugs a bare section-number search query could mean, best first.
+
+    Optional per-state hook: a state module may define
+    ``bare_slug_candidates(query) -> list[str]``. States that haven't
+    implemented it return [] and simply keep the old search behavior, so
+    this is additive and cannot regress a state it hasn't been written
+    for.
+
+    Callers MUST verify each candidate against the corpus before
+    redirecting. This function only answers "what could this notation
+    mean", never "this statute exists".
+    """
+    if not query:
+        return []
+    module = _load(state_code)
+    hook = getattr(module, "bare_slug_candidates", None)
+    if hook is None:
+        return []
+    return hook(query)
+
+
+__all__ = ["ExtractedStatute", "extract_statutes", "bare_cite_slugs"]
