@@ -56,7 +56,13 @@
     another word narrows a result set that was never right to begin with.
     Say what happened and point at the layer that can actually answer it.
   {% endcomment %}
-  {% if unindexable_cites %}
+  {% comment %}
+    Only for MIXED queries ("negligence 109.02"), where real results are
+    shown and need the caveat. When the query is nothing but citations
+    there are no results at all, and the empty state below carries the
+    fuller explanation -- two notices saying the same thing is noise.
+  {% endcomment %}
+  {% if unindexable_cites and not cites_only %}
     <p class="search-notice search-notice--warn">
       Keyword search can&rsquo;t match
       {% for term in unindexable_cites %}<strong>{{ term }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %}
@@ -213,7 +219,24 @@
   {% endif %}
 
   {% else %}
-    {% if disp_filter and search_q %}
+    {% comment %}
+      cites_only comes FIRST: "No opinions matched 109.02" would be a
+      flat lie. Opinions DO cite it -- the keyword index simply cannot
+      represent the citation, so we never looked. Reporting "not found"
+      for a search we could not perform is the same class of error as a
+      capped count rendered as exact.
+    {% endcomment %}
+    {% if cites_only %}
+      <p class="glitch-line">We didn&rsquo;t search for &ldquo;{{ search_q }}&rdquo;.</p>
+      <p class="subtle-lead">
+        That&rsquo;s a citation, and the keyword index can&rsquo;t hold one &mdash; it splits
+        at the period and discards the short half, so searching it would have
+        returned matches on the digits before the dot and nothing to tell you
+        they were wrong. This is <em>not</em> a finding that no opinion cites it.
+        Statute citations have their own pages; court <em>rules</em> aren&rsquo;t
+        indexed as citations yet.
+      </p>
+    {% elif disp_filter and search_q %}
       <p class="glitch-line">No opinions matched &ldquo;{{ search_q }}&rdquo; with outcome {{ disp_label }}.</p>
     {% elif disp_filter %}
       <p class="glitch-line">No opinions with outcome {{ disp_label }} indexed yet.</p>

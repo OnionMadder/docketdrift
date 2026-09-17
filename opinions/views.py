@@ -730,6 +730,17 @@ def opinion_list(request):
     # so results are a bounded subset and the template should say "narrow it."
     search_degraded = False
     fulltext_capped = False
+    # Terms InnoDB's tokenizer cannot represent (see
+    # _unindexable_cite_terms). Computed ONCE, and initialized out here
+    # rather than inside the `if search_q` branch: a name first bound
+    # inside a branch is local to the WHOLE function and unbound on
+    # every other path, which is exactly how the `reverse` redirects
+    # 500'd earlier today. The no-search path reads these too.
+    unindexable_cites = _unindexable_cite_terms(search_q)
+    cites_only = (
+        bool(unindexable_cites)
+        and len(unindexable_cites) == len(search_q.split())
+    )
     if search_q:
         # Reporter-cite shortcut. A pasted reporter cite ("2026 N.H. 7")
         # lands directly on that opinion -- same one-click routing as
@@ -811,7 +822,20 @@ def opinion_list(request):
             and " " not in search_q
             and ("-" in search_q or re.match(r"^[A-Za-z]\d", search_q))
         )
-        if is_docket_like:
+        if cites_only:
+            # The query is NOTHING BUT citations the index cannot
+            # represent, so every row FULLTEXT could return is a false
+            # match -- measured: "109.02" returns 501+ candidates of
+            # which 0 of the first 25 contain the string at all. Showing
+            # 200 known-wrong opinions under a warning is still showing
+            # 200 known-wrong opinions; a lawyer skimming the list has no
+            # way to tell. The notice IS the result.
+            #
+            # Only when EVERY term is unindexable. A mixed query
+            # ("negligence 109.02") still has a real term doing real
+            # work, so those results are kept and merely annotated.
+            qs = qs.none()
+        elif is_docket_like:
             # case_number is indexed; .icontains uses %...% but the
             # column is small so the scan is still fast.
             qs = qs.filter(case_number__icontains=search_q)
@@ -993,7 +1017,8 @@ def opinion_list(request):
         "from_opinion_list": True,
         # Over-broad term: results are a bounded subset of the matches.
         "fulltext_capped": fulltext_capped,
-        "unindexable_cites": _unindexable_cite_terms(search_q),
+        "unindexable_cites": unindexable_cites,
+        "cites_only": cites_only,
         # FULLTEXT query was killed; we degraded instead of 500ing.
         "search_degraded": search_degraded,
     })

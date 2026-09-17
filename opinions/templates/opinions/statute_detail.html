@@ -68,12 +68,20 @@
 
   <h1>{{ reference_display }}</h1>
 
+  {% comment %}
+    This block was written when MN was the only state and said
+    "Minnesota statute" on every statute page in every state. Worse, it
+    REBUILT the citation as "{{ chapter }}.{{ section }}", which is only
+    Minnesota's grammar: A.R.S. 13-1103 rendered as "section 13.1103",
+    turning a hyphen into a period and misstating the citation. The
+    canonical per-state form already exists as reference_display (the
+    H1), so nothing here needs to reconstruct one.
+
+    "chapter" is also MN's own terminology -- the same slot holds AZ's
+    A.R.S. *title* -- so it is named only where it is known to be right.
+  {% endcomment %}
   <p class="subtle-lead">
-    {% if section %}
-      Minnesota statute &mdash; chapter {{ chapter }}, section {{ chapter }}.{{ section }}{% if subdivision %}, subdivision {{ subdivision }}{% endif %}.
-    {% else %}
-      Minnesota statute &mdash; chapter {{ chapter }} in full.
-    {% endif %}
+    {% if request.state %}{{ request.state.name }}{% endif %} statute{% if request.state.code == "MN" %}{% if section %} &mdash; chapter {{ chapter }}{% if subdivision %}, subdivision {{ subdivision }}{% endif %}{% else %} &mdash; chapter {{ chapter }} in full{% endif %}{% endif %}.
   </p>
 
   <p class="opinion-meta">
@@ -98,10 +106,24 @@
     </p>
   {% endif %}
 
-  <div class="opinion-actions">
-    <a href="https://www.revisor.mn.gov/statutes/cite/{{ chapter }}{% if section %}.{{ section }}{% endif %}"
-       target="_blank" rel="noopener">Read the statute on revisor.mn.gov</a>
-  </div>
+  {% comment %}
+    MN ONLY. This link was unguarded, so an Arizona statute page offered
+    "Read the statute on revisor.mn.gov" pointing at a Minnesota cite
+    built from AZ's numbers -- sending a reader to another state's law,
+    or to a real but unrelated Minnesota statute, under a label that
+    promises the statute they are reading about. On a legal research
+    site that is the worst kind of wrong link.
+
+    No link is the honest state for NH/AZ/LA until each state's official
+    source URL is mapped properly; a guessed URL would reintroduce the
+    same failure in a new costume.
+  {% endcomment %}
+  {% if request.state.code == "MN" %}
+    <div class="opinion-actions">
+      <a href="https://www.revisor.mn.gov/statutes/cite/{{ chapter }}{% if section %}.{{ section }}{% endif %}"
+         target="_blank" rel="noopener">Read the statute on revisor.mn.gov</a>
+    </div>
+  {% endif %}
 </div>
 
 {% if opinions %}
