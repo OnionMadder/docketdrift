@@ -442,7 +442,6 @@ def home(request):
     # Search/filter params bypass the landing -- redirect to the
     # opinion-list view with the same querystring.
     if any(p in request.GET for p in ("q", "disposition", "page", "years")):
-        from django.urls import reverse
         return redirect(f"{reverse('opinions:opinion_list')}?{request.GET.urlencode()}")
 
     # State landing.
@@ -742,7 +741,6 @@ def opinion_list(request):
             .only("case_number").first()
         )
         if _cited:
-            from django.urls import reverse
             return redirect(reverse("opinions:detail", kwargs={"case_number": _cited.case_number}))
         # Statute-cite shortcut. If the query parses as a statute citation
         # under the current state's grammar, redirect straight to the
@@ -1425,7 +1423,6 @@ def request_state(request):
     reload doesn't double-submit).
     """
     from opinions.forms import StateRequestForm
-    from django.urls import reverse
 
     if request.method == "POST":
         form = StateRequestForm(request.POST)
@@ -1461,7 +1458,6 @@ def report_error(request):
     of silent failure this site keeps relearning to surface.
     """
     from opinions.forms import ErrorReportForm
-    from django.urls import reverse
 
     send_failed = False
     if request.method == "POST":
