@@ -150,6 +150,176 @@ generalizes to CA and TX.
 coverage trough visible (MN COA 114 opinions in 2013 vs 1,257 in 2015 —
 CL coverage, not caseload). See the starred TODO section.
 
+## 2026-09-17 — a bug report said "fix your tokenizer"; the tokenizer is not ours and the obvious fix was a trap
+
+A researcher reported that `in forma pauperis` searched fine while
+`109.02`, `563.01` and `Rule 109.02` all returned *"200+ — matches a
+very large number"*, diagnosed it as our tokenizer splitting on the
+period, and asked for two things: fix the tokenizer, and connect the MCP
+so they could query the corpus directly.
+
+**The symptom was real. The layer was wrong, and the fix they proposed
+would have made it worse.** Measured on prod before touching anything:
+
+- **`_boolean_and_expr` does NOT split on `.`** — `_FT_OPERATOR_CHARS` is
+  `[+\-><()~*@"]`. The query reaches InnoDB intact. **InnoDB's own
+  tokenizer** splits it, and **`innodb_ft_min_token_size = 3`** then
+  DISCARDS the short fragment:
+
+  | query | indexes as | matches | precision |
+  |---|---|---|---|
+  | `109.02` | `109` + `02` **dropped** | 501+ | **0/25** |
+  | `563.01` | `563` + `01` **dropped** | 501+ | 7/25 |
+  | `609.185` | `609` + `185` both kept | 501+ | **23/25** |
+
+  **Severity depends entirely on the fractional part's length**, which is
+  why some citations "work" and others are pure noise. That variable is
+  server config: it needs a restart AND a rebuild of the FULLTEXT index
+  on the 2.75GB table. No SUPER, no survivable rebuild — **same wall as
+  the VECTOR INDEX. It cannot be fixed at the index.**
+- **Phrase-quoting is a TRAP — do not ship it.** Precision goes perfect
+  (`+"109.02"` = 5/5, `+"563.01"` = 25/25) and the cost is **41.7s /
+  33.4s / 58.6s** for two phrases, against the **12s self-bound** in
+  `_fulltext_candidate_ids`. It would be KILLed every time: wrong answers
+  become NO answers plus a poisoned connection. The bound is why the
+  naive fix is invisible in dev and fatal in prod.
+
+**The fix is structured routing** — which is also just what a legal
+search engine should do with a citation. Bare `563.01` /
+`section 609.185` / `563.01, subd. 3` now redirect to the statute page.
+Candidates are VERIFIED against the corpus first, so a number-shaped
+query that isn't a real cite falls through to search instead of 404ing,
+and the routing grammar is built by re-running the extractor over a
+synthesized cite so it can't drift. A bare chapter (`169`) deliberately
+does NOT route — it is also a page number, a year fragment and a dollar
+figure.
+
+**"Rare in appellate prose" was asserted in a docstring and never
+measured. It was wrong, and it had been capping the statute graph for
+months.** `statutes_mn.py` excluded the long form and spelled-out
+subdivisions on that basis. Sampling 1,200 MN opinions (2015+):
+
+- `Minnesota Statutes section N` is in **458 of 1,200** (1,422 cites),
+  and **47 opinions use it EXCLUSIVELY** — they cited a statute and were
+  invisible to the graph.
+- `, subdivision N` spelled out: **1,951** vs 7,208 for `, subd. N`.
+  Those matched the section but not the subdivision, storing a
+  subdivision cite at section granularity — **a wrong answer, not a
+  missing one.**
+- Also fixed the pypdf `563.01 , subd. 3` space-before-comma artifact,
+  which `,\s*subd\.` missed entirely.
+
+Full MN re-sweep (28 chunks driven from outside, cull-safe): **176,467 →
+186,040 rows (+9,573, +5.4%)**, opinions with ≥1 cite 27,561 → 27,936.
+All six spot-checked long-form-only opinions now carry cites.
+
+**★ THE GRANULARITY FIX AND THE ROLL-UP HAD TO SHIP TOGETHER.** Statute
+pages now roll subdivisions up onto the section (§ 563.01 showed **17**
+citing opinions; the real figure counting subdivisions was **35**, with
+nothing on the page to suggest anything was missing). After the sweep,
+§ 563.01's **exact** count went **17 → 14** while rolled-up went
+**35 → 36** — because cites wrongly stored as bare `563.01` moved to
+their correct `.subd.N` slug. **Fixing granularity ALONE would have made
+the section page look like it lost citations.** Two correct changes, each
+of which looks like a regression without the other.
+
+Roll-up mechanics worth keeping: the **trailing `.` is load-bearing**
+(`startswith("minn.stat.563.01")` would pull in `563.011`, a different
+statute), and it is **gated on a section-level cite** so chapter-only
+(`minn.stat.ch.169`) and LA article slugs (`la.const.art-1`) keep exact
+scoping — rolling every section up under its chapter is a different
+feature with a different meaning. A section cited only via its
+subdivisions now redirects to the most-cited one instead of 404ing.
+Perf: the page's three range scans over the same slug index (1.07s +
+1.26s + 0.97s on the heaviest section, two paying "Using temporary") are
+folded into ONE fetch, de-duplicated in Python. Warm 0.02–0.05s.
+
+**Honest degradation, because "narrow your search" was false advice
+here.** Narrowing refines a result set that was never right. Now: a query
+that is NOTHING BUT unindexable citations returns **no results** (every
+row FULLTEXT could return is a known-false match, and a warning above 200
+wrong opinions is still 200 wrong opinions), and the empty state says
+*"We didn't search for it"* + why + **explicitly that this is not a
+finding that no opinion cites it**. `No opinions matched "109.02"` would
+have been a flat lie — five MN opinions cite it. A mixed query
+(`negligence 109.02`) keeps its results and just carries the caveat.
+
+**MCP hardened the same way, because a false match is worse for an agent
+than for a human** — it looks like an ordinary result and the model will
+cite it. `search_opinions` now REFUSES such a query and names the tool
+that can answer: *"563.01 is a cited statute in MN: call get_statute with
+reference='minn.stat.563.01'"*. **That pointer forced a second fix** —
+`get_statute` filtered the exact slug and returned 17 where the web page
+said 35, so the error message promised a completeness it didn't deliver.
+Two surfaces disagreeing about one statute is bad; an error message that
+over-promises is worse.
+
+**A LIVE FALSEHOOD ON THREE OF FOUR STATES, found while in there.** The
+statute page said **"Minnesota statute"** on NH/AZ/LA, **rebuilt the
+citation with MN's grammar** (`A.R.S. 13-1103` rendered "section
+13.1103" — hyphen turned into a period, a *misstated citation*), and
+offered **"Read the statute on revisor.mn.gov"** pointing at a Minnesota
+cite built from Arizona numbers — sending a reader to another
+jurisdiction's law, or to a real but unrelated MN statute, under a label
+promising the statute they were reading about. Lead now uses the state's
+own name and the already-canonical `reference_display` (nothing
+reconstructs a cite), MN-only terminology is shown only for MN, and the
+revisor link is MN-gated. **No link is the honest state for NH/AZ/LA
+until each official source URL is mapped** — a guessed URL is the same
+bug in a new costume. `chapter` is MN's terminology anyway; the same slot
+holds AZ's A.R.S. *title*.
+
+**I SHIPPED THE UnboundLocalError TRAP THAT IS DOCUMENTED IN THIS FILE.**
+Hoisting `reverse` to module scope is NOT enough while any sibling branch
+of the same function still does a function-local
+`from django.urls import reverse` — the name is local to the WHOLE
+function and unbound on every path that didn't run that branch. It 500'd
+every citation search for ~4 minutes. `manage.py check` passed and bare
+`/opinions/` was 200, which is exactly why this class hides: it only
+fires on the redirecting branch. **Caught by exercising the path
+in-process, not by reading code.** Removed all four remaining local
+imports; the five views that call `reverse()` (home, opinion_list,
+request_state, report_error, statute_detail) are now exercised in the
+post-deploy check.
+
+**`2>&1 | tail` bit again, in a new place:** the backgrounded sweep piped
+its progress to `tail`, so stdout block-buffered and NOTHING appeared
+until the whole loop exited — a monitor watching that file saw silence
+for the entire run. The script's own logfile was the real progress
+surface. Log to a file; never pipe a long-running job's progress through
+`tail`.
+
+**First real tests in the repo.** `opinions/tests.py` was the Django stub
+("Create your tests here"). It now has 13 `SimpleTestCase` (no DB, <1s,
+runnable on prod) covering both citation forms, subdivision spellings,
+the space-before-comma artifact, the range guard, and the routing rules.
+Subdivision **ranges** (`subds. 2-3`) deliberately match section-only:
+we cannot store a range and must not invent a cite to its first member.
+
+**★ THE REAL GAP IS COURT RULES, AND IT IS BIG.** `109.02` is not a
+statute — it is **Minn. R. Civ. App. P. 109.02** (IFP on appeal).
+Measured on 400 recent MN opinions: **384 of them cite a `Minn. R.`
+rule — 929 cites — and we extract ZERO.** Frequency-ranked vocabulary,
+ready for the extractor: `Minn. R. Civ. App. P.` 529, `Minn. R. Civ. P.`
+209, `Minn. R. Crim. P.` 113, bare `Minn. R.` 35, `Juv. Prot. P.` 15,
+`Prof. Conduct` 11, `Gen. Prac.` 6, `Juv. Delinq. P.` 6, plus real OCR
+variants (`Minn. R. Civ. App. P 109.02` with no period, `Minn. R. Crim
+P.`, `Civ. App. Proc.`, `App. P.`). Also 36 distinct bare `Rule N.NN`
+forms (`Rule 60.02` 41×). **Decision already made: a NEW `RuleCitation`
+table, not reuse of `StatuteCitation`** — a court rule is not a statute,
+and putting rules on pages labeled "statute" inside an MCP tool described
+as "statute" is mislabeling the record, the same class as calling
+extraction "summarized". Expect the same blind spots in NH/AZ/LA.
+
+**Method notes:** the person who filed this was right that something was
+broken and wrong about both the cause and the cure — take the report on
+its merits and re-measure the mechanism before acting (second time a
+motivated outside reader found a real defect, after the 2026-09-14
+caption bug). And a false positive survives even a *perfect* search: the
+precise phrase query for `109.02` returns `FICA 109.02` from a 1993
+child-support worksheet — a dollar amount. Only a structured citation
+layer can tell a rule number from a dollar figure.
+
 ## 2026-09-14b — the 5xx monitor fired on concentration and was RIGHT
 
 The monitor rewritten 2026-09-08 (alert on a broken page TYPE, not a raw
@@ -3329,6 +3499,7 @@ ssh docketdrift 'ps -axww | grep -E "embed_tick|manage.py embed_opinions" | grep
 | `backfill_dispositions` | Parse dispositions from raw_text into `disposition` field | global | yes |
 | `backfill_case_names --state <CODE> [--apply] [--min-id N] [--max-runtime N] [--max-shrink N]` | Recompute `Opinion.title` from the state parser for stored rows. **Dry-run by default.** Never writes an empty name; REFUSES a new title more than `--max-shrink`%% shorter than the stored one (that guard caught 42 real regressions on its first run). Repaired 10,420 MN captions 2026-09-14. | per state | yes |
 | `scripts/rotate_access_log.sh [--dry-run]` | Safely rotate `/home/logs/daemon_gunicorn.log`: archive the NUL-stripped content compressed, MOVE the file, restart the daemon so the supervisor re-opens the path, VERIFY a new log appears. **Never truncate that file in place** — that is what made it sparse. Run when it passes ~1GB apparent. | global | yes |
+| `extract_statutes --state MN --force` | Re-sweep after any extractor change. Drive it in short chunks from OUTSIDE (`--max-runtime 35 --min-id N`, parse the `resume with:  --min-id N` trailer, DOUBLE space) so an NFSN CPU cull costs one chunk. STOP when the cursor stops advancing -- that means done (verify the last chunk scanned 0), not stuck. Full MN = 28 chunks / ~25 min. | per state | yes |
 | `check_freshness [--today YYYY-MM-DD]` | Per-state ingest freshness monitor. Non-zero exit (NFSN-emailed) when any live state's newest opinion exceeds its staleness threshold (MN/AZ 45d, NH 60d). Wrapper `scripts/freshness_check.sh` runs weekly via NFSN scheduled task (register in member panel). Uses indexed `ORDER BY release_date LIMIT 1`, not aggregate Max. | global | yes |
 | `manage.py check` | Django system checks (incl. opinions.E001 multi-line `{# #}` guard) | global | n/a |
 

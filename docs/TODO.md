@@ -530,6 +530,61 @@ MN-specific bug.
   the report from "2020–2023 hole" to "MN COA coverage is degraded
   across ~1989–2014 AND 2017–present, with a good 2015–2016 window."
 
+## ★ NEXT — court RULE citations (new 2026-09-17, sized and decided)
+
+**384 of 400 sampled MN opinions cite a `Minn. R.` rule — 929 cites — and we
+extract ZERO of them.** This is the largest structured-data gap in the product
+and it is what a citation search most often means in appellate practice: a
+researcher's blocked query this session was `109.02`, i.e. **Minn. R. Civ.
+App. P. 109.02** (in forma pauperis on appeal), which our statute layer
+correctly does not and cannot answer.
+
+Why it matters beyond coverage: the FULLTEXT index physically cannot find a
+rule number (InnoDB splits `109.02` at the period and drops `02` under
+`innodb_ft_min_token_size = 3`), and phrase-quoting costs 33–58s against a 12s
+bound. **Structured extraction is the only path to answering these queries at
+all** — see the 2026-09-17 CLAUDE.md block for the full measurement.
+
+**Storage decision already made: a NEW `RuleCitation` table.** NOT a reuse of
+`StatuteCitation` with a rule-shaped slug — that would be materially cheaper
+(it would inherit statute pages, the sitemap, search routing and the MCP
+`get_statute` tool for free) but it would render court rules on pages labeled
+"statute" and inside an MCP tool described as "statute". Mislabeling the
+record is the same class of error as calling extraction "summarized".
+
+Vocabulary is already frequency-ranked against real text (the documented
+method — measure before writing the regex):
+
+| count | form |
+|---|---|
+| 529 | `Minn. R. Civ. App. P.` |
+| 209 | `Minn. R. Civ. P.` |
+| 113 | `Minn. R. Crim. P.` |
+|  35 | bare `Minn. R.` |
+|  15 | `Minn. R. Juv. Prot. P.` |
+|  11 | `Minn. R. Prof. Conduct` |
+|   6 | `Minn. R. Gen. Prac.` |
+|   6 | `Minn. R. Juv. Delinq. P.` |
+
+Real variants that MUST be handled (each observed live, not hypothesized):
+`Minn. R. Civ. App. P 109.02` (no period after P), `Minn. R. Crim P.`,
+`Minn. R. Civ. App. Proc.`, `Minn. R. App. P.`. Plus **36 distinct bare
+`Rule N.NN` forms** in the sample (`Rule 60.02` 41×, `Rule 12.08` 11×) — a
+bare `Rule` reference is only resolvable from the surrounding opinion's
+context, so treat it as a separate, later tier rather than guessing a body.
+
+Build shape (mirrors `extract_statutes`): `opinions/parsing/rules_mn.py` +
+a state-keyed dispatcher + migration + `extract_rules` command with
+`--min-id`/`--max-runtime` and the `resume with:  --min-id N` trailer +
+per-rule pages + search routing + an MCP `get_rule` tool. Then the same
+exercise for NH/AZ/LA, where the identical blind spot almost certainly
+exists and has never been measured.
+
+**Do NOT auto-map a rule number to a statute slug** to get this working
+sooner. `minn.stat.109.02` currently has 0 rows and must stay that way —
+chapter 109 is a real Minnesota statute chapter, so a rule cite filed there
+would be a fabricated statute citation.
+
 ## Tier 3 — coverage (bigger builds)
 
 - [ ] **MCP server — put DocketDrift inside Claude as a tool** (NEW
