@@ -123,3 +123,59 @@ class BareCiteRoutingTests(SimpleTestCase):
         self.assertEqual(bare_cite_slugs("ZZ", "563.01"), [])
         self.assertEqual(bare_cite_slugs("MN", ""), [])
         self.assertEqual(bare_cite_slugs(None, "563.01"), [])
+
+
+class RemovalRequestIsAdminOnlyTests(SimpleTestCase):
+    """RemovalRequest must never reach a public surface.
+
+    The model records that a named person -- usually the subject of the
+    opinion -- asked us to take a page down. That is internal operational
+    context; publishing it would broadcast the very association the
+    requester objected to, which is the worst possible failure mode for
+    this particular table.
+
+    The property currently holds because ``admin.py`` is the only module
+    that queries the model. This test makes that structural rather than
+    remembered: add a read anywhere public and the suite fails.
+    """
+
+    PUBLIC_MODULES = [
+        "opinions/views.py",
+        "opinions/mcp.py",
+        "opinions/sitemaps.py",
+        "opinions/context_processors.py",
+        "opinions/admin_views.py",
+    ]
+    NEEDLES = ("RemovalRequest", "removal_request")
+
+    def _sources(self):
+        import os
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for rel in self.PUBLIC_MODULES:
+            path = os.path.join(root, rel)
+            if os.path.exists(path):
+                with open(path, encoding="utf-8") as fh:
+                    yield rel, fh.read()
+        tpl = os.path.join(root, "opinions", "templates")
+        for dirpath, _dirs, files in os.walk(tpl):
+            for name in files:
+                if not name.endswith(".html"):
+                    continue
+                path = os.path.join(dirpath, name)
+                # The admin templates live under templates/admin/ and are
+                # allowed to reference it.
+                if os.sep + "admin" + os.sep in path:
+                    continue
+                with open(path, encoding="utf-8") as fh:
+                    yield os.path.relpath(path, root), fh.read()
+
+    def test_no_public_module_or_template_references_it(self):
+        for rel, src in self._sources():
+            for needle in self.NEEDLES:
+                self.assertNotIn(
+                    needle, src,
+                    msg=("%s references %r. Removal requests are admin-only: "
+                         "publishing that a person asked for takedown "
+                         "broadcasts the association they objected to."
+                         % (rel, needle)),
+                )

@@ -1,5 +1,6 @@
 """Django admin for DocketDrift opinions."""
 from django.contrib import admin
+from django.db.models import Exists, OuterRef
 
 from opinions.models import (
     Court,
@@ -8,6 +9,7 @@ from opinions.models import (
     OpinionHolding,
     PanelVote,
     ParseLog,
+    RemovalRequest,
     State,
     StateRequest,
     Tag,
@@ -403,6 +405,21 @@ class OpinionHoldingInline(admin.StackedInline):
     fields = ("statute_cited", "legal_issue_tag", "holding_direction", "holding_text")
 
 
+class RemovalRequestInline(admin.TabularInline):
+    """Admin-only marker that this opinion has drawn a removal request.
+
+    Placed FIRST among the inlines on purpose: if a page has history, the
+    maintainer should see it before reading anything else about the row,
+    not after scrolling past the panel votes.
+    """
+    model = RemovalRequest
+    extra = 0
+    fields = ("received_on", "status", "requester", "notes")
+    show_change_link = True
+    verbose_name = "removal / de-indexing request"
+    verbose_name_plural = "removal / de-indexing requests (internal only)"
+
+
 class ParseLogInline(admin.TabularInline):
     model = ParseLog
     extra = 0
@@ -573,6 +590,34 @@ class SuspiciousDateFilter(admin.SimpleListFilter):
         return queryset
 
 
+class HasRemovalRequestFilter(admin.SimpleListFilter):
+    """Show only opinions that have (or have not) drawn a removal request.
+
+    EXISTS subquery rather than a join: the changelist runs over the
+    480K-row opinions table, and a join to a small side table would still
+    make the optimizer reconsider its plan on a filtered count (the
+    documented "one non-covered column beside a court_id filter" family).
+    An EXISTS against the indexed ``removalreq_opinion_idx`` stays a
+    cheap per-row probe.
+    """
+    title = "Removal request"
+    parameter_name = "removalreq"
+
+    def lookups(self, request, model_admin):
+        return [
+            ("yes", "Has a removal request"),
+            ("no", "No removal request"),
+        ]
+
+    def queryset(self, request, queryset):
+        sub = RemovalRequest.objects.filter(opinion=OuterRef("pk"))
+        if self.value() == "yes":
+            return queryset.filter(Exists(sub))
+        if self.value() == "no":
+            return queryset.filter(~Exists(sub))
+        return queryset
+
+
 class HasBodyFilter(admin.SimpleListFilter):
     """Filter on whether raw_text was successfully extracted.
 
@@ -615,6 +660,7 @@ class OpinionAdmin(admin.ModelAdmin):
         "court",
         SuspiciousDateFilter,
         HasBodyFilter,
+        HasRemovalRequestFilter,
         "is_precedential",
         "release_date",
         "disposition",
@@ -624,6 +670,7 @@ class OpinionAdmin(admin.ModelAdmin):
     readonly_fields = ("reviewed_at",)
     filter_horizontal = ("tags",)
     inlines = [
+        RemovalRequestInline,
         PanelVoteInline,
         TagSuggestionInline,
         OpinionHoldingInline,
@@ -807,3 +854,47 @@ class ParseLogAdmin(admin.ModelAdmin):
     @admin.display(description="missing")
     def missing_count(self, obj):
         return len(obj.missing_fields or [])
+
+
+@admin.register(RemovalRequest)
+class RemovalRequestAdmin(admin.ModelAdmin):
+    """Standalone browse of every removal / de-indexing request.
+
+    INTERNAL ONLY. Nothing in this model reaches a public view, sitemap,
+    JSON-LD block or MCP tool -- the safety property holds because this
+    module is the only place that queries it. Do not read RemovalRequest
+    from anywhere under ``views.py`` or ``mcp.py``.
+    """
+    list_display = (
+        "received_on",
+        "status",
+        "requester",
+        "opinion_link",
+        "opinion_title",
+        "note_excerpt",
+    )
+    list_filter = ("status", "received_on", "opinion__court__state")
+    search_fields = (
+        "requester",
+        "notes",
+        "opinion__case_number",
+        "opinion__title",
+    )
+    date_hierarchy = "received_on"
+    autocomplete_fields = ("opinion",)
+    readonly_fields = ("created_at", "updated_at")
+    list_select_related = ("opinion", "opinion__court", "opinion__court__state")
+
+    @admin.display(description="Docket", ordering="opinion__case_number")
+    def opinion_link(self, obj):
+        return obj.opinion.case_number
+
+    @admin.display(description="Case")
+    def opinion_title(self, obj):
+        t = obj.opinion.title or ""
+        return (t[:70] + "...") if len(t) > 70 else t
+
+    @admin.display(description="Notes")
+    def note_excerpt(self, obj):
+        n = " ".join((obj.notes or "").split())
+        return (n[:90] + "...") if len(n) > 90 else n

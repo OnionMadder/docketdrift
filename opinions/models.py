@@ -1345,3 +1345,91 @@ class ParseLog(models.Model):
             f"ParseLog({self.parser_state}/{self.parser_version}) "
             f"for opinion {self.opinion_id}"
         )
+
+
+class RemovalRequest(models.Model):
+    """An internal, admin-only note that someone asked us to remove or
+    de-index a specific opinion.
+
+    Purpose is operational, not editorial: when the same page comes up
+    twice, or when a request arrives about an opinion that has already
+    been looked at, the maintainer needs to see that immediately rather
+    than reconstructing it from email. It changes NOTHING about how the
+    opinion is served -- no noindex, no suppression, no public marker.
+    The public answer to a removal request lives at ``/takedown/`` and is
+    unchanged by this row existing.
+
+    A SEPARATE TABLE, not columns on Opinion. ``opinions_opinion`` is
+    2.75GB and an indexed ADD COLUMN there is the multi-hour rebuild
+    documented in the VECTOR INDEX gotcha (migration 0026 took 39 minutes
+    for seven columns). This table is tiny, so the migration is instant
+    and a second request about the same opinion is just another row.
+
+    ON WHAT IS STORED. Deliberately minimal. ``requester`` is a short
+    label so repeat correspondence can be recognized -- not a contact
+    record -- and there is no field for the message body, the sender's
+    address, or anything else that arrives with a request. Keep it that
+    way: the project's rule is that we cannot produce what we never
+    stored, and a removal request is a record ABOUT a named person who
+    is usually the subject of the opinion. If a particular matter needs
+    a paper trail beyond a line of notes, that belongs in the
+    maintainer's own files, not in the corpus database.
+
+    NEVER render any of this publicly. No view, template, sitemap,
+    JSON-LD block or MCP tool reads this model, and that is the whole
+    safety property -- it holds by construction because nothing outside
+    ``admin.py`` queries it.
+    """
+
+    class Status(models.TextChoices):
+        RECEIVED = "received", "Received -- not yet answered"
+        DECLINED = "declined", "Declined (per /takedown/ policy)"
+        CORRECTED = "corrected", "Declined, but we fixed an error they found"
+        DEINDEXED = "deindexed", "De-indexed (rare, discretionary)"
+        SEALED = "sealed", "Removed under a sealing order"
+        WITHDRAWN = "withdrawn", "Withdrawn / no further contact"
+
+    opinion = models.ForeignKey(
+        "Opinion", on_delete=models.CASCADE, related_name="removal_requests",
+    )
+    received_on = models.DateField(
+        help_text="Date the request arrived.",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.RECEIVED,
+        db_index=True,
+    )
+    requester = models.CharField(
+        max_length=120,
+        blank=True,
+        default="",
+        help_text=(
+            "Short label only, so a repeat request is recognizable "
+            "(usually the party named in the opinion). Not a contact record "
+            "-- do not paste addresses or message text here."
+        ),
+    )
+    notes = models.TextField(
+        blank=True,
+        default="",
+        help_text=(
+            "Internal reasoning: what was asked, what we did, and whether any "
+            "factual error was identified and fixed. Never shown publicly."
+        ),
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-received_on", "-id"]
+        indexes = [
+            models.Index(fields=["opinion"], name="removalreq_opinion_idx"),
+        ]
+        verbose_name = "removal / de-indexing request"
+        verbose_name_plural = "removal / de-indexing requests"
+
+    def __str__(self):
+        who = self.requester or "unattributed"
+        return f"{who} re opinion {self.opinion_id} ({self.get_status_display()})"
