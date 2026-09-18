@@ -250,6 +250,19 @@ class Judge(models.Model):
         default="",
         help_text="External URL of the official portrait. Self-hosted later.",
     )
+    photo_credit = models.CharField(
+        max_length=160,
+        blank=True,
+        default="",
+        help_text=(
+            "Public attribution line for the portrait, shown under the photo "
+            "on the judge's page -- e.g. 'Arizona Court of Appeals, Division "
+            "One'. Set ONLY when a court supplied the image to us directly. "
+            "Leave empty for scraped portraits: crediting a court for an "
+            "image we took off its website would imply cooperation that "
+            "didn't happen."
+        ),
+    )
     courtlistener_id = models.CharField(
         max_length=64,
         blank=True,

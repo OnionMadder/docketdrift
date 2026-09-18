@@ -2163,6 +2163,19 @@ button.cta-primary {
 /* Compact portrait inside the narrower bio card. The earlier 260px
    was sized for a full-width card; halving the card width means we
    need a smaller photo or it eats the whole column. */
+/* Attribution under a court-supplied portrait. Deliberately quiet: it
+   is a courtesy to the court that sent the image, not a design element,
+   and it sits directly under the photo so the association is
+   unambiguous. Only renders when Judge.photo_credit is set. */
+.judge-photo-credit {
+  max-width: 180px;
+  margin: -0.9rem 0 1.25rem;
+  font-size: 0.72rem;
+  line-height: 1.35;
+  color: var(--dd-neutral, #8a7e62);
+  opacity: 0.85;
+}
+
 .judge-bio-card__photo {
   display: block;
   max-width: 180px;

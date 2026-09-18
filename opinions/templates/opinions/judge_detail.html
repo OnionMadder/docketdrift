@@ -82,8 +82,19 @@ stacked layout.
       </p>
     {% endif %}
 
+    {% comment %}
+      The credit renders only when a court actually sent us the portrait
+      (Judge.photo_credit, set from the manifest's `credit` key). Scraped
+      images carry no credit on purpose -- thanking a court for a picture
+      we took off its own website would claim a cooperation that never
+      happened, which is the same class of overstatement as the eyecite
+      and goatcounter claims.
+    {% endcomment %}
     {% if judge.photo_url %}
       <img src="{{ judge.photo_url }}" alt="Portrait of {{ judge.full_name }}" class="cast-thumb judge-bio-card__photo" loading="lazy">
+      {% if judge.photo_credit %}
+        <p class="judge-photo-credit">Photograph courtesy of the {{ judge.photo_credit }}.</p>
+      {% endif %}
     {% endif %}
 
     {% if judge.bio_summary %}

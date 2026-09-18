@@ -71,6 +71,14 @@ class Command(BaseCommand):
                     fields.append("photo_url")
                     photos += 1
 
+            # Public attribution, set only for court-supplied portraits. The
+            # manifest's `source` field is INTERNAL provenance (who sent it,
+            # when) and deliberately stays out of the database; `credit` is
+            # the short line the court would want to see on the page.
+            if e.get("credit") and j.photo_credit != e["credit"]:
+                j.photo_credit = e["credit"]
+                fields.append("photo_credit")
+
             is_nh_bio = bool(e.get("bio_summary"))
             if is_nh_bio and j.bio_summary != e["bio_summary"]:
                 j.bio_summary = e["bio_summary"]; fields.append("bio_summary"); bios += 1
