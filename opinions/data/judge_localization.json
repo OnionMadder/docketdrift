@@ -5,11 +5,6 @@
     "photo": "opinions/judges/az/ann-a-scott-timmer.png"
   },
   {
-    "state": "MN",
-    "slug": "anne-k-mckeig",
-    "photo": "opinions/judges/mn/anne-k-mckeig.jpg"
-  },
-  {
     "state": "AZ",
     "slug": "bailey",
     "photo": "opinions/judges/az/bailey.jpg"
@@ -27,7 +22,8 @@
   {
     "state": "AZ",
     "slug": "catlett",
-    "photo": "opinions/judges/az/catlett.jpg"
+    "photo": "opinions/judges/az/catlett.jpg",
+    "source": "Arizona Court of Appeals, Division One (HR office, provided 2026-09-18)"
   },
   {
     "state": "AZ",
@@ -38,6 +34,147 @@
     "state": "AZ",
     "slug": "cruz",
     "photo": "opinions/judges/az/cruz.jpg"
+  },
+  {
+    "state": "AZ",
+    "slug": "eppich",
+    "photo": "opinions/judges/az/eppich.webp"
+  },
+  {
+    "state": "AZ",
+    "slug": "fabian",
+    "photo": "opinions/judges/az/fabian.jpg"
+  },
+  {
+    "state": "AZ",
+    "slug": "foster",
+    "photo": "opinions/judges/az/foster.jpg"
+  },
+  {
+    "state": "AZ",
+    "slug": "furuya",
+    "photo": "opinions/judges/az/furuya.jpg",
+    "source": "Arizona Court of Appeals, Division One (HR office, provided 2026-09-18)"
+  },
+  {
+    "state": "AZ",
+    "slug": "gaona",
+    "photo": "opinions/judges/az/gaona.jpg",
+    "source": "Arizona Court of Appeals, Division One (HR office, provided 2026-09-18)"
+  },
+  {
+    "state": "AZ",
+    "slug": "gard",
+    "photo": "opinions/judges/az/gard.jpg"
+  },
+  {
+    "state": "AZ",
+    "slug": "gass",
+    "photo": "opinions/judges/az/gass.jpg"
+  },
+  {
+    "state": "AZ",
+    "slug": "jacobs",
+    "photo": "opinions/judges/az/jacobs.jpg"
+  },
+  {
+    "state": "AZ",
+    "slug": "james-p-beene",
+    "photo": "opinions/judges/az/james-p-beene.png"
+  },
+  {
+    "state": "AZ",
+    "slug": "kathryn-h-king",
+    "photo": "opinions/judges/az/kathryn-h-king.png"
+  },
+  {
+    "state": "AZ",
+    "slug": "kent-e-cattani",
+    "photo": "opinions/judges/az/kent-e-cattani.jpg"
+  },
+  {
+    "state": "AZ",
+    "slug": "kiley",
+    "photo": "opinions/judges/az/kiley.jpg",
+    "source": "Arizona Court of Appeals, Division One (HR office, provided 2026-09-18)"
+  },
+  {
+    "state": "AZ",
+    "slug": "lopez",
+    "photo": "opinions/judges/az/john-r-lopez-iv.png"
+  },
+  {
+    "state": "AZ",
+    "slug": "michael-j-brown",
+    "photo": "opinions/judges/az/michael-j-brown.jpg",
+    "source": "Arizona Court of Appeals, Division One (HR office, provided 2026-09-18)"
+  },
+  {
+    "state": "AZ",
+    "slug": "morse",
+    "photo": "opinions/judges/az/morse.jpg",
+    "source": "Arizona Court of Appeals, Division One (HR office, provided 2026-09-18)"
+  },
+  {
+    "state": "AZ",
+    "slug": "paton",
+    "photo": "opinions/judges/az/paton.jpg",
+    "source": "Arizona Court of Appeals, Division One (HR office, provided 2026-09-18)"
+  },
+  {
+    "state": "AZ",
+    "slug": "perkins",
+    "photo": "opinions/judges/az/perkins.jpg"
+  },
+  {
+    "state": "AZ",
+    "slug": "peter-eckerstrom",
+    "photo": "opinions/judges/az/peter-eckerstrom.webp"
+  },
+  {
+    "state": "AZ",
+    "slug": "randall-m-howe",
+    "photo": "opinions/judges/az/randall-m-howe.jpg"
+  },
+  {
+    "state": "AZ",
+    "slug": "samuel-a-thumma",
+    "photo": "opinions/judges/az/samuel-a-thumma.png"
+  },
+  {
+    "state": "AZ",
+    "slug": "sklar",
+    "photo": "opinions/judges/az/sklar.jpg"
+  },
+  {
+    "state": "AZ",
+    "slug": "staring",
+    "photo": "opinions/judges/az/staring.jpg"
+  },
+  {
+    "state": "AZ",
+    "slug": "vasquez",
+    "photo": "opinions/judges/az/vasquez.jpg"
+  },
+  {
+    "state": "AZ",
+    "slug": "weinzweig",
+    "photo": "opinions/judges/az/weinzweig.jpg"
+  },
+  {
+    "state": "AZ",
+    "slug": "william-g-montgomery",
+    "photo": "opinions/judges/az/william-g-montgomery.png"
+  },
+  {
+    "state": "AZ",
+    "slug": "williams",
+    "photo": "opinions/judges/az/williams.webp"
+  },
+  {
+    "state": "MN",
+    "slug": "anne-k-mckeig",
+    "photo": "opinions/judges/mn/anne-k-mckeig.jpg"
   },
   {
     "state": "MN",
@@ -55,14 +192,104 @@
     "photo": "opinions/judges/mn/elizabeth-g-bentley.jpg"
   },
   {
-    "state": "AZ",
-    "slug": "eppich",
-    "photo": "opinions/judges/az/eppich.webp"
+    "state": "MN",
+    "slug": "francis-j-connolly",
+    "photo": "opinions/judges/mn/francis-j-connolly.jpg"
   },
   {
-    "state": "AZ",
-    "slug": "fabian",
-    "photo": "opinions/judges/az/fabian.jpg"
+    "state": "MN",
+    "slug": "gordon-l-moore-iii",
+    "photo": "opinions/judges/mn/gordon-l-moore-iii.jpg"
+  },
+  {
+    "state": "MN",
+    "slug": "japaul-harris",
+    "photo": "opinions/judges/mn/japaul-harris.jpg"
+  },
+  {
+    "state": "MN",
+    "slug": "jeanne-m-cochran",
+    "photo": "opinions/judges/mn/jeanne-m-cochran.jpg"
+  },
+  {
+    "state": "MN",
+    "slug": "jennifer-l-frisch",
+    "photo": "opinions/judges/mn/jennifer-l-frisch.jpg"
+  },
+  {
+    "state": "MN",
+    "slug": "jon-schmidt",
+    "photo": "opinions/judges/mn/jon-schmidt.jpg"
+  },
+  {
+    "state": "MN",
+    "slug": "karl-c-procaccini",
+    "photo": "opinions/judges/mn/karl-c-procaccini.jpg"
+  },
+  {
+    "state": "MN",
+    "slug": "keala-c-ede",
+    "photo": "opinions/judges/mn/keala-c-ede.jpg"
+  },
+  {
+    "state": "MN",
+    "slug": "kevin-g-ross",
+    "photo": "opinions/judges/mn/kevin-g-ross.jpg"
+  },
+  {
+    "state": "MN",
+    "slug": "matthew-e-johnson",
+    "photo": "opinions/judges/mn/matthew-e-johnson.jpg"
+  },
+  {
+    "state": "MN",
+    "slug": "michelle-a-larkin",
+    "photo": "opinions/judges/mn/michelle-a-larkin.jpg"
+  },
+  {
+    "state": "MN",
+    "slug": "natalie-e-hudson",
+    "photo": "opinions/judges/mn/natalie-e-hudson.jpg"
+  },
+  {
+    "state": "MN",
+    "slug": "paul-c-thissen",
+    "photo": "opinions/judges/mn/paul-c-thissen.jpg"
+  },
+  {
+    "state": "MN",
+    "slug": "peter-m-reyes-jr",
+    "photo": "opinions/judges/mn/peter-m-reyes-jr.jpg"
+  },
+  {
+    "state": "MN",
+    "slug": "rachel-bond",
+    "photo": "opinions/judges/mn/rachel-bond.jpg"
+  },
+  {
+    "state": "MN",
+    "slug": "renee-l-worke",
+    "photo": "opinions/judges/mn/renee-l-worke.jpg"
+  },
+  {
+    "state": "MN",
+    "slug": "sarah-e-hennesy",
+    "photo": "opinions/judges/mn/sarah-e-hennesy.jpg"
+  },
+  {
+    "state": "MN",
+    "slug": "sarah-i-wheelock",
+    "photo": "opinions/judges/mn/sarah-i-wheelock.jpg"
+  },
+  {
+    "state": "MN",
+    "slug": "theodora-karin-gaitas",
+    "photo": "opinions/judges/mn/theodora-karin-gaitas.jpg"
+  },
+  {
+    "state": "MN",
+    "slug": "tracy-m-smith",
+    "photo": "opinions/judges/mn/tracy-m-smith.jpg"
   },
   {
     "state": "NH",
@@ -108,210 +335,5 @@
     "bio_url": "https://www.courts.nh.gov/our-courts/supreme-court/about/justices/associate-justice-patrick-e-donovan",
     "role": "ASSOCIATE_JUSTICE",
     "photo": "opinions/judges/nh/patrick-e-donovan.jpg"
-  },
-  {
-    "state": "AZ",
-    "slug": "foster",
-    "photo": "opinions/judges/az/foster.jpg"
-  },
-  {
-    "state": "MN",
-    "slug": "francis-j-connolly",
-    "photo": "opinions/judges/mn/francis-j-connolly.jpg"
-  },
-  {
-    "state": "AZ",
-    "slug": "furuya",
-    "photo": "opinions/judges/az/furuya.png"
-  },
-  {
-    "state": "AZ",
-    "slug": "gaona",
-    "photo": "opinions/judges/az/gaona.jpg"
-  },
-  {
-    "state": "AZ",
-    "slug": "gard",
-    "photo": "opinions/judges/az/gard.jpg"
-  },
-  {
-    "state": "AZ",
-    "slug": "gass",
-    "photo": "opinions/judges/az/gass.jpg"
-  },
-  {
-    "state": "MN",
-    "slug": "gordon-l-moore-iii",
-    "photo": "opinions/judges/mn/gordon-l-moore-iii.jpg"
-  },
-  {
-    "state": "AZ",
-    "slug": "jacobs",
-    "photo": "opinions/judges/az/jacobs.jpg"
-  },
-  {
-    "state": "AZ",
-    "slug": "james-p-beene",
-    "photo": "opinions/judges/az/james-p-beene.png"
-  },
-  {
-    "state": "MN",
-    "slug": "japaul-harris",
-    "photo": "opinions/judges/mn/japaul-harris.jpg"
-  },
-  {
-    "state": "MN",
-    "slug": "jeanne-m-cochran",
-    "photo": "opinions/judges/mn/jeanne-m-cochran.jpg"
-  },
-  {
-    "state": "MN",
-    "slug": "jennifer-l-frisch",
-    "photo": "opinions/judges/mn/jennifer-l-frisch.jpg"
-  },
-  {
-    "state": "MN",
-    "slug": "jon-schmidt",
-    "photo": "opinions/judges/mn/jon-schmidt.jpg"
-  },
-  {
-    "state": "MN",
-    "slug": "karl-c-procaccini",
-    "photo": "opinions/judges/mn/karl-c-procaccini.jpg"
-  },
-  {
-    "state": "AZ",
-    "slug": "kathryn-h-king",
-    "photo": "opinions/judges/az/kathryn-h-king.png"
-  },
-  {
-    "state": "MN",
-    "slug": "keala-c-ede",
-    "photo": "opinions/judges/mn/keala-c-ede.jpg"
-  },
-  {
-    "state": "AZ",
-    "slug": "kent-e-cattani",
-    "photo": "opinions/judges/az/kent-e-cattani.jpg"
-  },
-  {
-    "state": "MN",
-    "slug": "kevin-g-ross",
-    "photo": "opinions/judges/mn/kevin-g-ross.jpg"
-  },
-  {
-    "state": "AZ",
-    "slug": "lopez",
-    "photo": "opinions/judges/az/john-r-lopez-iv.png"
-  },
-  {
-    "state": "MN",
-    "slug": "matthew-e-johnson",
-    "photo": "opinions/judges/mn/matthew-e-johnson.jpg"
-  },
-  {
-    "state": "MN",
-    "slug": "michelle-a-larkin",
-    "photo": "opinions/judges/mn/michelle-a-larkin.jpg"
-  },
-  {
-    "state": "MN",
-    "slug": "natalie-e-hudson",
-    "photo": "opinions/judges/mn/natalie-e-hudson.jpg"
-  },
-  {
-    "state": "AZ",
-    "slug": "paton",
-    "photo": "opinions/judges/az/paton.png"
-  },
-  {
-    "state": "MN",
-    "slug": "paul-c-thissen",
-    "photo": "opinions/judges/mn/paul-c-thissen.jpg"
-  },
-  {
-    "state": "AZ",
-    "slug": "perkins",
-    "photo": "opinions/judges/az/perkins.jpg"
-  },
-  {
-    "state": "AZ",
-    "slug": "peter-eckerstrom",
-    "photo": "opinions/judges/az/peter-eckerstrom.webp"
-  },
-  {
-    "state": "MN",
-    "slug": "peter-m-reyes-jr",
-    "photo": "opinions/judges/mn/peter-m-reyes-jr.jpg"
-  },
-  {
-    "state": "MN",
-    "slug": "rachel-bond",
-    "photo": "opinions/judges/mn/rachel-bond.jpg"
-  },
-  {
-    "state": "AZ",
-    "slug": "randall-m-howe",
-    "photo": "opinions/judges/az/randall-m-howe.jpg"
-  },
-  {
-    "state": "MN",
-    "slug": "renee-l-worke",
-    "photo": "opinions/judges/mn/renee-l-worke.jpg"
-  },
-  {
-    "state": "AZ",
-    "slug": "samuel-a-thumma",
-    "photo": "opinions/judges/az/samuel-a-thumma.png"
-  },
-  {
-    "state": "MN",
-    "slug": "sarah-e-hennesy",
-    "photo": "opinions/judges/mn/sarah-e-hennesy.jpg"
-  },
-  {
-    "state": "MN",
-    "slug": "sarah-i-wheelock",
-    "photo": "opinions/judges/mn/sarah-i-wheelock.jpg"
-  },
-  {
-    "state": "AZ",
-    "slug": "sklar",
-    "photo": "opinions/judges/az/sklar.jpg"
-  },
-  {
-    "state": "AZ",
-    "slug": "staring",
-    "photo": "opinions/judges/az/staring.jpg"
-  },
-  {
-    "state": "MN",
-    "slug": "theodora-karin-gaitas",
-    "photo": "opinions/judges/mn/theodora-karin-gaitas.jpg"
-  },
-  {
-    "state": "MN",
-    "slug": "tracy-m-smith",
-    "photo": "opinions/judges/mn/tracy-m-smith.jpg"
-  },
-  {
-    "state": "AZ",
-    "slug": "vasquez",
-    "photo": "opinions/judges/az/vasquez.jpg"
-  },
-  {
-    "state": "AZ",
-    "slug": "weinzweig",
-    "photo": "opinions/judges/az/weinzweig.jpg"
-  },
-  {
-    "state": "AZ",
-    "slug": "william-g-montgomery",
-    "photo": "opinions/judges/az/william-g-montgomery.png"
-  },
-  {
-    "state": "AZ",
-    "slug": "williams",
-    "photo": "opinions/judges/az/williams.webp"
   }
 ]
