@@ -55,6 +55,29 @@ _REGISTRY: dict[str, str] = {
     "LA": "opinions.parsing.statutes_la",
 }
 
+# Every slug a state's extractor emits begins with that state's own
+# marker, so a slug prefix identifies the state WITHOUT joining
+# StatuteCitation back to Opinion to read court_id. That join is against
+# the 2.75GB opinions table and measured 56.4s for Louisiana -- past the
+# 25s cap, which is why /sitemap-statutes.xml was returning a hard 500 on
+# LA and MN while AZ and NH happened to squeak under.
+#
+# VERIFIED EQUIVALENT on prod 2026-09-19, per state, both directions:
+# the prefix loses nothing the join finds and leaks nothing from another
+# state (MN 10,442 / AZ 15,556 / NH 8,674 / LA 18,132 slugs; 0 lost,
+# 0 leaked in every case). LA is "la." rather than "la.rs." because that
+# state emits several roots -- la.rs, la.civ, la.ccp, la.crimproc,
+# la.const, la.chc, la.evid.
+#
+# A state missing from this map is NOT a silent empty sitemap: callers
+# fall back to the (correct, slow) join. Add a row when adding a state.
+SLUG_PREFIXES: dict[str, str] = {
+    "MN": "minn.stat.",
+    "AZ": "ars.",
+    "NH": "rsa.",
+    "LA": "la.",
+}
+
 _cache: dict[str, object] = {}
 
 

@@ -2914,17 +2914,43 @@ def sitemap_statutes(request):
 
     lines = _sitemap_xml_header()
     if state is not None:
-        # Same pre-resolve trick the sitemap_index now uses -- avoids
-        # an opinions -> courts -> states JOIN on a multi-tens-of-
-        # thousands-row table just to enumerate statute slugs.
-        court_ids = _state_court_ids(state)
-        slugs = (
-            StatuteCitation.objects.filter(opinion__court_id__in=court_ids)
-            .order_by()
-            .values_list("reference_slug", flat=True)
-            .distinct()
-            .order_by("reference_slug")
-        )
+        # Filter by SLUG PREFIX, not by joining back to Opinion for
+        # court_id. The old query joined StatuteCitation -> the 2.75GB
+        # opinions table and then DISTINCT'd: measured 56.4s on LA and
+        # enough on MN to trip the cap under load, so this view returned
+        # a hard 500 on both -- 38 times in the log -- while still being
+        # advertised in sitemap.xml. Googlebot was being sent to an error
+        # for the entire statute surface of the two biggest states.
+        #
+        # Prefix filtering is an indexed range scan on reference_slug and
+        # is exactly equivalent (verified per state, 0 lost / 0 leaked):
+        # LA 56.4s -> 1.3s, MN 1.8s -> 1.0s.
+        from opinions.parsing.statutes import SLUG_PREFIXES
+        prefix = SLUG_PREFIXES.get(state.code.upper())
+        if prefix:
+            qs = StatuteCitation.objects.filter(reference_slug__startswith=prefix)
+        else:
+            # Unregistered state: fall back to the correct-but-slow join
+            # rather than silently serving an empty sitemap.
+            qs = StatuteCitation.objects.filter(
+                opinion__court_id__in=_state_court_ids(state))
+        try:
+            slugs = list(
+                qs.order_by()
+                .values_list("reference_slug", flat=True)
+                .distinct()
+                .order_by("reference_slug")
+            )
+        except BaseException:
+            # A KILLed statement leaves the pooled connection interrupted
+            # (errno 188/1969) and cascades 500s onto unrelated pages, so
+            # drop it. An empty urlset is a far better thing to hand a
+            # crawler than a 500 -- and better than poisoning the worker.
+            try:
+                connection.close()
+            except BaseException:
+                pass
+            slugs = []
         for slug in slugs:
             lines.append(f"  <url><loc>{host}/statute/{slug}/</loc></url>")
     lines.extend(_sitemap_xml_footer())
