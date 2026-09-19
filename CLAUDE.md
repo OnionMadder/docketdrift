@@ -150,6 +150,163 @@ generalizes to CA and TX.
 coverage trough visible (MN COA 114 opinions in 2013 vs 1,257 in 2015 —
 CL coverage, not caseload). See the starred TODO section.
 
+## 2026-09-18 — the Arizona Court of Appeals sent us headshots; MN went 0% → 84% of AI grounding
+
+### ★ THE AKAMAI WALL WAS NEVER THE ONLY DOOR. ASKING WORKED.
+
+AZ COA judge portraits had been open since June, blocked because
+`coa1.azcourts.gov` 403s any non-residential fetch. Onion emailed the
+court. **Division One's HR office compiled seven official headshots and
+sent them**, tracked which were still outstanding, and followed up when
+they thought an earlier email had been lost.
+
+Record this as a METHOD, not an anecdote: for a public-access site
+serving a court's own published work, the court's HR or communications
+office is a legitimate channel, and an institution that will 403 a
+scraper will hand you the files if you ask like a correspondent. Three
+months of blocked scraping, closed by one email.
+
+Result: three judges had NO portrait (Michael J. Brown, Daniel J. Kiley,
+James B. Morse Jr.), four had scrapes now replaced by the court's own
+(Paton, Furuya, Catlett, Gaona). **Division One is 19 of 19** — and 19
+is also the court's own count of its sitting bench, so our roster agrees
+with theirs. Division TWO is two photos short (Christopher J. O'Neil,
+Michael F. Kelly) at `appeals2.az.gov`, a different office; the same
+approach should close it.
+
+**They sent print masters** — 2400-3363px, 3.8-7.0MB each, 36.6MB total.
+Display is at most ~300px (`.cast-thumb` in a `minmax(180px,1fr)` grid;
+`.judge-bio-card__photo` caps at 180px), so 600px covers 2x retina.
+Downscaled to 349KB total, a 105x reduction. **EXIF is TRANSPOSED before
+being stripped** — drop an orientation tag without applying it and a
+portrait renders sideways. All other metadata discarded: professional
+photos can carry camera, timestamp or location fields we have no
+business republishing.
+
+**New `Judge.photo_credit`** (migration 0043) renders "Photograph
+courtesy of the ..." under the portrait, set from a `credit` key in the
+manifest. It fires ONLY for court-supplied images. Scraped portraits
+carry no credit on purpose: thanking a court for a picture taken off its
+own website claims a cooperation that never happened — the
+eyecite/goatcounter class of overstatement. Kept distinct from the
+manifest's `source`, which is internal provenance (which office, what
+date) and stays out of the DB.
+
+### `collectstatic` NEVER DELETES — an orphan serves forever
+
+Deleting `paton.png`/`furuya.png` from git and re-running collectstatic
+left both still serving **200** from `staticfiles/`. collectstatic only
+copies. Worse, removing them by hand from under a running WhiteNoise
+made them **500** (it had indexed the paths at boot) until a restart
+turned them into a proper **404**. So: delete the stale file from
+`staticfiles/` explicitly, THEN restart. `--clear` also works but
+briefly empties the whole static tree.
+
+### Removal-request flag (migration 0042) — and the mistake it exists to prevent
+
+New admin-only `RemovalRequest`: opinion FK, date, status, short
+requester label, internal notes. Inline sits FIRST on OpinionAdmin, plus
+a standalone changelist and a `HasRemovalRequestFilter` using EXISTS
+(not a join — the changelist runs over 480K rows). Separate table, so
+none of the 2.75GB rebuild risk; the migration was instant.
+
+Deliberately minimal: no field for the message body or the sender's
+address. A removal request is a record ABOUT a named person who is
+usually the subject of the opinion.
+
+**The no-leak property is a TEST, not a comment.** `tests.py` fails the
+build if `views.py`, `mcp.py`, `sitemaps.py`, `context_processors.py`,
+`admin_views.py` or any non-admin template mentions the model —
+publishing that someone asked for takedown broadcasts the exact
+association they objected to.
+
+**I MISATTACHED THE FIRST ROW I WROTE.** Seeding the Moses request, I
+guessed the docket from memory and attached it to **A19-1414, Brett
+Mallberg v. Mark Gustafson** — an unrelated person's case. Caught only
+because the verification printed the case TITLE rather than "CREATED".
+Had it printed success alone, an internal note saying a stranger
+demanded his page be removed would be sitting on an uninvolved
+litigant's opinion. The real docket is **A22-0452**. For this table,
+verify the TARGET's identity, never the write's exit status.
+
+### The Embaby request — and the surname-collision hazard
+
+`A25-0544, Tamer K. Embaby v. Department of Treasury` (Minn. App.
+2026-01-26, nonprecedential, Affirmed): a self-represented relator
+denied unemployment benefits. Asked for de-indexing, named no error;
+automated checks find none either. Declined per `/takedown/`.
+
+**The hazard worth keeping:** six of seven corpus hits for "Embaby" are
+NOT him. Five are citations to *Embaby v. Dep't of Jobs & Training*, 397
+N.W.2d 609 (Minn. App. 1986) — **precedential**, a different man
+(Farouk Embaby), cited constantly for "the reason for an employee's
+separation is a factual determination". **A surname-keyed de-index would
+take down a leading case and break five inbound citations.** Always
+resolve a removal request to a DOCKET, never to a name.
+
+Onion's standing answer, worth keeping: de-indexing on request removes
+the information another self-represented litigant might need to win —
+and if we do that, what is the point of DocketDrift? Here it is
+literally true: the page he wants gone is a recent self-represented
+unemployment decision, exactly what the next person in his posture would
+search for.
+
+### ★ THE JULY DISCOVERABILITY FIX WORKED — MN 0% → 84% OF AI GROUNDING
+
+Search Console now shows **202 clicks** and **55,660 indexed pages**,
+with the click curve inflecting through September. The July 2026 session
+predicted this and named the test: re-run `ai_citation_profile` in a few
+weeks. Eight weeks on, measured over 7 days:
+
+| | July 2026 | 2026-09-18 |
+|---|---|---|
+| live-agent fetches | 84 | **345** |
+| Minnesota | **0%** | **84%** (266) |
+| Arizona | 6% | 10% (32) |
+| Louisiana | not live | 4% (13) |
+| New Hampshire | 94% | 2% (5) |
+
+**NH fell in ABSOLUTE terms too** (~79/wk → 5), not just in share. Do
+not spin this: part is NH having been over-represented as the only
+indexed state, and the likely mechanism is that its neutral cites made
+it uniquely resolvable until MN/AZ got reporter cites. Worth watching.
+
+**AI traffic tracks INDEXING AND CITEABILITY, NOT CORPUS SIZE.** LA is
+**73% of the corpus and 4% of the fetches**; MN is 15% of the corpus and
+84% of fetches. LA also has **zero reporter cites, permanently** (CL has
+none for it). The largest corpus is the one that cannot be looked up by
+citation at all — the highest-leverage discoverability work left, and
+structural rather than crawl budget.
+
+79% of fetches are precedential. Era spread is extraordinary: 26% from
+the 2020s but 16% from the 1980s and a tail to the 1860s. Top page is a
+1984 MN insurance case; there is a live cluster of 1914-16 Minneapolis &
+St. Louis Railroad cases including **Bombolis**, the state decision under
+*Minneapolis & St. Louis R.R. v. Bombolis*, 241 U.S. 211 (1916).
+
+### REPORT COMMANDS ROT WHEN NOBODY RUNS THEM
+
+`ai_citation_profile` was DEAD — errno 1969 — carrying two gotchas this
+file already documents: no `max_statement_time` lift (the standard batch
+opener), and `case_number__in=[...]` over the whole hit set, the IN-list
+that flips the optimizer off `(court_id, case_number)` into a clustered
+walk. Both fixed (`be2835a`; the IN is now chunked at 200). It had been
+broken long enough that the measurement instrument failed at exactly the
+moment its answer mattered. **A read-only report is not self-verifying;
+if it only runs quarterly, it is untested code.**
+
+### Reporter cites are TWO YEARS STALE — and it hits the most-fetched pages
+
+`lookup_citation("23 N.W.3d 837")` failed on an opinion we hold.
+Measured: **100% of MN opinions from 2025-2026 (2,099) have an empty
+`reporter_cite`; 96% of 2024.** They all carry CL ids, so this is not a
+scraper gap — `load_reporter_cites` ran off CL's 2026-03-31 export and
+nothing has refreshed it. Paste-a-cite and the MCP `lookup_citation`
+tool cannot resolve ANY Minnesota opinion from the last two years, the
+band a practitioner cites most. The #2 and #3 most-fetched pages this
+week are 2026 AZ cases with no cite. Fix is a current CL citations
+export + re-run.
+
 ## 2026-09-17 — a bug report said "fix your tokenizer"; the tokenizer is not ours and the obvious fix was a trap
 
 A researcher reported that `in forma pauperis` searched fine while
