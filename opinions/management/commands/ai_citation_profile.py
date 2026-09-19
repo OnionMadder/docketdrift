@@ -19,6 +19,7 @@ from datetime import date, timedelta
 from urllib.parse import unquote
 
 from django.core.management.base import BaseCommand, CommandError
+from django.db import connection
 
 from opinions.models import Opinion
 
@@ -64,6 +65,14 @@ class Command(BaseCommand):
         parser.add_argument("--top", type=int, default=20)
 
     def handle(self, *args, days, log, top, **opts):
+        # Standard opener for any batch/report command: settings.py puts a
+        # 25s max_statement_time on every connection, which is right for a
+        # web request and wrong here. Without this the command dies on
+        # errno 1969 once the corpus is big enough -- which it now is.
+        if connection.vendor == "mysql":
+            with connection.cursor() as cur:
+                cur.execute("SET SESSION max_statement_time = 0")
+
         want = {
             (date.today() - timedelta(days=i)).strftime("%d/%b/%Y")
             for i in range(days)
@@ -101,13 +110,21 @@ class Command(BaseCommand):
             )
             return
 
+        # CHUNKED, not one big IN-list. A large `case_number__in=[...]`
+        # flips the optimizer off the (court_id, case_number) composite
+        # index and into a clustered walk of the 2.75GB table -- the same
+        # pathology that 25s-killed every opinion page in August. Chunks of
+        # 200 keep each query on the index.
         cases = list(hits.keys())
-        found = {
-            o.case_number: o
-            for o in Opinion.objects.filter(case_number__in=cases)
-            .select_related("court", "court__state")
-            .defer("raw_text", "html_content")
-        }
+        found = {}
+        CHUNK = 200
+        for i in range(0, len(cases), CHUNK):
+            for o in (
+                Opinion.objects.filter(case_number__in=cases[i:i + CHUNK])
+                .select_related("court", "court__state")
+                .defer("raw_text", "html_content")
+            ):
+                found[o.case_number] = o
 
         by_state = Counter()
         by_court = Counter()
