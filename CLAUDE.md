@@ -150,6 +150,136 @@ generalizes to CA and TX.
 coverage trough visible (MN COA 114 opinions in 2013 vs 1,257 in 2015 —
 CL coverage, not caseload). See the starred TODO section.
 
+## 2026-09-19 — reporter cites 21.5% → 87.5%; the citation graph was linking to 404s
+
+### ★ CROSS-STATE CITATION LINKS WERE ALL 404s
+
+Googlebot 404'd on **72 distinct `/opinion/` paths** in ten days. Nearly
+every one EXISTS — verified 200 on its own state's subdomain and 404 on
+all three others.
+
+`{% url 'opinions:detail' %}` emits a **RELATIVE** path, so it resolves
+against whichever subdomain the reader is on. Opinion pages are
+per-state scoped. **The citation graph keeps every internal edge,
+including cross-state ones** (a Minnesota court citing an Arizona case),
+and those edges are exactly what "Citing references", "Cited by" and
+"Authorities cited" render. So the citation graph — the product's
+differentiator — served dead links to crawlers and readers alike, on
+both `opinion_detail` and `/cited-by/`.
+
+Fix: `{% opinion_href opinion request.state %}` (in
+`templatetags/citations.py`) — relative when the states match, absolute
+`https://<state>.docketdrift.com/...` when they don't. Six links across
+two templates. **The four querysets feeding those panels needed
+`"...__court__state"` added to select_related**, or the fix trades 404s
+for an N+1 on a page that already carries the graph.
+
+Percent-encoding survives (`1 CA-CV 26-0031 FC` → `%20`), which matters:
+that was the documented AZ sitemap bug.
+
+**Any new cross-state link must use this tag.** A relative opinion URL is
+only correct when you can prove both ends share a state.
+
+### `/sitemap-statutes.xml` was 500ing on MN and LA — 38 times
+
+Advertised in `sitemap.xml` for every state, and returning a hard 500 on
+the two biggest statute graphs. Googlebot was pointed at an error for the
+entire statute surface of MN and LA. AZ (15,556 URLs) and NH (8,674)
+squeaked under the cap, which is why nobody noticed.
+
+Cause: `filter(opinion__court_id__in=...)` joins StatuteCitation to the
+2.75GB opinions table, then DISTINCTs. **56.4s on LA.**
+
+Fix: filter on the `reference_slug` **PREFIX** — every state's extractor
+emits slugs under its own marker, so the prefix identifies the state with
+no join at all. `SLUG_PREFIXES` lives in `parsing/statutes.py`.
+**Verified equivalent per state, both directions, before relying on it:**
+MN 10,442 / AZ 15,556 / NH 8,674 / LA 18,132 distinct slugs, **0 lost and
+0 leaked** in every case. LA is `la.` not `la.rs.` (that state emits
+la.rs, la.civ, la.ccp, la.crimproc, la.const, la.chc, la.evid).
+**LA 56.4s → 1.3s.** Two guards: an unregistered state falls back to the
+slow-but-correct join rather than silently serving an empty sitemap, and
+a failed fetch drops the connection and serves an empty urlset — an
+empty sitemap beats an error.
+
+### REPORTER CITES 21.5% → 87.5% — and LA was never missing them
+
+**317,223 opinions filled**, essentially all Louisiana (So. 3d).
+
+| | before | after |
+|---|---|---|
+| LA | **0%** | **90%** (317,223) |
+| NH | ~18% | 90% |
+| MN | ~19% | 80% |
+| AZ | ~11% | 74% |
+| corpus | 21.5% | **87.5%** |
+
+**Two traps in the loader, both silent:**
+
+1. **`load_reporter_cites --file` wants a DERIVED 2-column CSV**
+   (`cluster_id,reporter_cite`), NOT CL's raw export, which is 8 columns
+   (`id,volume,reporter,page,type,cluster_id,...`). Feeding it the raw
+   file maps `id → volume` — garbage that matches almost nothing and
+   reports success. Build the 2-column file first (prefer type 3 state
+   regional > 2 official > 8 neutral; **drop 6/7, LEXIS/WEST database
+   identifiers**, same rule `load_parallel_cites` already follows).
+2. **It reads plain text, not `.bz2`.** The export decompresses to 2.0GB.
+   A full-file pass gets NFSN-culled, so filter the export down to OUR
+   cluster ids first (one streaming awk pass with ~480K ids in memory —
+   13M export rows would not fit).
+
+**CL's newest citations export is `2026-06-30`.** 07-31 and 08-31 return
+404; do not assume monthly. Recent years stay empty everywhere because
+West assigns cites 6-18 months after publication — that is upstream lag,
+not our staleness, and it fills on its own.
+
+### LOUISIANA INDEXES POORLY — TWO THEORIES WRONG, AND THE THIRD IS "IT IS THREE WEEKS OLD"
+
+Worth keeping because I would have built the wrong thing twice.
+
+**Theory 1, thin content: real but small.** LA is **39% ≤500 chars**
+(138,504) vs MN 1% / AZ 2% / NH 2%, concentrated in LA Supreme (209,675
+rows, **64% thin**) — a writ docket, not a Louisiana-wide problem. BUT
+**a 500-char cut would delete real law.** At the boundary: a 1976 writ
+refusal with a reasoned dissent-from-denial citing *Hero Lands Co. v.
+Texaco*; an 1852 Eustis opinion on appealability; 2007-08 writ entries
+carrying full captions, parties, parish and lower-court dockets. The
+genuine junk (`'Denied.'`, `'HUGHES, J., would grant.'`) is all **under
+~100 chars**, so the honest threshold is **200 (10%)**, not 500 (39%).
+
+**Theory 2, we serve Google errors: DISPROVEN.** Googlebot gets **96.7%
+200s**; LA specifically 6,172 OK against 3 errors.
+
+**Theory 3, the one the data supports:** Googlebot crawls LA **more than
+any other state (48%)**, while Bingbot is at 2%, OAI-SearchBot 5%,
+PerplexityBot 1%. Google found it; the others never did. MN's own
+history is the forecast — sitemaps submitted 2026-07-25, AI share did
+not invert until mid-September, **about eight weeks**. LA launched
+2026-08-25. **Nothing was broken; it is 3.5 weeks into an 8-week curve.**
+Actionable item is submitting the LA sitemap to Bing Webmaster Tools
+(reaches Bing, DuckDuckGo and ChatGPT's search index), not pruning what
+Google already crawls fine.
+
+**Method note, the reason this block exists:** Onion pushed back on the
+sitemap-prune plan (*"there has to be a better way"*). Pushing past two
+plausible-but-unverified diagnoses is what surfaced the statutes-sitemap
+500 and the cross-state 404s — both real, neither about Louisiana.
+**A plausible cause you have not tested is a guess.** I had already
+written the prune's value down from 39% to 10% and still would have
+built it.
+
+### Ops notes
+
+- **`filter(case_number=X)` alone TABLE-SCANS** — documented, and I did
+  it in a loop anyway, making a 404 resolver unrunnable. Narrow by
+  `court_id__in` on every docket lookup.
+- **`ai_citation_profile` was DEAD** (errno 1969): no `max_statement_time`
+  lift, plus `case_number__in=[...]` over the whole hit set. Fixed;
+  IN-list chunked at 200. **A read-only report that only runs quarterly
+  is untested code.**
+- A 2,000-row fetch with two `select_related` joins into the 2.75GB table
+  drops the connection (2013). Keep verification queries small.
+
 ## 2026-09-18 — the Arizona Court of Appeals sent us headshots; MN went 0% → 84% of AI grounding
 
 ### ★ THE AKAMAI WALL WAS NEVER THE ONLY DOOR. ASKING WORKED.
@@ -273,10 +403,14 @@ it uniquely resolvable until MN/AZ got reporter cites. Worth watching.
 
 **AI traffic tracks INDEXING AND CITEABILITY, NOT CORPUS SIZE.** LA is
 **73% of the corpus and 4% of the fetches**; MN is 15% of the corpus and
-84% of fetches. LA also has **zero reporter cites, permanently** (CL has
-none for it). The largest corpus is the one that cannot be looked up by
-citation at all — the highest-leverage discoverability work left, and
-structural rather than crawl budget.
+84% of fetches.
+
+> **CORRECTION 2026-09-19.** This block originally said LA had "zero
+> reporter cites, permanently (CL has none for it)." **That is FALSE.**
+> It generalized a true note about the *ParallelCite* table (which really
+> is MN/AZ/NH-only) to `Opinion.reporter_cite`, which is a different
+> thing. CL has had LA citations all along; they had simply never been
+> loaded. LA went **0% → 90%** on 2026-09-19. See that session block.
 
 79% of fetches are precedential. Era spread is extraordinary: 26% from
 the 2020s but 16% from the 1980s and a tail to the 1860s. Top page is a
