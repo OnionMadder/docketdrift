@@ -1,4 +1,5 @@
 {% extends "opinions/base.html" %}
+{% load citations %}
 {% block title %}Citing documents &middot; {{ opinion.title|truncatechars:60 }} &middot; DocketDrift{% endblock %}
 {% block description %}Every appellate opinion in the DocketDrift {% if request.state %}{{ request.state.name }} {% endif %}corpus that cites {{ opinion.title|truncatechars:80 }}{% if opinion.reporter_cite %} ({{ opinion.reporter_cite }}){% endif %} &mdash; ranked by recency.{% endblock %}
 
@@ -7,7 +8,7 @@
   <ol>
     <li><a href="https://docketdrift.com/">DocketDrift</a></li>
     {% if request.state %}<li><a href="{% url 'opinions:home' %}">{{ request.state.name }}</a></li>{% endif %}
-    <li><a href="{% url 'opinions:detail' case_number=opinion.case_number %}">{{ opinion.title|truncatechars:48 }}</a></li>
+    <li><a href="{% opinion_href opinion request.state %}">{{ opinion.title|truncatechars:48 }}</a></li>
     <li aria-current="page">Citing documents</li>
   </ol>
 </nav>
@@ -16,7 +17,7 @@
   <h1>Cited by</h1>
   <p class="subtle-lead">
     Opinions{% if request.state %} in {{ request.state.name }}{% endif %} that cite
-    <a href="{% url 'opinions:detail' case_number=opinion.case_number %}">{{ opinion.title|truncatechars:90 }}</a>{% if opinion.reporter_cite %}, <span class="cite-ref">{{ opinion.reporter_cite }}</span>{% endif %}.
+    <a href="{% opinion_href opinion request.state %}">{{ opinion.title|truncatechars:90 }}</a>{% if opinion.reporter_cite %}, <span class="cite-ref">{{ opinion.reporter_cite }}</span>{% endif %}.
   </p>
   <p class="opinion-meta"><strong>{{ total_count }}</strong> citing document{{ total_count|pluralize }}.</p>
 </div>
@@ -27,7 +28,7 @@
       {% for e in edges %}
         <li>
           {% if e.treatment != "CITED" %}<span class="treatment-badge treatment-{{ e.treatment|lower }}">{{ e.get_treatment_display }}</span>{% endif %}
-          <a href="{% url 'opinions:detail' case_number=e.citing_opinion.case_number %}">{{ e.citing_opinion.title|truncatewords:18 }}</a>
+          <a href="{% opinion_href e.citing_opinion request.state %}">{{ e.citing_opinion.title|truncatewords:18 }}</a>
           {% if e.citing_opinion.reporter_cite %}<span class="cite-ref">{{ e.citing_opinion.reporter_cite }}</span>{% endif %}
           <span class="cite-date">{{ e.citing_opinion.court.short_label }}{% if e.citing_opinion.release_date %} {{ e.citing_opinion.release_date|date:"Y" }}{% endif %}</span>
           {% if e.context_quote %}<blockquote class="cite-quote">{{ e.context_quote }}</blockquote>{% endif %}

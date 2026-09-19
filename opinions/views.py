@@ -1242,7 +1242,8 @@ def opinion_detail(request, case_number):
     cited_how = list(
         received.filter(is_cluster_lead=True)
         .exclude(context_quote="")
-        .select_related("citing_opinion", "citing_opinion__court")
+        .select_related("citing_opinion", "citing_opinion__court",
+                     "citing_opinion__court__state")
     )
     for e in cited_how:
         e.similar_count = max(0, cluster_sizes.get(e.cluster_label, 1) - 1)
@@ -1274,13 +1275,15 @@ def opinion_detail(request, case_number):
     cited_by_total = (received.order_by()
                       .values("citing_opinion_id").distinct().count())
     cited_by = _prefer_extracted(
-        received.select_related("citing_opinion", "citing_opinion__court")
+        received.select_related("citing_opinion", "citing_opinion__court",
+                     "citing_opinion__court__state")
         .order_by("-citing_opinion__release_date")[:CITED_BY_CAP * 2],
         lambda e: e.citing_opinion_id,
     )[:CITED_BY_CAP]
     cites = _prefer_extracted(
         list(opinion.citations_made
-             .select_related("cited_opinion", "cited_opinion__court")
+             .select_related("cited_opinion", "cited_opinion__court",
+                     "cited_opinion__court__state")
              .order_by("text_offset")),
         lambda e: e.cited_opinion_id or e.cited_reference,
     )
@@ -1344,7 +1347,8 @@ def opinion_cited_by(request, case_number):
 
     citing = (
         opinion.citations_received
-        .select_related("citing_opinion", "citing_opinion__court")
+        .select_related("citing_opinion", "citing_opinion__court",
+                     "citing_opinion__court__state")
         # raw_text + html_content are 50-100KB TEXT columns and this is a
         # list-style query: undeferred, one page of 50 dragged a measured
         # 1.4MB of text the template never renders (it uses only title,

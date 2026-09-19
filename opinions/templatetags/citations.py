@@ -24,6 +24,7 @@ revisit ``_court_abbrev`` against Bluebook Table T1.3.
 from __future__ import annotations
 
 from django import template
+from django.urls import reverse
 
 register = template.Library()
 
@@ -101,3 +102,31 @@ def bluebook_cite(opinion) -> str:
 @register.simple_tag
 def plain_cite(opinion) -> str:
     return plain_cite_for(opinion)
+
+
+@register.simple_tag
+def opinion_href(opinion, current_state=None):
+    """Correct href for an opinion, ACROSS state subdomains.
+
+    `{% url 'opinions:detail' %}` emits a relative path, which resolves
+    against whatever subdomain the reader is on. Opinion pages are
+    per-state scoped, so a link to an opinion in ANOTHER state 404s.
+
+    That is not hypothetical: the citation graph keeps every internal
+    edge, including cross-state ones (a Minnesota court citing an
+    Arizona case), and those are exactly the links the "Cited by" and
+    "Authorities cited" panels emit. Googlebot 404'd on 72 distinct
+    opinion paths over ten days and nearly every one resolved 200 on its
+    OWN state's subdomain -- correct scoping, wrong host in the link.
+
+    Same state -> relative path (keeps the reader on their subdomain and
+    avoids a pointless absolute URL). Different state -> absolute URL on
+    that opinion's own subdomain.
+
+    Callers MUST select_related("...__court__state") or this is an N+1.
+    """
+    path = reverse("opinions:detail", kwargs={"case_number": opinion.case_number})
+    state = opinion.court.state
+    if current_state is not None and state.code == current_state.code:
+        return path
+    return "https://%s.docketdrift.com%s" % (state.slug, path)
