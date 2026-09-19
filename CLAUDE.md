@@ -167,6 +167,13 @@ and those edges are exactly what "Citing references", "Cited by" and
 differentiator — served dead links to crawlers and readers alike, on
 both `opinion_detail` and `/cited-by/`.
 
+**Measured scale: 3,116 cross-state edges** — AZ→MN 1,607, MN→AZ 610,
+MN→NH 473, AZ→NH 426. Each renders on BOTH ends (the cited opinion's
+"Cited by" and the citing opinion's "Authorities cited"), so ~6,200 dead
+link instances. **Zero involve Louisiana** — LA's 1.54M-edge graph came
+from its own extractor and is entirely intra-state, so the one state
+being investigated for poor indexing was the one state unaffected.
+
 Fix: `{% opinion_href opinion request.state %}` (in
 `templatetags/citations.py`) — relative when the states match, absolute
 `https://<state>.docketdrift.com/...` when they don't. Six links across
