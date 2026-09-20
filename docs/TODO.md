@@ -183,7 +183,20 @@ re-submit the az sitemap (remove + re-add) to force a fresh fetch.
     disproportionately what AI grounds on, not a completeness nicety.
   - Disposition mix of what AI fetched: affirmed 41% / other 24% / mixed 16%.
     66% precedential.
-- [ ] **ONION, ~5 min — submit the LA sitemap to Bing Webmaster Tools.**
+- [ ] **ONION — verify + submit in Bing Webmaster Tools.** The ownership
+  file is DONE and live: `/BingSiteAuth.xml` serves the token on all five
+  hosts (2026-09-20), token in prod `.env` as `BING_SITE_AUTH_TOKEN`, never
+  committed. **Bing treats every subdomain as a SEPARATE site**, so add
+  `la.docketdrift.com` in its own right — verifying the apex does nothing
+  for it, and LA is the entire reason for going to Bing. Each one is a
+  one-click XML verification now. Faster alternative worth trying first:
+  Bing's **Import from Google Search Console**, since GSC is already set up
+  as a Domain property and the import carries verification across.
+  Remaining after that: submit each sitemap.
+
+  Original note:
+
+  
   Upgraded from "optional" on 2026-09-19 because the crawl mix is now
   measured, and it is lopsided: on Louisiana, **Googlebot is 48% of crawls
   while Bingbot is 2%, OAI-SearchBot 5% and PerplexityBot 1%.** Google found
