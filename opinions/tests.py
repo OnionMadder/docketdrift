@@ -7,6 +7,7 @@ touching the shared MariaDB.
 """
 from django.test import SimpleTestCase
 
+from opinions.parsing.rules import extract_rules, rule_set_label
 from opinions.parsing.statutes import bare_cite_slugs, extract_statutes
 from opinions.parsing.statutes_mn import bare_slug_candidates, extract
 
@@ -179,3 +180,119 @@ class RemovalRequestIsAdminOnlyTests(SimpleTestCase):
                          "broadcasts the association they objected to."
                          % (rel, needle)),
                 )
+
+
+class MinnesotaRuleExtractionTests(SimpleTestCase):
+    """Court rules are a different record type from statutes.
+
+    Every case below is drawn from text measured on prod (1,200 recent
+    MN opinions, 4,148 full-form cites), not invented. The fixtures that
+    matter most are the ones that were NOT in the planned vocabulary:
+    Minn. R. Evid., the spelled-out long form, and administrative rules.
+    """
+
+    def refs(self, text):
+        return extract_rules("MN", text)
+
+    def slugs(self, text):
+        return {r.reference_slug for r in self.refs(text)}
+
+    def test_abbreviated_court_rule_forms(self):
+        self.assertEqual(self.slugs("Minn. R. Civ. App. P. 109.02"),
+                         {"minn.r.civ.app.p.109.02"})
+        self.assertEqual(self.slugs("Minn. R. Civ. P. 12.02"),
+                         {"minn.r.civ.p.12.02"})
+        self.assertEqual(self.slugs("Minn. R. Crim. P. 27.03"),
+                         {"minn.r.crim.p.27.03"})
+
+    def test_evidence_rules_are_in_scope(self):
+        # A TOP-4 rule set (557 measured cites) that was missing from the
+        # vocabulary this module was planned from. Shipping without it
+        # would have been a silent hole, not a visible gap.
+        self.assertEqual(self.slugs("Minn. R. Evid. 404(b)(1)"),
+                         {"minn.r.evid.404"})
+        self.assertEqual(self.slugs("Minn. R. Evid. 801(c)"),
+                         {"minn.r.evid.801"})
+
+    def test_spelled_out_long_form_normalizes_onto_one_slug(self):
+        # ~11% of real cites. The statute extractor excluded its own long
+        # form on an unmeasured assumption and capped that graph; both
+        # spellings must land on ONE slug or the graph fragments by
+        # typography.
+        self.assertEqual(self.slugs("Minnesota Rules of Civil Procedure 12.02"),
+                         {"minn.r.civ.p.12.02"})
+        self.assertEqual(
+            self.slugs("Minnesota Rules of Civil Procedure 12.02 and later "
+                       "Minn. R. Civ. P. 12.02 again"),
+            {"minn.r.civ.p.12.02"},
+        )
+        self.assertEqual(self.slugs("Minnesota Rules of Evidence 404"),
+                         {"minn.r.evid.404"})
+
+    def test_longest_rule_set_match_wins(self):
+        # "Civ. App. P." must not be shredded into "Civ. P." -- appellate
+        # rule 103.03 and civil rule 103.03 are different rules.
+        refs = self.refs("Minn. R. Civ. App. P. 103.03(b)")
+        self.assertEqual([r.rule_set for r in refs], ["civ.app.p"])
+
+    def test_subdivision_and_subsection_are_separated(self):
+        (ref,) = self.refs("Minn. R. Civ. App. P. 136.01, subd. 1(c)")
+        self.assertEqual(ref.rule_number, "136.01")
+        self.assertEqual(ref.subdivision, "1")
+        self.assertEqual(ref.subsection, "c")
+        self.assertEqual(ref.reference_slug, "minn.r.civ.app.p.136.01.subd.1")
+        self.assertEqual(ref.reference_display,
+                         "Minn. R. Civ. App. P. 136.01, subd. 1(c)")
+
+    def test_administrative_rules_are_not_court_rules(self):
+        # Minn. R. 3310.2921 is a DEED unemployment-hearing rule; 8210.0600
+        # governs absentee ballots. They share the "Minn. R." abbreviation
+        # with the rules of civil procedure and nothing else.
+        (ref,) = self.refs("Minn. R. 3310.2921 (2025)")
+        self.assertEqual(ref.rule_set, "admin")
+        self.assertEqual(ref.reference_slug, "minn.r.admin.3310.2921")
+        (ref,) = self.refs("Minn. R. 8210.0600, subp. 1b")
+        self.assertEqual(ref.rule_set, "admin")
+        self.assertEqual(ref.subdivision, "1b")
+        self.assertIn("subp.", ref.reference_display)
+
+    def test_boilerplate_disclaimer_is_flagged_not_dropped(self):
+        # 31% of all rule cites are this one string at the top of every
+        # unpublished opinion. Counted plainly it would make 136.01 the
+        # most-cited rule in Minnesota; dropped, we would be discarding
+        # the court's own text.
+        disclaimer = ("This opinion is nonprecedential except as provided by "
+                      "Minn. R. Civ. App. P. 136.01, subd. 1(c).")
+        (ref,) = self.refs(disclaimer)
+        self.assertTrue(ref.is_boilerplate)
+
+    def test_the_same_rule_cited_substantively_is_NOT_flagged(self):
+        # 123 measured occurrences of 136.01 sit outside the disclaimer.
+        # Excluding by rule number would delete every one of them.
+        body = ("The court considered whether Minn. R. Civ. App. P. 136.01, "
+                "subd. 1(c) permits citation of the earlier order.")
+        (ref,) = self.refs(body)
+        self.assertFalse(ref.is_boilerplate)
+
+    def test_does_not_fire_on_prose_or_on_statutes(self):
+        # Both of these matched a loose probe and are why the anchor
+        # requires "R." or the whole word "Rules".
+        self.assertEqual(self.refs("the Minnesota Real Estate 101 course"), [])
+        self.assertEqual(self.refs("the Minnesota River in townships 12"), [])
+        # A statute is not a rule. 609.185 is Minn. Stat., not Minn. R.
+        self.assertEqual(self.refs("Minn. Stat. § 609.185, subd. 1"), [])
+
+    def test_subdivision_RANGES_match_the_rule_only(self):
+        # We cannot store a range and must not invent a cite to its first
+        # member -- same rule as the statute extractor.
+        (ref,) = self.refs("Minn. R. Civ. P. 12.02, subds. 2-3")
+        self.assertEqual(ref.subdivision, "")
+        self.assertEqual(ref.reference_slug, "minn.r.civ.p.12.02")
+
+    def test_dispatcher_is_per_state_and_refuses_to_guess(self):
+        self.assertEqual(extract_rules("ZZ", "Minn. R. Civ. P. 12.02"), [])
+        self.assertEqual(extract_rules("MN", ""), [])
+        # No label beats an invented one (the A.R.S. "section 13.1103" bug).
+        self.assertEqual(rule_set_label("MN", "civ.p"), "Minn. R. Civ. P.")
+        self.assertEqual(rule_set_label("MN", "nonsense.set"), "")
+        self.assertEqual(rule_set_label("ZZ", "civ.p"), "")
