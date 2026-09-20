@@ -15,6 +15,7 @@ dark/neon design system loaded via the base template.
 import re
 from datetime import date, timedelta
 
+from django.conf import settings
 from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.db import connection, models
@@ -1437,7 +1438,6 @@ def support(request):
     the maintainer can update it without a code change. Empty string ->
     we hide the button and show the "tell a friend" fallback only.
     """
-    from django.conf import settings
     return render(request, "opinions/support.html", {
         "donate_url": getattr(settings, "DONATE_URL", ""),
         "active_nav": "about",
@@ -2562,6 +2562,32 @@ def robots_txt(request):
     """
     body = f"{ROBOTS_TXT}\nSitemap: https://{request.get_host()}/sitemap.xml\n"
     return HttpResponse(body, content_type="text/plain; charset=utf-8")
+
+
+def bing_site_auth(request):
+    """Serve /BingSiteAuth.xml -- Bing Webmaster Tools' ownership proof.
+
+    Bing treats every subdomain as a SEPARATE site, so verifying the
+    apex does nothing for la.docketdrift.com -- and Louisiana is the
+    whole point of submitting to Bing (Googlebot is 48% of LA crawls,
+    Bingbot 2%). A Django route serves the token on every host at once,
+    which a static file in one web root could not do.
+
+    The token comes from the environment, never the repo -- this repo is
+    public. Absent or malformed -> 404, never a half-built file: Bing
+    reads a malformed token as a FAILED verification, which is worse
+    than a missing file because it un-verifies a site that was working.
+    """
+    token = (getattr(settings, "BING_SITE_AUTH_TOKEN", "") or "").strip()
+    # Alphanumeric only, so a malformed env value can never inject XML.
+    if not re.fullmatch(r"[A-Za-z0-9]{8,128}", token):
+        raise Http404("Bing site verification is not configured.")
+    body = '<?xml version="1.0"?>
+<users>
+	<user>%s</user>
+</users>
+' % token
+    return HttpResponse(body, content_type="text/xml; charset=utf-8")
 
 
 # llms.txt -- the "robots.txt for LLMs" emerging convention. Tells AI

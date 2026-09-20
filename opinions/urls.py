@@ -45,6 +45,8 @@ urlpatterns = [
     path("healthz", views.healthz, name="healthz"),
     path("robots.txt", views.robots_txt, name="robots_txt"),
     path("llms.txt", views.llms_txt, name="llms_txt"),
+    # Bing verifies each subdomain separately; one route covers them all.
+    path("BingSiteAuth.xml", views.bing_site_auth, name="bing_site_auth"),
     # MCP endpoint (dark-deployed: live but unlisted; see opinions/mcp.py).
     path("mcp", mcp_endpoint, name="mcp"),
     path("sitemap.xml", views.sitemap_index, name="sitemap_index"),

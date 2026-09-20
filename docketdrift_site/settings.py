@@ -339,6 +339,14 @@ COURTLISTENER_TOKEN = os.environ.get("COURTLISTENER_TOKEN", "")
 # Stripe Payment Link URL when ready.
 DONATE_URL = os.environ.get("DONATE_URL", "")
 
+# Bing Webmaster Tools ownership token, served at /BingSiteAuth.xml.
+# Deliberately NOT committed: this repo is public (AGPL), and while the
+# token cannot let anyone claim docketdrift.com unless they already
+# control it, it does identify the owner's Bing account. Unset -> the
+# view 404s rather than serving an empty <user></user>, which Bing would
+# read as a failed verification.
+BING_SITE_AUTH_TOKEN = os.environ.get("BING_SITE_AUTH_TOKEN", "")
+
 
 # --- Tag suggestion thresholds --------------------------------------------
 # Cosine similarity bands for the suggest_tags command. Calibrated to the
