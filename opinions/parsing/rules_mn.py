@@ -98,8 +98,16 @@ _ADMIN_NUM = r"(\d{4}\.\d{4})"
 # subd. 1 / subdivision 1 / subp. 2 (administrative), then an optional
 # (c) subsection. Separate groups: the slug rolls up on subdivision the
 # way the statute layer does, while the subsection stays display-only.
+#
+# SINGULAR ONLY, and that is the range guard -- same mechanism
+# statutes_mn.py uses. A court writes the PLURAL exactly when it is
+# citing a range ("subds. 2-3", "subps. 1a-1b", both in real text), so
+# refusing to match the plural means a range can never bind a
+# subdivision and we can never invent a cite to its first member. We
+# cannot store a range; capturing "2" from "subds. 2-3" would be a
+# wrong answer rather than a missing one.
 _TAIL = (
-    r"(?:\s*,?\s*(?:subd\.|subds\.|subdivisions?|subps?\.|subparts?)\s*"
+    r"(?:\s*,?\s*(?:subd\.|subdivision|subp\.|subpart)\s*"
     r"(?P<subdivision>\d+[a-zA-Z]?))?"
     r"(?:\s*\((?P<subsection>[^)\s]{1,12})\))?"
 )
@@ -141,16 +149,10 @@ def _is_boilerplate(text, start, rule_set, number):
 
 
 def _build(rule_set, number, m, text):
+    # Ranges are excluded by the grammar itself (see _TAIL): the plural
+    # marker never matches, so a range arrives here with no subdivision.
     sub = (m.groupdict().get("subdivision") or "").strip()
     sec = (m.groupdict().get("subsection") or "").strip()
-    # A subdivision RANGE ("subds. 2-3") cannot be stored and must not be
-    # invented down to its first member -- same rule as the statute
-    # extractor. The number regex stops before the hyphen, so a range
-    # lands here as a bare subdivision; guard the spelled plural form.
-    raw = m.group(0)
-    if re.search(r"subds\.|subdivisions|subps\.|subparts", raw, re.I) and "-" in raw:
-        sub = ""
-        sec = ""
 
     slug = SLUG_ROOT + rule_set + "." + number
     if sub:
