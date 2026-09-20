@@ -20,7 +20,7 @@ min-id=0 loops.
 """
 import time
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import connection
 
 from opinions.models import Court, Opinion, RuleCitation
@@ -45,6 +45,31 @@ class Command(BaseCommand):
                             help="Stop after N opinions (0 = no limit).")
         parser.add_argument("--dry-run", action="store_true",
                             help="Extract and report, write nothing.")
+
+    def _write_window(self, pks, pending, tries=3):
+        """Delete+insert one window, retrying a dropped connection.
+
+        Returns True on success. Idempotent by construction: the delete
+        covers the same pks on every attempt, so a retry after a partial
+        insert cannot double rows.
+        """
+        for attempt in range(1, tries + 1):
+            try:
+                RuleCitation.objects.filter(opinion_id__in=pks).delete()
+                if pending:
+                    RuleCitation.objects.bulk_create(pending, batch_size=400)
+                return True
+            except BaseException as exc:          # incl. KeyboardInterrupt on EINTR
+                self.stderr.write("  write attempt %d/%d failed: %s"
+                                  % (attempt, tries, str(exc)[:110]))
+                connection.close()                # discard the poisoned handle
+                if attempt == tries:
+                    return False
+                try:
+                    time.sleep(2)
+                except BaseException:
+                    pass
+        return False
 
     def handle(self, *args, **opts):
         state = opts["state"].upper()
@@ -91,8 +116,13 @@ class Command(BaseCommand):
 
             pending = []
             pks = []
+            window_last = cursor
             for pk, text in rows:
-                cursor = pk
+                # NOT `cursor = pk`. The cursor may only advance after the
+                # window is COMMITTED -- embed_opinions advanced its cursor
+                # before the API call and silently skipped every row a
+                # failed batch dropped. Same shape, same fix.
+                window_last = pk
                 scanned += 1
                 pks.append(pk)
                 refs = extract_rules(state, text or "")
@@ -118,11 +148,21 @@ class Command(BaseCommand):
                 # Delete-then-insert for the WINDOW (two queries, not two
                 # per opinion) keeps the command idempotent: re-running
                 # after an extractor change rebuilds cleanly rather than
-                # doubling every row.
-                RuleCitation.objects.filter(opinion_id__in=pks).delete()
-                if pending:
-                    RuleCitation.objects.bulk_create(pending, batch_size=500)
+                # doubling every row -- which is also what makes the
+                # retry below safe after a partial write.
+                #
+                # The shared DB drops connections mid-chunk (errno 2013);
+                # that is normal here, not exceptional, and every other
+                # batch command in this repo carries retry-with-reconnect.
+                # BaseException, not Exception: NFSN's SSL socket raises
+                # KeyboardInterrupt on EINTR during a sleep.
+                if not self._write_window(pks, pending):
+                    trailer(cursor)  # last COMMITTED cursor, not window_last
+                    raise CommandError(
+                        "write failed after retries at --min-id %d; "
+                        "resume from the trailer above" % cursor)
             created += len(pending)
+            cursor = window_last
 
             if scanned - last_mark >= PROGRESS_EVERY:
                 last_mark = scanned
