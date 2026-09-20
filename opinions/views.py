@@ -2582,11 +2582,12 @@ def bing_site_auth(request):
     # Alphanumeric only, so a malformed env value can never inject XML.
     if not re.fullmatch(r"[A-Za-z0-9]{8,128}", token):
         raise Http404("Bing site verification is not configured.")
-    body = '<?xml version="1.0"?>
-<users>
-	<user>%s</user>
-</users>
-' % token
+    body = (
+        '<?xml version="1.0"?>\n'
+        "<users>\n"
+        "\t<user>%s</user>\n"
+        "</users>\n"
+    ) % token
     return HttpResponse(body, content_type="text/xml; charset=utf-8")
 
 
