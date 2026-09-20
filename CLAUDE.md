@@ -4,7 +4,7 @@ Survival kit for any Claude session working on this repo. Read once,
 re-read whenever a recurring gotcha bites. The goal of this document is
 to make the next session productive within the first 5 minutes.
 
-## Working tree state 2026-09-14 — READ THIS FIRST
+## Working tree state 2026-09-19 — READ THIS FIRST
 
 The tree is **clean**; main == origin/main. Backlog lives in `docs/TODO.md`
 (the authoritative to-do; keep it current). **`docs/TODO.md` outranks the
@@ -12,15 +12,43 @@ The tree is **clean**; main == origin/main. Backlog lives in `docs/TODO.md`
 2026-06-12 snapshot kept for its rationale, and several of its "open" items
 have shipped. Trust TODO.md on priority; trust this file on gotchas.
 
-**Current state (2026-09-14):** FOUR states live (MN/NH/AZ/LA),
-**480,030 opinions**. The Louisiana lasc.org Supreme backfill is DONE
-(~10.3K opinions; 2021 and 2022 went from ZERO to ~1,800 each) and every
-LA derived layer is closed. The MCP server is live at `/mcp`, documented
-at `/connect/`, and shipped as a Claude PLUGIN (the Connectors Directory
-needs a Team org, which Onion does not have; plugin-via-Console is the
-individual path). A public removal/de-indexing policy lives at
-`/takedown/`. See the 2026-09-14 blocks: a removal request turned into a
-10,420-row caption fix, and the 5xx monitor caught `/opinions/` 500ing.
+**Current state (2026-09-19):** FOUR states live (MN/NH/AZ/LA),
+**480,101 opinions**, and **87.5% of them now carry a reporter cite** — up
+from 21.5% earlier the same day; Louisiana alone went 0% → 90%.
+The Louisiana lasc.org Supreme backfill is DONE (~10.3K opinions; 2021 and
+2022 went from ZERO to ~1,800 each) and every LA derived layer is closed.
+The MCP server is live at `/mcp`, documented at `/connect/`, and shipped as
+a Claude PLUGIN (the Connectors Directory needs a Team org, which Onion does
+not have; plugin-via-Console is the individual path). A public
+removal/de-indexing policy lives at `/takedown/`, and removal requests are
+now flagged internally (`RemovalRequest`, migration 0042 — admin-only, and
+that property is enforced by a test, not a comment).
+
+**The last four sessions each found a LIVE defect — three of the four by
+hand, while looking at something else.** Read these blocks before starting
+anything:
+
+- **2026-09-19** — `/sitemap-statutes.xml` had been 500ing on MN and LA for
+  weeks, and **every cross-state citation link was a 404** (3,116 edges,
+  ~6,200 rendered link instances, on the citation graph that is the
+  product's whole differentiator). Both were found while chasing a
+  Louisiana indexing theory that was itself wrong twice over.
+- **2026-09-18** — **the Arizona Court of Appeals mailed us official judge
+  headshots** because Onion asked for them. Three months of Akamai-blocked
+  scraping, closed by one email. Separately: MN went 0% → 84% of live AI
+  grounding, confirming the July discoverability fix worked.
+- **2026-09-17** — an outside bug report ("fix your tokenizer") was right
+  that search was broken and wrong about both the cause and the cure.
+  Citations now ROUTE to the statute page instead of text-searching.
+- **2026-09-14** — a removal request turned into a 10,420-row caption fix,
+  and the 5xx monitor caught `/opinions/` 500ing.
+
+**The decided next build is `RuleCitation`** (`docs/TODO.md`, and the
+2026-09-17 block for the measurement): 384 of 400 sampled MN opinions cite
+a `Minn. R.` court rule — 929 cites — and we extract **zero**. It gets its
+own table, never a `StatuteCitation` reuse; a court rule is not a statute
+and labeling it one is the same class of error as calling extraction
+"summarized".
 
 **MN 2020–2022 IS FIXED (2026-08-03): 0 → 3,102 opinions.** 2020=1,040,
 2021=1,092, 2022=970, read directly from the mn.gov State Law Library archive.
@@ -2746,24 +2774,40 @@ identity decoupled; semantic/keyword alerts refused-by-design, not stored).
 
 ## Where things stand right now
 
-(Numbers pulled live 2026-09-14. **Re-measure before quoting these
+(Numbers pulled live 2026-09-19. **Re-measure before quoting these
 anywhere public** — stale numbers on a public page are the exact class of
 problem the 2026-08-02 audit was cleaning up.)
 
 **FOUR states live**, all on subdomains of `docketdrift.com`. MN is the
 **Flagship**; NH, AZ and LA carry a green **Live** pill.
 
-| State | Subdomain | Opinions | Newest | Notes |
-|---|---|---|---|---|
-| MN (flagship) | `mn.docketdrift.com` | 69,779 | 2026-09-14 | disp 97%; CONTINUOUS 2015–2026. **10,420 captions repaired 2026-09-14** — see that session block |
-| AZ (live) | `az.docketdrift.com` | 37,877 | 2026-09-10 | disp 64%; COA Div One/Two split. Div Two was quiet Jul–Aug; recheck against `appeals2.az.gov` before calling AZ fully current |
-| NH (live) | `nh.docketdrift.com` | 20,686 | 2026-09-03 | disp 78%; roster FINISHED 2026-08-23 (5 seated, 30 RETIRED, slugs fixed w/ 301s) |
-| LA (LIVE 2026-08-25) | `la.docketdrift.com` | 351,688 | 2026-09-10 | Largest corpus, 1809–present, Supreme + all 5 COA circuits. **lasc.org backfill DONE 2026-08-28** (~10.3K opinions; 2021/2022 went 0 → ~1,800 each). Embed 100% of in-scope (1980+); the 110,945 "pending" are deliberate pre-1980 out-of-scope rows. Tags 81,222. Gaps DISCLOSED on /about/#coverage-gaps — do not remove |
+| State | Subdomain | Opinions | Newest | Cite | Notes |
+|---|---|---|---|---|---|
+| MN (flagship) | `mn.docketdrift.com` | 69,779 | 2026-09-14 | 80% | disp 97%; CONTINUOUS 2015–2026. **10,420 captions repaired 2026-09-14** — see that session block |
+| AZ (live) | `az.docketdrift.com` | 37,900 | 2026-09-17 | 75% | disp 64%; COA Div One/Two split. **Div One portraits 19/19** from the court itself (2026-09-18); Div Two is two short |
+| NH (live) | `nh.docketdrift.com` | 20,686 | 2026-09-03 | 90% | disp 78%; roster FINISHED 2026-08-23 (5 seated, 30 RETIRED, slugs fixed w/ 301s). A quiet NH is usually the court, not a broken pipeline — check CL first |
+| LA (LIVE 2026-08-25) | `la.docketdrift.com` | 351,736 | 2026-09-18 | 90% | Largest corpus, 1809–present, Supreme + all 5 COA circuits. **lasc.org backfill DONE 2026-08-28** (~10.3K opinions; 2021/2022 went 0 → ~1,800 each). Embed 100% of in-scope (1980+); the ~111K "pending" are deliberate pre-1980 out-of-scope rows. Tags 81,222. Gaps DISCLOSED on /about/#coverage-gaps — do not remove |
 
-**Corpus-wide: 480,030 opinions.** Citation graph 1.54M+ LA edges on top
-of 1,462,119 across MN/AZ/NH; 5,188 non-default treatments. Parallel
-cites 180,652 (MN/AZ/NH only — CL has **none** for LA, permanent upstream
-gap).
+**Corpus-wide: 480,101 opinions; 87.5% carry a reporter cite** (up from
+21.5% on 2026-09-19). Citation graph 1.54M+ LA edges on top of 1,462,119
+across MN/AZ/NH; 5,188 non-default treatments.
+
+**Parallel cites: 180,043 — MN 89,731 / AZ 56,790 / NH 33,522 / LA ZERO.**
+
+> **CORRECTION 2026-09-19, and this is the SECOND copy of the same false
+> claim.** This line used to read "CL has **none** for LA, permanent
+> upstream gap." **That reason is false** — the identical overgeneralization
+> corrected in the 2026-09-18 block, which I fixed in one place and missed
+> here. CL demonstrably has LA citations: 317,223 LA reporter cites were
+> loaded from CL's own export on 2026-09-19. The LA `ParallelCite` count is
+> zero because **`load_parallel_cites` has never been run for Louisiana**,
+> which is a loader-scoping gap on our side, not an absence upstream.
+> Whether CL carries *multiple* cites per LA cluster is **UNVERIFIED** —
+> but that is one cheap check against an export we already know has LA
+> data, and the payoff is the known one: when parallel cites landed for
+> AZ, official `Ariz.` citation resolution went **0% → 93%**. Same shape
+> as the NH 71-edge bug: a number that reads as missing data is pointing
+> at a loader two layers away.
 
 **Public-facing policy surfaces** (both new, both load-bearing):
 `/takedown/` states what we do about removal / de-indexing requests —
@@ -2788,7 +2832,7 @@ VECTOR-INDEX retry deleted 12 zero-`raw_text` metadata stubs — MN ids 2618,
 91159, 91179 — and embedded the remaining fresh ingests, leaving 0 NULL
 embeddings. See the "MariaDB VECTOR INDEX is infeasible" gotcha.)
 
-The apex `docketdrift.com` shows three live state tiles. About page is
+The apex `docketdrift.com` shows four live state tiles. About page is
 trimmed; the full anti-hallucination disclosure + ML-architecture
 breakdown live on `/how-we-differ/`. Judge pages carry a
 votes-per-year SVG chart with `?vs=<other-slug>` overlay and a
@@ -2956,6 +3000,30 @@ what a user was researching?* If yes, don't create it. "Store it securely"
 is not good enough — "never store it" is the bar.
 
 ## Recurring gotchas — DO NOT MAKE THESE AGAIN
+
+### A relative `/opinion/<docket>/` URL is only correct WITHIN one state
+
+Opinion pages are per-state scoped, but the citation graph keeps every
+internal edge — including the **3,116 cross-state ones** (AZ→MN 1,607,
+MN→AZ 610, MN→NH 473, AZ→NH 426). `{% url 'opinions:detail' %}` emits a
+RELATIVE path, which resolves against whatever subdomain the reader is on,
+so every one of those rendered as a **404** on both ends — ~6,200 dead link
+instances, on the panels that are the product's differentiator. Googlebot
+had been 404ing on 72 distinct `/opinion/` paths that all exist.
+
+Use **`{% opinion_href opinion request.state %}`**
+(`opinions/templatetags/citations.py`): relative when the states match,
+absolute `https://<state>.docketdrift.com/...` when they don't, and
+percent-encoding survives (`1 CA-CV 26-0031 FC` → `%20`, the documented AZ
+sitemap bug). **Any new cross-state link must use this tag.** A bare
+`{% url %}` to an opinion is correct only where you can PROVE both ends
+share a state.
+
+Its companion trap: the querysets feeding those panels need
+`"citing_opinion__court__state"` / `"cited_opinion__court__state"` in
+`select_related`, or the fix trades 404s for an N+1 on a page that is
+already carrying the whole graph.
+
 
 ### `2>&1 | tail -N` REORDERS the output — the reassuring line prints last
 

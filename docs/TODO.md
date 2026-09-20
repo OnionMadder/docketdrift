@@ -183,8 +183,14 @@ re-submit the az sitemap (remove + re-add) to force a fresh fetch.
     disproportionately what AI grounds on, not a completeness nicety.
   - Disposition mix of what AI fetched: affirmed 41% / other 24% / mixed 16%.
     66% precedential.
-- [ ] Optional: same submission in **Bing Webmaster Tools** for Bing/Copilot
-  coverage.
+- [ ] **ONION, ~5 min — submit the LA sitemap to Bing Webmaster Tools.**
+  Upgraded from "optional" on 2026-09-19 because the crawl mix is now
+  measured, and it is lopsided: on Louisiana, **Googlebot is 48% of crawls
+  while Bingbot is 2%, OAI-SearchBot 5% and PerplexityBot 1%.** Google found
+  LA on its own; nothing else did. One Bing submission reaches Bing,
+  DuckDuckGo AND ChatGPT's search index. This is the single highest-ratio
+  action left on LA discoverability — see the 2026-09-19 CLAUDE.md block,
+  where two more elaborate theories about LA both turned out to be wrong.
 
 ---
 
@@ -529,6 +535,45 @@ MN-specific bug.
 - [ ] **Worth adding to the FLP thread (#1115)** — it materially widens
   the report from "2020–2023 hole" to "MN COA coverage is degraded
   across ~1989–2014 AND 2017–present, with a good 2015–2016 window."
+
+## ★ OPENED 2026-09-17 → 19 — small, specific, each with its evidence
+
+- [ ] **Check whether CL carries PARALLEL cites for Louisiana.** LA has
+  **zero** `ParallelCite` rows (MN 89,731 / AZ 56,790 / NH 33,522 / LA 0).
+  CLAUDE.md blamed that on "CL has none for LA, permanent upstream gap" and
+  **that reason is false** — 317,223 LA reporter cites came out of CL's own
+  export on 2026-09-19. The real cause is that `load_parallel_cites` has
+  never been run for LA. Whether the export holds *multiple* cites per LA
+  cluster is unverified, and it is one cheap pass to find out. Payoff is
+  known: when parallel cites landed for AZ, official `Ariz.` citation
+  resolution went **0% → 93%**, and NH's citation graph went 71 → 75,051
+  edges. Same shape both times — a number that reads as missing data
+  pointing at a loader two layers away.
+- [ ] **AZ Division Two judge portraits — two short.** Christopher J. O'Neil
+  and Michael F. Kelly, at `appeals2.az.gov` (a different office from Div
+  One). **Use the method that actually worked**: Division One's HR office
+  compiled and sent seven official headshots when Onion emailed and asked.
+  Three months of Akamai-blocked scraping closed by one email — ask like a
+  correspondent, not a scraper. Court-supplied images get a
+  `Judge.photo_credit`; scraped ones deliberately do not.
+- [ ] **Official statute-source URLs for NH / AZ / LA.** The "Read the
+  statute on revisor.mn.gov" link is MN-gated, because it used to render on
+  all four states with a citation rebuilt in MN's grammar (`A.R.S. 13-1103`
+  → "section 13.1103"). **No link is the honest state until each state's
+  official source is actually mapped** — a guessed URL is the same bug in a
+  new costume.
+- [ ] **Composite `(court_id, disposition_bucket)` index.** Still the real
+  fix for the filtered `/opinions/` count; the paginator's self-bound
+  fallback stops the 500 but a cold filtered page still pays ~5s. This is a
+  deliberate 2.75GB migration wanting a quiet window and an explicit
+  decision — `ALGORITHM=INPLACE, LOCK=NONE` builds by sort and IS killable,
+  unlike the `ADD VECTOR INDEX` disaster. **Keep the bound even after the
+  index lands**; the next unindexed filter arrives at the same place.
+- [ ] **Two untracked scratch files on prod** from earlier sessions:
+  `_dd2.py`, `_regress_caption.py`. Harmless, but an untracked file in the
+  repo root is what silently blocked a `git pull` for days on 2026-09-09.
+
+---
 
 ## ★ NEXT — court RULE citations (new 2026-09-17, sized and decided)
 
