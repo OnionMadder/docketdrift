@@ -106,10 +106,22 @@ _ADMIN_NUM = r"(\d{4}\.\d{4})"
 # subdivision and we can never invent a cite to its first member. We
 # cannot store a range; capturing "2" from "subds. 2-3" would be a
 # wrong answer rather than a missing one.
+#
+# The subsection group captures the WHOLE parenthetical chain, parens
+# included: the court that wrote `Minn. R. Evid. 103(a)(2)` did not
+# write `103(a)`, and keeping only the first group would point at a
+# broader provision than the one cited. That is a misstated citation,
+# the same class as rendering `A.R.S. 13-1103` as "section 13.1103".
+#
+# The year lookahead is load-bearing and was found by reading real
+# output, not by a test: `Minn. R. 3310.2912 (2025)` was storing 2025
+# as a subsection. `(2025)` is the rule's EDITION YEAR, exactly as
+# statutes carry `(2024)`. Rejecting only 19xx/20xx leaves a genuine
+# 4-digit subsection matchable, if one ever exists.
 _TAIL = (
     r"(?:\s*,?\s*(?:subd\.|subdivision|subp\.|subpart)\s*"
     r"(?P<subdivision>\d+[a-zA-Z]?))?"
-    r"(?:\s*\((?P<subsection>[^)\s]{1,12})\))?"
+    r"(?P<subsection>(?:\((?!(?:19|20)\d{2}\))[^)\s]{1,6}\)){1,2})?"
 )
 
 _SET_PATTERNS = []
@@ -162,7 +174,7 @@ def _build(rule_set, number, m, text):
     if sub:
         display += ", subd. " + sub if rule_set != "admin" else ", subp. " + sub
     if sec:
-        display += "(" + sec + ")"
+        display += sec          # already parenthesized, e.g. "(a)(2)"
 
     return RuleRef(
         reference_slug=slug.lower(),

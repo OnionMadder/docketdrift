@@ -239,10 +239,28 @@ class MinnesotaRuleExtractionTests(SimpleTestCase):
         (ref,) = self.refs("Minn. R. Civ. App. P. 136.01, subd. 1(c)")
         self.assertEqual(ref.rule_number, "136.01")
         self.assertEqual(ref.subdivision, "1")
-        self.assertEqual(ref.subsection, "c")
+        self.assertEqual(ref.subsection, "(c)")
         self.assertEqual(ref.reference_slug, "minn.r.civ.app.p.136.01.subd.1")
         self.assertEqual(ref.reference_display,
                          "Minn. R. Civ. App. P. 136.01, subd. 1(c)")
+
+    def test_edition_year_is_not_a_subsection(self):
+        # Found by reading real output: `Minn. R. 3310.2912 (2025)` was
+        # storing 2025 as a subsection. It is the rule's edition year,
+        # exactly as statutes carry `(2024)`.
+        (ref,) = self.refs("Minn. R. 3310.2912 (2025)")
+        self.assertEqual(ref.subsection, "")
+        self.assertEqual(ref.reference_display, "Minn. R. 3310.2912")
+        (ref,) = self.refs("Minn. R. Civ. P. 12.02 (2020)")
+        self.assertEqual(ref.subsection, "")
+
+    def test_full_subsection_chain_is_kept(self):
+        # The court that wrote 103(a)(2) did not write 103(a); keeping
+        # only the first group cites a broader provision than the one
+        # relied on, which is a misstated citation.
+        (ref,) = self.refs("Minn. R. Evid. 103(a)(2)")
+        self.assertEqual(ref.subsection, "(a)(2)")
+        self.assertEqual(ref.reference_display, "Minn. R. Evid. 103(a)(2)")
 
     def test_administrative_rules_are_not_court_rules(self):
         # Minn. R. 3310.2921 is a DEED unemployment-hearing rule; 8210.0600
