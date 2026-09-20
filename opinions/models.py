@@ -956,6 +956,103 @@ class StatuteCitation(models.Model):
         ordering = ["opinion", "text_offset"]
 
 
+class RuleCitation(models.Model):
+    """One reference to a COURT RULE (or administrative rule) in an opinion.
+
+    Deliberately NOT a reuse of StatuteCitation. A court rule is a
+    different kind of record from a statute: Minn. R. Civ. App. P.
+    109.02 is the in-forma-pauperis rule, Minn. Stat. 109.02 is
+    unrelated, and a reader who searched `109.02` was being handed
+    statute-shaped noise for months because we extracted no rules at
+    all. Storing rules in a table named for statutes -- and surfacing
+    them on a page labeled "statute" -- would mislabel the source of
+    law, the same class of error as calling extraction "summarizing".
+
+    ``rule_set`` carries WHICH body of rules: `civ.app.p`, `civ.p`,
+    `crim.p`, `evid`, `juv.prot.p`, `juv.delinq.p`, `prof.conduct`,
+    `jud.conduct`, `gen.prac` -- and `admin` for Minnesota
+    ADMINISTRATIVE rules (Minn. R. 3310.2921, agency rules numbered
+    NNNN.NNNN and subdivided with `subp.`), which share the "Minn. R."
+    abbreviation with court rules and nothing else. Display labels come
+    from ``parsing/rules.py``; nothing reconstructs a citation by hand.
+
+    ``is_boilerplate`` marks the nonprecedential-opinion disclaimer,
+    which cites Minn. R. Civ. App. P. 136.01, subd. 1(c) at the top of
+    every unpublished MN opinion. Measured: 31% of all rule cites are
+    that one string, 85% of them in the first 400 characters, while
+    every other rule cite spreads flat through the document. It is a
+    publication-status notice, not the court engaging with a rule --
+    counted plainly it would make 136.01 the most-cited rule in
+    Minnesota by an order of magnitude. The row is KEPT (we do not
+    discard the court's own text) and flagged, so leaderboards and
+    "cited by" counts can exclude it while nothing is silently dropped.
+    """
+
+    opinion = models.ForeignKey(
+        "Opinion",
+        on_delete=models.CASCADE,
+        related_name="rule_citations",
+    )
+    reference_slug = models.CharField(
+        max_length=64,
+        db_index=True,
+        help_text=(
+            "Normalized lowercase rule reference, URL-safe. "
+            "e.g. 'minn.r.civ.app.p.136.01.subd.1' or 'minn.r.admin.3310.2921'."
+        ),
+    )
+    reference_display = models.CharField(
+        max_length=128,
+        help_text="Canonical display form, e.g. 'Minn. R. Civ. App. P. 136.01, subd. 1(c)'.",
+    )
+    rule_set = models.CharField(
+        max_length=24,
+        db_index=True,
+        help_text="Which body of rules: civ.app.p, civ.p, crim.p, evid, ... or 'admin'.",
+    )
+    rule_number = models.CharField(
+        max_length=16,
+        db_index=True,
+        help_text="Rule number portion (136.01, 60.02, 404, 3310.2921).",
+    )
+    subdivision = models.CharField(
+        max_length=16,
+        blank=True,
+        default="",
+        help_text="subd. N for court rules, subp. N for administrative. Blank when absent.",
+    )
+    subsection = models.CharField(
+        max_length=16,
+        blank=True,
+        default="",
+        help_text="Parenthetical subsection, e.g. the 'c' of 136.01, subd. 1(c). Display-only.",
+    )
+    is_boilerplate = models.BooleanField(
+        default=False,
+        help_text=(
+            "True when this occurrence is the nonprecedential-opinion "
+            "disclaimer rather than a substantive citation. Kept, not dropped."
+        ),
+    )
+    text_offset = models.IntegerField(
+        default=0,
+        help_text="Character offset in opinion.raw_text where this citation starts.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["reference_slug"]),
+            models.Index(fields=["rule_set", "rule_number"]),
+            models.Index(fields=["reference_slug", "is_boilerplate"],
+                         name="rule_slug_boiler_idx"),
+        ]
+        ordering = ["opinion", "text_offset"]
+
+    def __str__(self):
+        return self.reference_display
+
+
 class OpinionCitation(models.Model):
     """A citation FROM one opinion TO another case -- a citation-graph edge.
 
