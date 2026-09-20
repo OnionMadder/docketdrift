@@ -3070,6 +3070,17 @@ Rules:
    working tree dirty and blocks every future pull, silently. If a hotfix
    must go out by scp, commit it and pull, or `git checkout --` the file
    afterward.
+4. **NEVER chain a restart onto a piped check.**
+   `python manage.py check 2>&1 | tail -3 && nfsn -j signal-daemon gunicorn
+   TERM` restarts gunicorn EVEN WHEN THE CHECK FAILS — a pipeline's exit
+   status is the LAST command's, and `tail` exits 0 no matter what it read.
+   Done on 2026-09-20: `check` printed a `SyntaxError` in `views.py`, the
+   `&&` fired anyway, and the restart put the broken module live.
+   **Measured cost: 21 of 38 requests 500'd over ~30 seconds** before the
+   next restart, hitting ClaudeBot and other crawlers mid-crawl. Run
+   `check` as its own command, read its output, THEN restart — or use
+   `set -o pipefail`. Fourth instance of the `| tail` trap in this file
+   and the first to take the site down.
 
 ### A retry loop must tell a DETERMINISTIC failure from a transient one
 
