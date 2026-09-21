@@ -360,8 +360,14 @@ class LetteredChapterTests(SimpleTestCase):
             {"minn.stat.518b.01.subd.2"})
 
     def test_chapter_only_lettered(self):
-        self.assertEqual(slugs("Minn. Stat. ch. 518B"), {"minn.stat.518b"})
-        self.assertEqual(slugs("Minn. Stat. chapter 260C"), {"minn.stat.260c"})
+        # Chapter-only keeps the "ch." marker -- minn.stat.ch.518B is a
+        # DIFFERENT scope from minn.stat.518b.01, and the statute page's
+        # roll-up is gated on that distinction (rolling every section up
+        # under its chapter is a different feature with a different
+        # meaning). My first expectation here was wrong; the code was
+        # right.
+        self.assertEqual(slugs("Minn. Stat. ch. 518B"), {"minn.stat.ch.518b"})
+        self.assertEqual(slugs("Minn. Stat. chapter 260C"), {"minn.stat.ch.260c"})
 
     def test_slug_is_lowercase_display_is_uppercase(self):
         # URLs stay case-stable; the display matches how the legislature
