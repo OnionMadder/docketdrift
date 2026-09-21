@@ -595,7 +595,14 @@ tests are DONE and swept for MN. **54,361 cites / 18,229 opinions.**
 Detail in the 2026-09-20 CLAUDE.md block.
 
 Remaining, in order:
-- [ ] **`/rule/<reference>/` page.** Mirror `statute_detail` including
+- [x] **`/rule/<reference>/` page — DONE 2026-09-20.** Live and verified
+      on all eight branches in-process (normal, roll-up, subdivision,
+      admin, boilerplate-only, redirect, 404) plus live HTTPS. The
+      136.01 page reads "A further 5,930 appearances ... are the
+      standard notice that an opinion is nonprecedential, not a court
+      relying on the rule" — disclosed, not hidden. Original spec kept
+      below for its rationale:
+- [~] Mirror `statute_detail` including
       its hard-won bits: subdivision roll-up (the trailing `.` is
       load-bearing), ONE folded fetch rather than three range scans,
       and a lead that never reconstructs a citation. MUST exclude
