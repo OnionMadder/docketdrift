@@ -42,6 +42,10 @@ urlpatterns = [
     # Statute reference is a dot-separated slug (minn.stat.609.185), so the
     # URL pattern uses <str:> rather than <slug:>, which would reject dots.
     path("statute/<str:reference>/", views.statute_detail, name="statute_detail"),
+    # Court rules live at their OWN root, not under /statute/. A rule is a
+    # different kind of record, and a URL that calls it a statute
+    # mislabels the source of law in the address bar.
+    path("rule/<str:reference>/", views.rule_detail, name="rule_detail"),
     path("healthz", views.healthz, name="healthz"),
     path("robots.txt", views.robots_txt, name="robots_txt"),
     path("llms.txt", views.llms_txt, name="llms_txt"),

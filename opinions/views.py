@@ -29,8 +29,14 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.vary import vary_on_headers
 
 from opinions.case_numbers import canonical_case_number
-from opinions.models import (Court, Judge, Opinion, OpinionCitation, State,
-                             StatuteCitation, Tag)
+from opinions.models import (Court, Judge, Opinion, OpinionCitation,
+                             RuleCitation, State, StatuteCitation, Tag)
+# MODULE SCOPE, deliberately. A function-local import makes the name
+# local to the WHOLE function, and any sibling branch that uses it
+# without running that branch raises UnboundLocalError at runtime --
+# not at import, not at manage.py check. That trap 500'd every
+# citation search for four minutes on 2026-09-17.
+from opinions.parsing.rules import rule_set_label
 
 
 # Cache-Control max-age budgets, in seconds. Set on views below via the
@@ -1861,6 +1867,157 @@ def statute_detail(request, reference):
         "page_obj": page_obj,
         "total_count": paginator.count,
         "mention_count": mention_count,
+        "active_nav": "statutes",
+    })
+
+
+@cache_control(public=True, max_age=CACHE_SEC_DOSSIER_LIST)
+def rule_detail(request, reference):
+    """All opinions citing a given COURT RULE, state-scoped, paginated.
+
+    ``/rule/<reference>/`` where ``<reference>`` is the slug produced by
+    ``opinions.parsing.rules.extract_rules`` (``minn.r.civ.p.60.02``,
+    ``minn.r.crim.p.27.03.subd.9``, ``minn.r.admin.3310.2921``). Dots in
+    the slug are why the pattern is ``<str:>`` and not ``<slug:>``.
+
+    This mirrors ``statute_detail`` on purpose -- same single-index
+    strategy, same folded fetch, same pre-filled paginator count -- so
+    there is one shape to maintain rather than two. What it does NOT
+    share is the statute page's vocabulary: a rule is not a statute and
+    this page never says "statute", never prints a chapter, and never
+    reconstructs a citation out of another body of law's grammar.
+
+    THE BOILERPLATE SPLIT IS THE POINT OF THIS VIEW.
+    Every unpublished Minnesota opinion opens by citing Minn. R. Civ.
+    App. P. 136.01, subd. 1(c) -- the notice that says it is
+    nonprecedential. Measured corpus-wide that single string is 6,211
+    rows, 4.5x the most-cited rule that anyone actually argued. Counting
+    it would make a publication-status footer the most-cited rule in
+    Minnesota. So the counts here are SUBSTANTIVE cites only, and the
+    disclaimer total is disclosed separately rather than hidden -- the
+    same posture as "we didn't search for it" on the empty search page.
+    A number quietly excluded is as misleading as one quietly inflated.
+    """
+    state = getattr(request, "state", None)
+
+    # (1) Metadata, one index-only row, no joins.
+    #
+    # ``order_by("subsection", "subdivision")`` picks the CLEANEST stored
+    # display form: the empty string sorts first, so a rule cited both as
+    # "60.02" and "60.02(d)" titles its page "Minn. R. Civ. P. 60.02".
+    # Taking whatever row came back first would title the whole rule's
+    # page with one subsection and understate its scope. The explicit
+    # order_by also clears RuleCitation.Meta.ordering, which would
+    # otherwise join back to Opinion and turn this into a 2-table scan.
+    meta = (
+        RuleCitation.objects
+        .filter(reference_slug=reference)
+        .order_by("subsection", "subdivision")
+        .values("reference_display", "rule_set", "rule_number", "subdivision")
+        .first()
+    )
+    if meta is None:
+        # Cited only through its subdivisions -- the rule IS in the
+        # corpus, so 404 would be a lie. Same redirect the statute page
+        # makes, and for the same reason: we do not synthesize a heading
+        # for a citation we never parsed.
+        child = (
+            RuleCitation.objects
+            .filter(reference_slug__startswith=reference + ".")
+            .order_by()
+            .values("reference_slug")
+            .annotate(n=models.Count("id"))
+            .order_by("-n")
+            .first()
+        )
+        if child is None:
+            raise Http404("Rule not cited in corpus")
+        return redirect(reverse("opinions:rule_detail",
+                                kwargs={"reference": child["reference_slug"]}))
+
+    # (1b) Roll subdivisions up onto the rule page, gated so it cannot
+    # over-reach. The trailing "." is load-bearing exactly as it is for
+    # statutes: a bare startswith on "minn.r.civ.p.60.02" would swallow
+    # "minn.r.civ.p.60.021", a different rule.
+    rolls_up = not meta["subdivision"]
+    if rolls_up:
+        scope = Q(reference_slug=reference) | Q(
+            reference_slug__startswith=reference + ".")
+    else:
+        scope = Q(reference_slug=reference)
+
+    # (2+3) ONE range scan over the slug index yields everything the page
+    # needs: substantive opinion ids, the mention tally, the subdivision
+    # list, and the boilerplate total. Three separate queries over the
+    # same index cost ~3.3s on the heaviest statute; this is one scan and
+    # the de-duplication happens in Python.
+    ROW_CAP = 50_000
+    rows = list(
+        RuleCitation.objects
+        .filter(scope)
+        .order_by()
+        .values_list("opinion_id", "reference_display", "reference_slug",
+                     "is_boilerplate")
+        [:ROW_CAP]
+    )
+
+    opinion_ids, _seen = [], set()
+    subdivisions, _seen_sub = [], set()
+    mention_count = 0
+    boilerplate_count = 0
+    for _oid, _display, _slug, _boiler in rows:
+        if _boiler:
+            boilerplate_count += 1
+            continue  # never counts as citing the rule
+        mention_count += 1
+        if _oid not in _seen:
+            _seen.add(_oid)
+            opinion_ids.append(_oid)
+        if rolls_up and _slug != reference and _display not in _seen_sub:
+            _seen_sub.add(_display)
+            subdivisions.append(_display)
+    subdivisions.sort()
+    subdivisions = subdivisions[:60]
+
+    if len(rows) >= ROW_CAP:
+        # A count shown as exact must BE exact -- same rule as the capped
+        # /opinions/ paginator, which renders a floor as "N+".
+        mention_count = RuleCitation.objects.filter(
+            scope, is_boilerplate=False).count()
+        boilerplate_count = RuleCitation.objects.filter(
+            scope, is_boilerplate=True).count()
+
+    opinions_qs = (
+        Opinion.objects.filter(pk__in=opinion_ids)
+        .defer("raw_text", "html_content")
+        .select_related("court")
+        .order_by("-release_date")
+    )
+    if state is not None:
+        opinions_qs = opinions_qs.filter(court__state=state)
+
+    paginator = Paginator(opinions_qs, HOME_PAGE_SIZE)
+    paginator.__dict__["count"] = len(opinion_ids)
+    page_obj = paginator.get_page(request.GET.get("page", 1))
+
+    state_code = state.code if state is not None else ""
+    return render(request, "opinions/rule_detail.html", {
+        "reference_slug": reference,
+        "reference_display": meta["reference_display"],
+        "rule_set": meta["rule_set"],
+        "rule_set_label": rule_set_label(state_code, meta["rule_set"]),
+        "rule_set_long": rule_set_label(state_code, meta["rule_set"],
+                                        long_form=True),
+        "rule_number": meta["rule_number"],
+        "subdivision": meta["subdivision"],
+        "is_admin_rule": meta["rule_set"] == "admin",
+        "rolls_up": rolls_up,
+        "subdivisions": subdivisions,
+        "opinions": page_obj.object_list,
+        "page_obj": page_obj,
+        "total_count": paginator.count,
+        "mention_count": mention_count,
+        "boilerplate_count": boilerplate_count,
         "active_nav": "statutes",
     })
 

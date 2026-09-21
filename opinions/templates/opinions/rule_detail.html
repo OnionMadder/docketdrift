@@ -1,0 +1,207 @@
+{% extends "opinions/base.html" %}
+{% block title %}{{ reference_display }} &middot; {% if is_admin_rule %}Rule{% else %}Court rule{% endif %} &middot; DocketDrift{% endblock %}
+{% block description %}Every appellate opinion in the DocketDrift {% if request.state %}{{ request.state.name }} {% endif %}corpus citing {{ reference_display }} &mdash; ranked by recency, paginated, linked to the source court releases.{% endblock %}
+
+{% block og_title %}{{ reference_display }} &middot; Cases citing this rule{% endblock %}
+{% block og_description %}Appellate opinions{% if request.state %} from {{ request.state.name }}{% endif %} citing {{ reference_display }}, ranked by recency.{% endblock %}
+
+{% block jsonld %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Legislation",
+  "name": "{{ reference_display|escapejs }}",
+  "url": "https://{{ request.get_host }}{{ request.path }}",
+  "legislationJurisdiction": "{% if request.state %}{{ request.state.name|escapejs }}{% else %}United States{% endif %}"{% if rule_set_long %},
+  "isPartOf": {
+    "@type": "Legislation",
+    "name": "{{ rule_set_long|escapejs }}"
+  }{% endif %}
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {"@type": "ListItem", "position": 1, "name": "DocketDrift", "item": "https://docketdrift.com/"}{% if request.state %},
+    {"@type": "ListItem", "position": 2, "name": "{{ request.state.name|escapejs }}", "item": "https://{{ request.get_host }}/"},
+    {"@type": "ListItem", "position": 3, "name": "{{ reference_display|escapejs }}", "item": "https://{{ request.get_host }}{{ request.path }}"}{% else %},
+    {"@type": "ListItem", "position": 2, "name": "{{ reference_display|escapejs }}", "item": "https://{{ request.get_host }}{{ request.path }}"}{% endif %}
+  ]
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<nav class="breadcrumbs" aria-label="Breadcrumb">
+  <ol>
+    <li><a href="https://docketdrift.com/">DocketDrift</a></li>
+    {% if request.state %}<li><a href="{% url 'opinions:home' %}">{{ request.state.name }}</a></li>{% endif %}
+    <li aria-current="page">{{ reference_display }}</li>
+  </ol>
+</nav>
+
+<div class="glossy-frame">
+  <div class="opinion-header">
+    {% comment %}
+      "Court rule" and "Administrative rule" are NOT interchangeable.
+      Minn. R. 3310.2921 is a DEED unemployment-hearing rule and
+      Minn. R. Civ. P. 60.02 is a rule of civil procedure; they share an
+      abbreviation and nothing else. Labelling an agency rule as a court
+      rule would misstate which body made the law.
+    {% endcomment %}
+    <span class="role-chip institution">{% if is_admin_rule %}Administrative rule{% else %}Court rule{% endif %}</span>
+    {% if rule_set_label and not is_admin_rule %}
+      <span class="role-chip court-admin">{{ rule_set_label }}</span>
+    {% endif %}
+    {% if subdivision %}
+      <span class="role-chip court-admin">{% if is_admin_rule %}subp.{% else %}subd.{% endif %} {{ subdivision }}</span>
+    {% endif %}
+  </div>
+
+  <h1>{{ reference_display }}</h1>
+
+  {% comment %}
+    The lead names the rule set from the canonical label map and stops.
+    The statute page once said "Minnesota statute" on every state and
+    rebuilt citations with Minnesota's grammar, rendering A.R.S.
+    13-1103 as "section 13.1103" -- a misstated citation. Nothing here
+    reconstructs a cite; rule_set_long is looked up, or it is absent.
+  {% endcomment %}
+  <p class="subtle-lead">
+    {% if rule_set_long %}{{ rule_set_long }}{% elif request.state %}{{ request.state.name }} rule{% endif %}{% if subdivision %}, {% if is_admin_rule %}subpart{% else %}subdivision{% endif %} {{ subdivision }}{% endif %}.
+  </p>
+
+  <p class="opinion-meta">
+    <strong>{{ total_count }}</strong> opinion{{ total_count|pluralize }}
+    {% if mention_count > total_count %}
+      with <strong>{{ mention_count }}</strong> citations
+    {% endif %}
+    {% if request.state %} in {{ request.state.name }}{% endif %}{% if subdivisions %},
+    counting citations to this rule&rsquo;s subdivisions{% endif %}.
+  </p>
+
+  {% comment %}
+    DISCLOSE the boilerplate rather than silently dropping it.
+
+    Every unpublished Minnesota opinion opens by citing Minn. R. Civ.
+    App. P. 136.01, subd. 1(c) -- the notice saying it is
+    nonprecedential. Corpus-wide that is 6,211 rows, 4.5x the most-cited
+    rule anyone actually argued, so counting it would make a
+    publication-status footer the most-cited rule in Minnesota.
+
+    Excluding it silently would be the other half of the same problem: a
+    reader comparing our number against a full-text search would find a
+    gap we never explained. Same posture as the empty search page saying
+    "we didn't search for it" instead of "no results".
+  {% endcomment %}
+  {% if boilerplate_count %}
+    <p class="subtle-lead">
+      A further <strong>{{ boilerplate_count }}</strong> appearance{{ boilerplate_count|pluralize }}
+      of this rule {{ boilerplate_count|pluralize:"is,are" }} the standard notice that an opinion is
+      nonprecedential, not a court relying on the rule. Those are excluded from the counts above.
+    </p>
+  {% endif %}
+
+  {% if subdivisions %}
+    <p class="subtle-lead statute-subdivisions">
+      Includes:
+      {% for sub in subdivisions %}{{ sub }}{% if not forloop.last %} &middot; {% endif %}{% endfor %}
+    </p>
+  {% endif %}
+
+  {% comment %}
+    Official source, MN only, and deliberately asymmetric.
+
+    Administrative rules have a uniform, VERIFIED URL shape
+    (revisor.mn.gov/rules/<number>/ -- probed live, serves the right
+    rule). Court rules do not: revisor's court-rule paths carry a
+    per-rule-set subtype segment, and the two shapes tested resolved
+    differently. A deep link built from a guess is the revisor.mn.gov
+    bug in a new costume, so court rules get an honest pointer to the
+    index instead of a confident link to possibly the wrong rule.
+  {% endcomment %}
+  {% if request.state.code == "MN" %}
+    <div class="opinion-actions">
+      {% if is_admin_rule %}
+        <a href="https://www.revisor.mn.gov/rules/{{ rule_number }}/"
+           target="_blank" rel="noopener">Read this rule on revisor.mn.gov</a>
+      {% else %}
+        <a href="https://www.revisor.mn.gov/court_rules/"
+           target="_blank" rel="noopener">Minnesota court rules on revisor.mn.gov</a>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+
+{% if opinions %}
+  <div class="glossy-frame">
+    <h2>Opinions citing this rule</h2>
+    <table class="doc-table">
+      <thead>
+        <tr>
+          <th>Docket</th>
+          <th>Court</th>
+          <th>Filed</th>
+          <th>Disposition</th>
+          <th>Case</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for op in opinions %}
+        <tr>
+          <td class="case-number-cell"><span class="file-number">{{ op.case_number }}</span></td>
+          <td class="doc-court-cell"><span class="court-pill court-pill--{{ op.court.level_slug }}" title="{{ op.court.name }}">{{ op.court.short_label }}</span></td>
+          <td class="doc-date-cell">{{ op.release_date|date:"Y-m-d" }}</td>
+          <td>
+            {% if op.disposition %}
+              <span class="case-status disposition-{{ op.disposition_class }}">{{ op.disposition }}</span>
+            {% else %}
+              <span class="doc-date-cell is-tbd">&mdash;</span>
+            {% endif %}
+          </td>
+          <td class="title-cell">
+            <span class="review-dot review-dot--{{ op.review_status }}" title="{{ op.get_review_status_display }}"></span>
+            <a href="{% url 'opinions:detail' case_number=op.case_number %}">{{ op.title|truncatechars:90 }}</a>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+    {% if page_obj.has_other_pages %}
+      <nav class="pagination" aria-label="Rule opinion pagination">
+        <div class="pagination-prev">
+          {% if page_obj.has_previous %}
+            <a href="?page=1" aria-label="First page">&laquo; First</a>
+            <a href="?page={{ page_obj.previous_page_number }}" rel="prev">&lsaquo; Prev</a>
+          {% endif %}
+        </div>
+        <div class="pagination-state">
+          <span class="pagination-current">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+        </div>
+        <div class="pagination-next">
+          {% if page_obj.has_next %}
+            <a href="?page={{ page_obj.next_page_number }}" rel="next">Next &rsaquo;</a>
+            <a href="?page={{ page_obj.paginator.num_pages }}" aria-label="Last page">Last &raquo;</a>
+          {% endif %}
+        </div>
+      </nav>
+    {% endif %}
+  </div>
+{% else %}
+  <div class="glossy-frame">
+    {% comment %}
+      A rule whose every appearance is the nonprecedential notice is a
+      real state and needs saying plainly -- "no opinions cite this rule"
+      would read as a coverage failure when it is an accurate finding.
+    {% endcomment %}
+    {% if boilerplate_count %}
+      <p class="glitch-line">No court has relied on this rule{% if request.state %} in {{ request.state.name }}{% endif %} in our corpus. Its {{ boilerplate_count }} appearance{{ boilerplate_count|pluralize }} {{ boilerplate_count|pluralize:"is,are" }} the standard nonprecedential-opinion notice.</p>
+    {% else %}
+      <p class="glitch-line">No opinions cite this rule{% if request.state %} in {{ request.state.name }}{% endif %} yet.</p>
+    {% endif %}
+  </div>
+{% endif %}
+{% endblock %}
