@@ -588,6 +588,24 @@ MN-specific bug.
 
 ---
 
+## ★ NEW 2026-09-20b — statute BOILERPLATE needs the rule-layer treatment
+
+`Minn. Stat. § 480A.08, subd. 3` is now the **#1 most-cited MN statute
+at 7,436**, 4x the next entry, and it is the unpublished-opinion notice
+rather than a statute anyone argued. Same trap as
+`Minn. R. Civ. App. P. 136.01, subd. 1(c)`, which the rule layer already
+handles; `StatuteCitation` has no `is_boilerplate` field.
+
+- [ ] Migration adding `StatuteCitation.is_boilerplate`, the
+      per-occurrence text gate from `parsing/rules_mn.py:_is_boilerplate`
+      (preceding ~260 chars carry "nonprecedential" / "may not be cited"
+      / "will be unpublished"), a re-sweep, and the DISCLOSURE paragraph
+      from `rule_detail.html`. KEEP the rows; never blanket-exclude by
+      number — 136.01 had 123 genuine occurrences outside the
+      disclaimer and 480A.08 will too.
+
+---
+
 ## ★ RULE CITATIONS — LAYER BUILT 2026-09-20 (0 → 54,361); UI REMAINS
 
 Model + migration 0044 + `parsing/rules_mn.py` + `extract_rules` + 27

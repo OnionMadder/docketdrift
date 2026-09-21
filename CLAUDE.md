@@ -178,6 +178,78 @@ generalizes to CA and TX.
 coverage trough visible (MN COA 114 opinions in 2013 vs 1,257 in 2015 —
 CL coverage, not caseload). See the starred TODO section.
 
+## 2026-09-20b — every LETTERED Minnesota chapter was filed under the wrong chapter
+
+**0 → 52,742 lettered-chapter citations across 13,005 MN opinions.**
+
+`(?P<chapter>\d{1,4})` stopped at the digits. `518B.01` matched chapter
+`518`; the section group needs a literal `.` next, saw `B`, and gave up.
+So the cite stored as `minn.stat.518` — **Marriage Dissolution** — when
+the court had cited **518B, the Domestic Abuse Act**. Every Order for
+Protection case in the corpus sat on the wrong chapter's page, and 518B
+had no page at all. A WRONG ANSWER, not a missing one, live on public
+pages for as long as the extractor has existed.
+
+Found the way the NH 71-edge graph was found: **a number too small to be
+possible.** `minn.stat.518b.01` returned exactly zero in a corpus that
+obviously litigates OFPs. Corpus-wide there were **0 lettered slugs**.
+
+### The base chapters were mostly NOT theirs
+
+| chapter | before | after | what actually cited it |
+|---|---|---|---|
+| 253 | 3,473 | **18** | 253B civil commitment / 253D |
+| 299 | 604 | **3** | 299A public safety |
+| 216 | 1,135 | **11** | 216B utilities |
+| 504 | 1,440 | **85** | 504B landlord-tenant |
+| 245 | 813 | **96** | 245A/245C licensing |
+| 260 | 8,573 | 2,355 | 260C juvenile protection |
+| 518 | 14,266 | 10,589 | 518B domestic abuse / 518A support |
+| 169 | 7,701 | 4,234 | 169A DWI |
+| 611 | 1,991 | 702 | 611A crime victims |
+
+Chapter 253's page was **99.5% wrong**. 216 and 299 likewise. These are
+not edge cases — they are the core of self-represented litigation:
+evictions, commitments, CHIPS and TPR, DWI, child support, OFPs.
+
+**32% of recent MN opinions** (947 of 3,000 sampled) gained a lettered
+cite. Total rows 186,040 → 186,556 (+516, net of the rebuild). Duplicate
+(opinion, slug, offset) rows after: **0**.
+
+### ★ THE FIX SURFACED THE STATUTE VERSION OF THE 136.01 BOILERPLATE
+
+The new #1 most-cited Minnesota statute is
+**`Minn. Stat. § 480A.08, subd. 3` at 7,436 citations** — four times the
+next entry. It is not a statute anyone argued. It is the sentence at the
+top of every unpublished opinion: *"This opinion will be unpublished and
+may not be cited except as provided by Minn. Stat. § 480A.08, subd. 3."*
+
+Exactly the trap handled hours earlier for `Minn. R. Civ. App. P.
+136.01, subd. 1(c)` in the rule layer, in the statute layer, unhandled.
+It was always there — previously mis-filed onto bare chapter `480`, so
+it polluted invisibly; the fix makes it correctly attributed and
+prominently wrong. **StatuteCitation has no `is_boilerplate` field.**
+
+The rule-layer treatment is the template and should be copied verbatim:
+flag PER OCCURRENCE on text evidence (the preceding ~260 chars carry
+"nonprecedential" / "may not be cited" / "will be unpublished"), KEEP the
+row, exclude it from counts, and DISCLOSE the excluded total on the page.
+Never blanket-exclude by number — 136.01 had 123 genuine occurrences
+outside the disclaimer and 480A.08 will too.
+
+### Method note
+
+Measured BEFORE sweeping, because the fix makes six live pages show
+*fewer* citing opinions and a drop with no prior number reads as a
+regression. Same shape as the 2026-09-17 granularity fix (§ 563.01 exact
+17 → 14 while rolled-up 35 → 36): two correct changes, one of which
+looks like a loss on its own.
+
+Also: my first test expectation was wrong and the code was right —
+chapter-only slugs keep the `ch.` marker (`minn.stat.ch.518b`), because
+chapter scope and section scope are deliberately distinct and the
+statute page's roll-up is gated on exactly that.
+
 ## 2026-09-20 — the RuleCitation layer: 0 → 54,361 cites
 
 The gap the 2026-09-17 bug report actually exposed. `109.02` is
