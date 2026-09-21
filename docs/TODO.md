@@ -588,21 +588,48 @@ MN-specific bug.
 
 ---
 
-## ★ NEW 2026-09-20b — statute BOILERPLATE needs the rule-layer treatment
+## ★ statute BOILERPLATE — DONE 2026-09-21 (migration 0045)
 
-`Minn. Stat. § 480A.08, subd. 3` is now the **#1 most-cited MN statute
-at 7,436**, 4x the next entry, and it is the unpublished-opinion notice
-rather than a statute anyone argued. Same trap as
-`Minn. R. Civ. App. P. 136.01, subd. 1(c)`, which the rule layer already
-handles; `StatuteCitation` has no `is_boilerplate` field.
+`Minn. Stat. § 480A.08, subd. 3` was the **#1 most-cited MN statute at
+7,436** — 3.2x section 645.16, the statutory-construction canons — and
+it is the unpublished-opinion notice rather than a statute anyone
+argued. Same trap as `Minn. R. Civ. App. P. 136.01, subd. 1(c)`; same
+treatment, deliberately copied rather than reinvented.
 
-- [ ] Migration adding `StatuteCitation.is_boilerplate`, the
-      per-occurrence text gate from `parsing/rules_mn.py:_is_boilerplate`
-      (preceding ~260 chars carry "nonprecedential" / "may not be cited"
-      / "will be unpublished"), a re-sweep, and the DISCLOSURE paragraph
-      from `rule_detail.html`. KEEP the rows; never blanket-exclude by
-      number — 136.01 had 123 genuine occurrences outside the
-      disclaimer and 480A.08 will too.
+- [x] **Migration 0045 + the per-occurrence text gate + re-sweep +
+      disclosure — SHIPPED.** `StatuteCitation.is_boilerplate`, flagged
+      on text evidence in the preceding 260 chars, rows KEPT, excluded
+      from counts on `statute_detail`, the MCP `get_statute` tool and
+      the `corpus_insights` leaderboard, with the excluded total
+      disclosed on all three. 7 new `SimpleTestCase` tests.
+
+**Two things the measurement changed, neither of them in the plan
+above** (detail in the CLAUDE.md session block):
+
+1. **It is MN-only and it is ONE statute — established by SHAPE, not by
+   rank.** Ranking every slug by what fraction of its occurrences sit in
+   the first 400 characters puts 480A.08 at **96.6%**, the next MN entry
+   at 73.8%, the one after at 36.2%. AZ/NH/LA top out at 55.8% and those
+   are offense and post-conviction statutes named in the opening
+   sentence — a court applying a statute. Checking the top-12 by volume,
+   which is what the plan implied, would only ever find boilerplate that
+   is already #1; a notice cited 400 times sits at rank ~20 and is
+   invisible to it. **Do not turn this into a per-state boilerplate
+   vocabulary** — there is nothing to put in it.
+2. **The cue must stay NARROW, and that is now a test.** It fires on
+   95.5% of a 400-occurrence random sample, and none of the 18 misses
+   sit in the head; every one read by hand is a court citing 480A.08 for
+   the proposition that unpublished opinions are not precedential.
+   Widening it to "unpublished" or "not precedential" flags all of them.
+
+**Ops lesson, paid for in rows:** a `--force` chunk killed without
+printing its resume trailer leaves the window SHORT — it deletes each
+opinion's rows before the batched insert flushes. One culled chunk cost
+**880 MN rows**, restored by re-running the same window. A chunk driver
+must RETRY the same cursor on a missing trailer, never just stop and
+never advance. Also: size a sweep by opinions-scanned (~51/s), not by
+id-advance — MN ids are dense at the low end, which made a ~40-chunk
+job look like a 200-chunk one.
 
 ---
 

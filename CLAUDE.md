@@ -24,9 +24,17 @@ is the individual path). `/takedown/` states the removal policy and
 requests are flagged internally (`RemovalRequest`, migration 0042 —
 admin-only, enforced by a test rather than a comment).
 
-**SIX consecutive sessions have each found a LIVE defect, and only one was
-found by a monitor.** Read these blocks before starting anything:
+**SEVEN consecutive sessions have each found a LIVE defect, and only one
+was found by a monitor.** Read these blocks before starting anything:
 
+- **2026-09-21** — **MN's #1 most-cited statute was a footer.**
+  `Minn. Stat. § 480A.08, subd. 3` at 7,436 cites, 3.2x the real #1, is
+  the notice at the top of every unpublished opinion. Now flagged and
+  disclosed (migration 0045). The check that FOUND it is the reusable
+  part: rank slugs by what fraction sit in the first 400 characters,
+  which needs no per-state vocabulary and cleared AZ/NH/LA in the same
+  pass. A top-N-by-volume check can only ever find boilerplate that is
+  already #1.
 - **2026-09-20b** — **every LETTERED Minnesota chapter was filed under the
   wrong chapter.** `518B.01` (Domestic Abuse Act, every OFP) stored as
   `minn.stat.518` (Marriage Dissolution). Chapter 253's page was **99.5%
@@ -48,21 +56,25 @@ found by a monitor.** Read these blocks before starting anything:
 - **2026-09-14** — a removal request turned into a 10,420-row caption fix,
   and the 5xx monitor caught `/opinions/` 500ing.
 
-**The pattern across all six is one thing:** every defect was a WRONG
+**The pattern across all seven is one thing:** every defect was a WRONG
 ANSWER presenting as a missing one, and every one was found by measuring
 what we actually serve rather than by reasoning about the code. Two were
 found because a number was too small to be possible (NH's 71 edges,
-`minn.stat.518b.01` returning zero).
+`minn.stat.518b.01` returning zero) and one because a number was too
+BIG to be plausible (480A.08 out-citing the construction canons 3.2x).
+A figure that cannot be right is the cheapest defect detector here.
 
 **Next, in order** (`docs/TODO.md` is authoritative):
-1. **Statute boilerplate.** `Minn. Stat. § 480A.08, subd. 3` is now the
-   #1 MN statute at 7,436 cites and is the unpublished-opinion notice, not
-   a statute anyone argued. The rule layer already solves this; copy it.
-2. **Finish the rule surfaces** — bare-number routing (83 measured
+1. **Finish the rule surfaces** — bare-number routing (83 measured
    collisions, disambiguate rather than guess), MCP `get_rule`,
    `/sitemap-rules.xml`.
-3. **NH/AZ/LA rule vocabularies are UNMEASURED.** Measure before writing a
+2. **NH/AZ/LA rule vocabularies are UNMEASURED.** Measure before writing a
    regex; the MN plan was missing a top-4 rule set.
+3. **Check whether CL carries PARALLEL cites for Louisiana.** LA has zero
+   `ParallelCite` rows and the stated reason ("CL has none") is FALSE —
+   317,223 LA reporter cites came out of CL's own export. One cheap pass;
+   when parallel cites landed for AZ, official `Ariz.` resolution went
+   0% → 93%.
 
 **MN 2020–2022 IS FIXED (2026-08-03): 0 → 3,102 opinions.** 2020=1,040,
 2021=1,092, 2022=970, read directly from the mn.gov State Law Library archive.
@@ -191,6 +203,126 @@ generalizes to CA and TX.
 **The band immediately earned its keep:** it made an undisclosed MN/AZ
 coverage trough visible (MN COA 114 opinions in 2013 vs 1,257 in 2015 —
 CL coverage, not caseload). See the starred TODO section.
+
+## 2026-09-21 — the statute boilerplate: MN's #1 statute was a footer
+
+`Minn. Stat. § 480A.08, subd. 3` was the **most-cited statute in
+Minnesota at 7,436 cites across 7,274 opinions** — 3.2x § 645.16, the
+statutory-construction canons — and it is not a statute anyone argued.
+It is the sentence at the top of every unpublished opinion: *"This
+opinion will be unpublished and may not be cited except as provided by
+Minn. Stat. § 480A.08, subd. 3."*
+
+Migration 0045 + the per-occurrence text gate, copied from the rule
+layer rather than reinvented. Rows KEPT and flagged; excluded from
+counts on `statute_detail`, the MCP `get_statute` tool and the
+`corpus_insights` leaderboard; the excluded total DISCLOSED on all
+three. Migration ran in **1.5s** — ADD COLUMN with NO INDEX is
+`ALGORITHM=INSTANT` even on 636K rows.
+
+### ★ THE PLAN SAID "MN, ONE NUMBER". MEASUREMENT AGREED — BUT ONLY A DIFFERENT TEST COULD HAVE SHOWN IT
+
+The obvious check is the top-N most-cited statutes per state. That check
+**cannot find boilerplate that is not already #1** — a notice cited 400
+times sits at rank ~20 and looks like an ordinary workhorse. So detect
+on SHAPE instead: a disclaimer is pinned to the head of the document,
+while a statute anyone argued spreads through it. Ranking every slug by
+the fraction of its occurrences in the first 400 characters:
+
+| state | most head-concentrated slug | head % |
+|---|---|---|
+| MN | `minn.stat.480a.08.subd.3` | **96.6%** |
+| MN | next: `minn.stat.590.01.subd.3` | 73.8% |
+| MN | third: `minn.stat.609.222` | 36.2% |
+| AZ | `ars.36-1002.02` | 45.3% |
+| NH | `rsa.635.1` | 50.7% |
+| LA | `la.crimproc.930.3` | 55.8% |
+
+A clean gap at MN, and **nothing resembling it in the other three
+states** — their leaders are offense and post-conviction statutes named
+in the opening sentence, which is a court applying a statute. The test
+needs no per-state vocabulary, which is exactly why it could answer the
+AZ/NH/LA question without my guessing three notices. **Do not build a
+per-state boilerplate vocabulary; there is nothing to put in it.**
+
+The volume leaderboard was still worth running, and it is the same
+correctness check that surfaced *Thiele v. Stich*: below 480A.08 every
+MN entry is a workhorse an appellate practitioner would name from
+memory — 645.16 canons, 260C.301 TPR grounds, 590.01 postconviction time
+bar, 609.185 first-degree murder, 518.17 best interests, 624.713 felon
+in possession.
+
+### ★ THE CUE MUST STAY NARROW, AND THAT IS NOW FOUR TESTS
+
+The rule layer's cue transfers verbatim
+(`nonprecedential|not be cited|will be unpublished`, 260-char window).
+Measured on a 400-occurrence random sample: it fires on **95.5%**, and
+**none of the 18 misses sit in the head** (their offsets run 8,858 to
+36,051). Every miss read by hand is GENUINE — the court citing 480A.08
+for the proposition that unpublished opinions are not precedential:
+
+> "Appellant relies on two unpublished decisions of this court.
+> Unpublished opinions of this court are not precedential. Minn. Stat.
+> § 480A.08, subd. 3."
+
+**Widening the cue to `unpublished` or `not precedential` would flag
+every one of them.** That is the 136.01 lesson restated — flag per
+occurrence on text evidence, keep the row, never exclude by number —
+and it is why four of the seven new tests exist only to hold the cue
+narrow.
+
+Note for anyone tempted by `is_precedential` as a signal: among flagged
+occurrences it reads 236 True / 146 False, which looks wrong until you
+remember the field DEFAULTS to True and CL bulk rows never ran the
+parser save-hook. It is the default, not a finding. Text evidence only.
+
+### A recurrence is NOT a notice — the line this field must not cross
+
+AZ's `12-2101(A)` (appellate jurisdiction) and `12-120.24` are recited
+in nearly every AZ appeal, and LA's `930.8` likewise. They stay counted.
+"We have jurisdiction pursuant to A.R.S. § 12-2101(A)" is the court
+INVOKING a statute; deciding it "doesn't really count" would be an
+editorial read of the record, the same line the historic-disposition
+rule draws when it transcribes rather than maps. The flag is for a
+notice ABOUT the document's publication status, not for anything that
+merely repeats.
+
+### ★ A KILLED `--force` CHUNK LEAVES THE WINDOW SHORT — 880 ROWS, MEASURED
+
+`extract_statutes --force` deletes each opinion's rows BEFORE the
+batched insert flushes, and its resume trailer prints only at the END of
+a pass. So a chunk culled mid-window is not merely a lost chunk — it is
+**silent data loss**. One killed chunk today cost **880 MN rows**
+(186,556 → 185,676), found only because the before-numbers had been
+written down.
+
+Repair is simply re-running `--force` at the SAME `--min-id`, which
+re-deletes and re-inserts the window: verified back to **exactly
+186,556 / 636,360 corpus-wide**. That round trip also proves the
+extractor is deterministic.
+
+**Rule for every chunk driver: on a missing trailer, RETRY the same
+cursor — never advance, and never just stop.** Stopping leaves the hole
+in place; advancing makes it permanent.
+
+**And size a sweep by opinions-scanned, not by id-advance.** The first
+chunk moved the cursor only 2,422 ids and I read that as a ~200-chunk,
+7-hour job. MN ids are dense at the low end; the real rate is ~51
+opinions/s, so MN is ~40 chunks / ~80 min. Estimating from the wrong
+axis nearly bought a bespoke backfill command the project did not need.
+
+### Method notes
+
+- **The measurement script committed the gotcha it was measuring.** The
+  first pass put `reference_display` in a `GROUP BY` beside an indexed
+  `reference_slug` — the documented "one non-covered column" trap — and
+  sat idle on the DB until killed. Group on the indexed column, look the
+  display up afterwards for the handful of winners.
+- `python` writing to a file or pipe is BLOCK-BUFFERED, so a long probe
+  shows nothing until it exits. `python -u`, every time. Same mechanism
+  as the `2>&1 | tail` trap, which now has four entries in this file.
+- pymysql mogrifies whenever args is not None, and an **empty list still
+  counts**, so a literal `%` in a `LIKE` blows up. Pass None.
 
 ## 2026-09-20b — every LETTERED Minnesota chapter was filed under the wrong chapter
 
@@ -3275,6 +3407,33 @@ Rules:
    `check` as its own command, read its output, THEN restart — or use
    `set -o pipefail`. Fourth instance of the `| tail` trap in this file
    and the first to take the site down.
+
+### A killed `--force` chunk leaves the window SHORT — retry, never advance
+
+`extract_statutes --force` (and any backfill built on delete-then-insert)
+removes each opinion's rows BEFORE the batched insert flushes, and its
+`resume with:  --min-id N` trailer prints only at the END of a pass. So a
+chunk culled mid-window is not a lost chunk, it is **silent data loss** —
+the rows are gone and nothing says so.
+
+Measured 2026-09-21: one killed chunk cost **880 MN rows** (186,556 →
+185,676). It was noticed only because the before-numbers had been written
+down first.
+
+Repair is re-running `--force` at the SAME `--min-id`: the window is
+re-deleted and re-inserted, and the count came back to exactly 186,556.
+That round trip is also a free determinism check on the extractor.
+
+**So the rule for every chunk driver is: on a missing trailer, RETRY the
+same cursor.** Do not advance (that makes the hole permanent) and do not
+just stop (that leaves it in place). Advance ONLY on a trailer.
+
+Related sizing trap from the same run: **size a sweep by
+opinions-scanned, not by id-advance.** The first chunk moved the cursor
+2,422 ids, which read as a ~200-chunk, 7-hour job. MN's ids are dense at
+the low end and the real rate is ~51 opinions/s, so MN is ~40 chunks /
+~80 min. Estimating off the wrong axis nearly bought a bespoke backfill
+command that was not needed.
 
 ### A retry loop must tell a DETERMINISTIC failure from a transient one
 

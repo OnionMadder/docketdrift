@@ -468,10 +468,29 @@ def tool_get_statute(args: dict) -> dict:
     # would hand an agent thousands of cases that never discuss it, and
     # a false match is worse for a model than for a human because it
     # looks like an ordinary result and gets cited.
+    ID_CAP = 500
     opinion_ids = list(
         StatuteCitation.objects.filter(scope, is_boilerplate=False)
-        .order_by().values_list("opinion_id", flat=True).distinct()[:500]
+        .order_by().values_list("opinion_id", flat=True).distinct()[:ID_CAP]
     )
+
+    # ``len(opinion_ids)`` is the size of the FETCH, not the size of the
+    # answer. Reporting it as citing_opinion_count meant Minn. Stat.
+    # 645.16 came back as "500" -- a suspiciously round number presented
+    # as exact -- while the public page said 1,643. A count shown as
+    # exact must BE exact (the rule the /opinions/ paginator follows by
+    # rendering a floor as "N+"), and two surfaces disagreeing about one
+    # statute is the specific failure this tool was already hardened
+    # against once. Only pay for the real COUNT when the cap was hit.
+    if len(opinion_ids) < ID_CAP:
+        citing_opinion_count = len(opinion_ids)
+    else:
+        citing_opinion_count = (
+            StatuteCitation.objects.filter(scope, is_boilerplate=False)
+            .order_by().values_list("opinion_id", flat=True)
+            .distinct().count()
+        )
+
     court_ids = set(_court_ids(state))
     rows = list(
         Opinion.objects.filter(id__in=opinion_ids, court_id__in=court_ids)
@@ -481,7 +500,7 @@ def tool_get_statute(args: dict) -> dict:
     )
     result = {
         "statute": meta["reference_display"],
-        "citing_opinion_count": len(opinion_ids),
+        "citing_opinion_count": citing_opinion_count,
         "opinions": [_opinion_brief(o) for o in rows],
     }
 
