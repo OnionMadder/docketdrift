@@ -14,6 +14,27 @@ Recognizes the common Bluebook + MN-house-style citation patterns:
     style on first reference; same slug as the abbreviated form).
   - ``Minn. Stat. ch. 169`` (chapter-only, slug ``minn.stat.ch.169``).
   - ``Minn.Stat. § 609.185`` (no spaces between ``Minn.`` and ``Stat.``).
+  - ``Minn. Stat. § 518B.01`` (LETTERED CHAPTER -- see below).
+
+LETTERED CHAPTERS WERE SILENTLY MISFILED UNTIL 2026-09-20, and this was
+a wrong answer rather than a missing one. ``(?P<chapter>\d{1,4})``
+stopped at the digits, so ``518B.01`` matched chapter ``518``; the
+section group needs a literal ``.`` next, saw ``B``, and gave up. The
+cite was stored as ``minn.stat.518`` -- Marriage Dissolution -- when the
+court had cited 518B, the Domestic Abuse Act. Every Order for Protection
+case in the corpus landed on the wrong chapter's page, and 518B had no
+page at all.
+
+Measured before the fix: **237 of 900 recent MN opinions (26%)** carry at
+least one lettered-chapter cite, and ZERO stored slugs had a letter. The
+affected chapters are the core of self-represented litigation -- 260C
+juvenile protection, 253B civil commitment, 169A DWI, 504B
+landlord-tenant, 518A child support, 609A expungement, 245C background
+studies.
+
+Found the way the NH 71-edge bug was found: a number too small to be
+plausible. ``minn.stat.518b.01`` returned exactly zero in a corpus that
+obviously litigates OFPs.
 
 The long form and the spelled-out subdivision were BOTH out of scope in
 v1, on the stated assumption that they were "rare in appellate prose".
@@ -79,7 +100,7 @@ _CITE_TAIL = (
 # Abbreviated citation: "Minn. Stat. § 609.185", "Minn.Stat. 609.185".
 FULL_CITATION = re.compile(
     r'\bMinn\.?\s*Stat\.?\s*§?\s*'
-    r'(?P<chapter>\d{1,4})'
+    r'(?P<chapter>\d{1,4}[A-Z]?)'
     r'(?:\.(?P<section>\d{1,4}[a-zA-Z]?))?'
     + _CITE_TAIL,
     re.IGNORECASE,
@@ -97,7 +118,7 @@ FULL_CITATION = re.compile(
 # number is captured (see the module docstring on lists).
 LONG_CITATION = re.compile(
     r'\bMinnesota\s+Statutes?\s*,?\s*(?:sections?|§{1,2})\s*'
-    r'(?P<chapter>\d{1,4})'
+    r'(?P<chapter>\d{1,4}[A-Z]?)'
     r'(?:\.(?P<section>\d{1,4}[a-zA-Z]?))?'
     + _CITE_TAIL,
     re.IGNORECASE,
@@ -105,7 +126,7 @@ LONG_CITATION = re.compile(
 
 # Chapter-only citation: "Minn. Stat. ch. 169" or "Minn. Stat. chapter 169".
 CHAPTER_CITATION = re.compile(
-    r'\bMinn\.?\s*Stat\.?\s*(?:ch\.?|chapter)\s*(?P<chapter>\d{1,4})\b',
+    r'\bMinn\.?\s*Stat\.?\s*(?:ch\.?|chapter)\s*(?P<chapter>\d{1,4}[A-Z]?)\b',
     re.IGNORECASE,
 )
 
@@ -124,6 +145,17 @@ def _build_slug_and_display(
 
     Display grammar mirrors the canonical Bluebook form.
     """
+    # Minnesota chapters carry a LETTER SUFFIX often enough to matter:
+    # 518B (Domestic Abuse Act), 260C (juvenile protection), 253B (civil
+    # commitment), 169A (DWI), 504B (landlord-tenant), 518A (child
+    # support), 609A (expungement). The suffix is part of the chapter's
+    # IDENTITY, not decoration -- chapter 518 is Marriage Dissolution and
+    # 518B is the Domestic Abuse Act, different bodies of law.
+    #
+    # Display uppercases it because that is how the legislature and the
+    # courts write it; the slug lowercases, like every other slug here,
+    # so URLs stay case-stable.
+    chapter = chapter.upper()
     if section:
         slug = f"minn.stat.{chapter}.{section}"
         display = f"Minn. Stat. § {chapter}.{section}"
@@ -148,7 +180,7 @@ def _build_slug_and_display(
 # structured route and can least be served by the text index.
 BARE_CITE_RE = re.compile(
     r'^\s*(?P<marker>§\s*|sec(?:tion)?\.?\s*)?'
-    r'(?P<body>\d{1,4}\.\d{1,4}[a-zA-Z]?'
+    r'(?P<body>\d{1,4}[A-Z]?\.\d{1,4}[a-zA-Z]?'
     r'(?:\s*,?\s*(?:subd\.|subdivision)\s*\d+[a-zA-Z]?)?)\s*$',
     re.IGNORECASE,
 )

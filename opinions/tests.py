@@ -314,3 +314,74 @@ class MinnesotaRuleExtractionTests(SimpleTestCase):
         self.assertEqual(rule_set_label("MN", "civ.p"), "Minn. R. Civ. P.")
         self.assertEqual(rule_set_label("MN", "nonsense.set"), "")
         self.assertEqual(rule_set_label("ZZ", "civ.p"), "")
+
+
+class LetteredChapterTests(SimpleTestCase):
+    """Minnesota chapters carry letter suffixes, and they are identities.
+
+    Chapter 518 is Marriage Dissolution; 518B is the Domestic Abuse Act.
+    Until 2026-09-20 the extractor stopped the chapter at the digits and
+    stored 518B.01 as `minn.stat.518` -- filing every Order for
+    Protection case under dissolution, and leaving the Domestic Abuse
+    Act with no page. A wrong answer, not a missing one.
+    """
+
+    def test_the_bug_itself(self):
+        self.assertEqual(slugs("Minn. Stat. § 518B.01, subd. 2"),
+                         {"minn.stat.518b.01.subd.2"})
+        (cite,) = extract("Minn. Stat. § 518B.01, subd. 2")
+        self.assertEqual(cite.chapter, "518B")
+        self.assertEqual(cite.section, "01")
+        self.assertEqual(cite.reference_display, "Minn. Stat. § 518B.01, subd. 2")
+
+    def test_every_affected_chapter_family(self):
+        # Measured as really present in the corpus; all core
+        # self-represented subject matter.
+        for text, want in [
+            ("Minn. Stat. § 260C.301, subd. 1(b)", "minn.stat.260c.301.subd.1"),
+            ("Minn. Stat. § 253B.18", "minn.stat.253b.18"),
+            ("Minn. Stat. § 169A.20", "minn.stat.169a.20"),
+            ("Minn. Stat. § 504B.285", "minn.stat.504b.285"),
+            ("Minn. Stat. § 518A.39", "minn.stat.518a.39"),
+            ("Minn. Stat. § 609A.02", "minn.stat.609a.02"),
+            ("Minn. Stat. § 245C.15", "minn.stat.245c.15"),
+        ]:
+            with self.subTest(text=text):
+                self.assertEqual(slugs(text), {want})
+
+    def test_lettered_chapter_in_the_long_form_too(self):
+        # The long form is ~11% of cites; it had the identical defect.
+        self.assertEqual(
+            slugs("Minnesota Statutes section 518B.01, subdivision 2"),
+            {"minn.stat.518b.01.subd.2"})
+        self.assertEqual(
+            slugs("Minnesota Statutes section 518B.01, subdivision 2 and later "
+                  "Minn. Stat. § 518B.01, subd. 2"),
+            {"minn.stat.518b.01.subd.2"})
+
+    def test_chapter_only_lettered(self):
+        self.assertEqual(slugs("Minn. Stat. ch. 518B"), {"minn.stat.518b"})
+        self.assertEqual(slugs("Minn. Stat. chapter 260C"), {"minn.stat.260c"})
+
+    def test_slug_is_lowercase_display_is_uppercase(self):
+        # URLs stay case-stable; the display matches how the legislature
+        # and the courts write it.
+        (cite,) = extract("Minn. Stat. § 518b.01")
+        self.assertEqual(cite.reference_slug, "minn.stat.518b.01")
+        self.assertEqual(cite.reference_display, "Minn. Stat. § 518B.01")
+
+    def test_unlettered_chapters_are_UNCHANGED(self):
+        # The regression that matters: this fix must not disturb the
+        # 4,987 sections already extracted correctly.
+        self.assertEqual(slugs("Minn. Stat. § 609.185"), {"minn.stat.609.185"})
+        self.assertEqual(slugs("Minn. Stat. § 609.185, subd. 1"),
+                         {"minn.stat.609.185.subd.1"})
+        self.assertEqual(slugs("Minn. Stat. § 645.16"), {"minn.stat.645.16"})
+        self.assertEqual(slugs("Minn. Stat. ch. 169"), {"minn.stat.ch.169"})
+        self.assertEqual(slugs("Minn. Stat. § 563.01 , subd. 3(a) (2018)"),
+                         {"minn.stat.563.01.subd.3"})
+
+    def test_a_lettered_chapter_routes_from_a_bare_query(self):
+        self.assertEqual(bare_slug_candidates("518B.01"), ["minn.stat.518b.01"])
+        self.assertEqual(bare_slug_candidates("518B.01, subd. 2"),
+                         ["minn.stat.518b.01.subd.2", "minn.stat.518b.01"])
