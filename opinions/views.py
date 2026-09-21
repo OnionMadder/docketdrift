@@ -2018,7 +2018,7 @@ def rule_detail(request, reference):
         "total_count": paginator.count,
         "mention_count": mention_count,
         "boilerplate_count": boilerplate_count,
-        "active_nav": "statutes",
+        "active_nav": "rules",
     })
 
 
