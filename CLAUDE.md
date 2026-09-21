@@ -178,6 +178,108 @@ generalizes to CA and TX.
 coverage trough visible (MN COA 114 opinions in 2013 vs 1,257 in 2015 —
 CL coverage, not caseload). See the starred TODO section.
 
+## 2026-09-20 — the RuleCitation layer: 0 → 54,361 cites
+
+The gap the 2026-09-17 bug report actually exposed. `109.02` is
+**Minn. R. Civ. App. P. 109.02**, not a statute, and we extracted no
+rules at all. Now: **54,361 rule citations across 18,229 MN opinions**
+(48,431 substantive), in its own table exactly as decided — a court
+rule is not a statute, and filing one under a page labeled "statute"
+mislabels the source of law.
+
+Migration 0044 applied in **1.7s**. That is the separate-table decision
+paying off: an indexed ADD COLUMN on the 2.75GB opinions table was the
+9-hour unkillable COPY.
+
+**THE LEADERBOARD IS THE CORRECTNESS CHECK**, same as *Thiele v. Stich*
+surfacing as MN's most-cited case. Top substantive rules: Evid. 404(b)
+1,366 / Civ. P. 52.01 1,351 / Civ. P. 60.02 1,247 / Civ. P. 12.02(e)
+1,070 / Evid. 801(c) 1,001 / Civ. P. 56.03 992 / Evid. 403 859 /
+Crim. P. 27.03 subd. 9 720. Other-acts evidence, clear error, relief
+from judgment, failure to state a claim, hearsay, summary judgment,
+prejudice balancing, sentence correction. Every one is a workhorse an
+appellate practitioner would name from memory.
+
+### * FOUR THINGS MEASUREMENT CHANGED, NONE OF THEM IN THE PLAN
+
+The vocabulary list in the 2026-09-17 block came from 400 opinions.
+Re-measured on 1,200 with a DELIBERATELY LOOSE capture — anchor, then
+print the raw following characters and rank what actually appears,
+because a regex written first only measures its author:
+
+1. **`Minn. R. Evid.` is a TOP-4 rule set (557 cites) and was missing
+   from that list entirely.** It is 8,944 cites corpus-wide, third
+   overall. The planned vocabulary would have shipped a silent hole.
+2. **The spelled-out long form is ~11% of cites** ("Minnesota Rules of
+   Civil Procedure 12.02"). The statute extractor excluded ITS long
+   form on an unmeasured "rare in appellate prose" assumption and
+   capped that graph for months. Second instance of one trap.
+3. **`Minn. R. Civ. App. P. 136.01, subd. 1(c)` is 31% of all rule
+   cites in recent opinions and is NOT a citation** — it is the
+   nonprecedential disclaimer at the top of every unpublished opinion.
+   85% of its occurrences sit in the first 400 characters and 99% of
+   the opinions carrying it are unpublished, while every other rule
+   cite spreads FLAT through the document. **Without the flag it would
+   be the most-cited rule in Minnesota at 6,211 — 4.5x the real #1.**
+   That is the "accordingly, we" trap from holdings in a new costume:
+   frequency is not significance. Flagged per-occurrence on text
+   evidence and KEPT, never blanket-excluded by number — 123
+   occurrences are real cites.
+4. **Bare `Minn. R. NNNN.NNNN` is the MINNESOTA ADMINISTRATIVE RULES**,
+   a different body of law sharing only the abbreviation: 3310.2921
+   (unemployment hearings), 8210.0600 (absentee ballots), 4410
+   (environmental review), 7001 (MPCA permits). Numbered NNNN.NNNN,
+   subdivided with `subp.` not `subd.` 3,467 cites, typed as
+   `rule_set="admin"` so an agency rule never renders as a rule of
+   civil procedure.
+
+### Bare-number routing: MEASURED, and it barely collides
+
+`109.02` → **4 rule cites, 0 statute cites.** `563.01` → **0 rule, 79
+statute**, so the existing statute routing stays correct untouched.
+Corpus-wide: 1,782 distinct rule numbers vs 4,987 statute sections,
+**only 83 collide (4.7%)**, and the collisions are wildly lopsided
+(52.01 = 1,358 rule vs 2 statute; 13.02 = 10 rule vs 215 statute).
+
+**Do NOT resolve a collision by picking the bigger number.** Handing a
+researcher the wrong body of law is the ORIGINAL complaint restated. 83
+cases is few enough to afford a disambiguation. Note too that a rule
+NUMBER alone does not identify a rule — the same number exists across
+several rule sets, which is why `rule_set` is part of the slug.
+
+### Three defects I introduced, two of them re-creations
+
+- **The cursor advanced before the write committed** — the
+  `embed_opinions` bug of 2026-09-08, rebuilt from scratch in a new
+  command. A dropped connection left the cursor past rows that were
+  never written, so the resume would skip them SILENTLY. The cursor now
+  moves only after the window commits.
+- **No retry-with-reconnect**, on a shared DB where errno 2013
+  mid-chunk is normal and every other batch command carries one. It
+  killed the first sweep at `--min-id 5726`.
+- **The range guard was a second mechanism** for something
+  `statutes_mn.py` had already solved: courts write the PLURAL
+  (`subds. 2-3`) exactly when citing a range, so matching only the
+  singular means a range can never bind a subdivision. I wrote a
+  post-hoc guard instead of reading the file.
+
+Two more found by READING REAL OUTPUT, never by a test: `Minn. R.
+3310.2912 (2025)` was storing **2025 as a subsection** (it is the
+edition year, as statutes carry `(2024)`), and `103(a)(2)` was being
+truncated to `103(a)` — a cite to a broader provision than the court
+relied on, which is a misstated citation.
+
+**And the first measurement was wrong in the documented way:** walking
+pk ascending sampled the OLDEST CourtListener bulk rows and reported 9%
+of opinions citing a rule. Re-scoped to the release_date index: **96%**.
+A leading sample is not a random sample, on this corpus, again.
+
+### Still open on rules
+
+`/rule/<reference>/` page, search routing (incl. the 83 collisions), an
+MCP tool, sitemap. NH/AZ/LA are UNMEASURED — expect the same blind
+spot, and measure each vocabulary before writing its regex.
+
 ## 2026-09-19 — reporter cites 21.5% → 87.5%; the citation graph was linking to 404s
 
 ### ★ CROSS-STATE CITATION LINKS WERE ALL 404s

@@ -588,6 +588,35 @@ MN-specific bug.
 
 ---
 
+## ★ RULE CITATIONS — LAYER BUILT 2026-09-20 (0 → 54,361); UI REMAINS
+
+Model + migration 0044 + `parsing/rules_mn.py` + `extract_rules` + 27
+tests are DONE and swept for MN. **54,361 cites / 18,229 opinions.**
+Detail in the 2026-09-20 CLAUDE.md block.
+
+Remaining, in order:
+- [ ] **`/rule/<reference>/` page.** Mirror `statute_detail` including
+      its hard-won bits: subdivision roll-up (the trailing `.` is
+      load-bearing), ONE folded fetch rather than three range scans,
+      and a lead that never reconstructs a citation. MUST exclude
+      `is_boilerplate` rows from counts, or 136.01 reads as the
+      most-cited rule in Minnesota at 4.5x the real #1.
+- [ ] **Bare-number search routing.** `109.02` to the rule page (4 rule
+      cites, 0 statute). Only 83 of 1,782 rule numbers collide with a
+      statute section; for those DISAMBIGUATE rather than pick the
+      bigger number — the wrong body of law is the original bug report
+      restated.
+- [ ] **MCP `get_rule` tool**, and have `search_opinions` point at it
+      the way it already points at `get_statute`. A false match is
+      worse for an agent than for a human.
+- [ ] **`/sitemap-rules.xml`**, filtering on the `minn.r.` slug prefix
+      (`parsing/rules.py:SLUG_PREFIXES`) — never a join to the 2.75GB
+      opinions table, which is what made the statutes sitemap 500.
+- [ ] **NH / AZ / LA rule vocabularies are UNMEASURED.** Measure before
+      writing a regex; the MN plan was missing a top-4 rule set.
+
+---
+
 ## ★ NEXT — court RULE citations (new 2026-09-17, sized and decided)
 
 **384 of 400 sampled MN opinions cite a `Minn. R.` rule — 929 cites — and we
