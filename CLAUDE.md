@@ -4,7 +4,7 @@ Survival kit for any Claude session working on this repo. Read once,
 re-read whenever a recurring gotcha bites. The goal of this document is
 to make the next session productive within the first 5 minutes.
 
-## Working tree state 2026-09-19 — READ THIS FIRST
+## Working tree state 2026-09-20 — READ THIS FIRST
 
 The tree is **clean**; main == origin/main. Backlog lives in `docs/TODO.md`
 (the authoritative to-do; keep it current). **`docs/TODO.md` outranks the
@@ -12,43 +12,57 @@ The tree is **clean**; main == origin/main. Backlog lives in `docs/TODO.md`
 2026-06-12 snapshot kept for its rationale, and several of its "open" items
 have shipped. Trust TODO.md on priority; trust this file on gotchas.
 
-**Current state (2026-09-19):** FOUR states live (MN/NH/AZ/LA),
-**480,101 opinions**, and **87.5% of them now carry a reporter cite** — up
-from 21.5% earlier the same day; Louisiana alone went 0% → 90%.
-The Louisiana lasc.org Supreme backfill is DONE (~10.3K opinions; 2021 and
-2022 went from ZERO to ~1,800 each) and every LA derived layer is closed.
-The MCP server is live at `/mcp`, documented at `/connect/`, and shipped as
-a Claude PLUGIN (the Connectors Directory needs a Team org, which Onion does
-not have; plugin-via-Console is the individual path). A public
-removal/de-indexing policy lives at `/takedown/`, and removal requests are
-now flagged internally (`RemovalRequest`, migration 0042 — admin-only, and
-that property is enforced by a test, not a comment).
+**Current state (2026-09-20):** FOUR states live (MN/NH/AZ/LA),
+**480,101 opinions**, **87.5% carrying a reporter cite** (21.5% two days
+ago; Louisiana alone went 0% → 90%). Derived layers: **636,360 statute
+citations** (MN 186,556) and a NEW **54,361 court-rule citations**
+(48,431 substantive). The Louisiana lasc.org Supreme backfill is DONE and
+every LA derived layer is closed. The MCP server is live at `/mcp`,
+documented at `/connect/`, and shipped as a Claude PLUGIN (the Connectors
+Directory needs a Team org, which Onion does not have; plugin-via-Console
+is the individual path). `/takedown/` states the removal policy and
+requests are flagged internally (`RemovalRequest`, migration 0042 —
+admin-only, enforced by a test rather than a comment).
 
-**The last four sessions each found a LIVE defect — three of the four by
-hand, while looking at something else.** Read these blocks before starting
-anything:
+**SIX consecutive sessions have each found a LIVE defect, and only one was
+found by a monitor.** Read these blocks before starting anything:
 
+- **2026-09-20b** — **every LETTERED Minnesota chapter was filed under the
+  wrong chapter.** `518B.01` (Domestic Abuse Act, every OFP) stored as
+  `minn.stat.518` (Marriage Dissolution). Chapter 253's page was **99.5%
+  wrong**; 216 and 299 likewise. 0 → 52,742 lettered cites. It surfaced the
+  statute twin of the rule boilerplate — see that block.
+- **2026-09-20** — the **`RuleCitation` layer shipped**, 0 → 54,361. Four
+  things measurement changed that were not in the plan, including a
+  top-4 rule set missing from the vocabulary entirely.
 - **2026-09-19** — `/sitemap-statutes.xml` had been 500ing on MN and LA for
   weeks, and **every cross-state citation link was a 404** (3,116 edges,
-  ~6,200 rendered link instances, on the citation graph that is the
-  product's whole differentiator). Both were found while chasing a
-  Louisiana indexing theory that was itself wrong twice over.
+  ~6,200 rendered instances, on the product's differentiator). Both found
+  while chasing a Louisiana indexing theory that was wrong twice over.
 - **2026-09-18** — **the Arizona Court of Appeals mailed us official judge
-  headshots** because Onion asked for them. Three months of Akamai-blocked
-  scraping, closed by one email. Separately: MN went 0% → 84% of live AI
-  grounding, confirming the July discoverability fix worked.
+  headshots** because Onion asked. Three months of Akamai-blocked scraping,
+  closed by one email. MN went 0% → 84% of live AI grounding.
 - **2026-09-17** — an outside bug report ("fix your tokenizer") was right
   that search was broken and wrong about both the cause and the cure.
-  Citations now ROUTE to the statute page instead of text-searching.
+  Citations now ROUTE instead of text-searching.
 - **2026-09-14** — a removal request turned into a 10,420-row caption fix,
   and the 5xx monitor caught `/opinions/` 500ing.
 
-**The decided next build is `RuleCitation`** (`docs/TODO.md`, and the
-2026-09-17 block for the measurement): 384 of 400 sampled MN opinions cite
-a `Minn. R.` court rule — 929 cites — and we extract **zero**. It gets its
-own table, never a `StatuteCitation` reuse; a court rule is not a statute
-and labeling it one is the same class of error as calling extraction
-"summarized".
+**The pattern across all six is one thing:** every defect was a WRONG
+ANSWER presenting as a missing one, and every one was found by measuring
+what we actually serve rather than by reasoning about the code. Two were
+found because a number was too small to be possible (NH's 71 edges,
+`minn.stat.518b.01` returning zero).
+
+**Next, in order** (`docs/TODO.md` is authoritative):
+1. **Statute boilerplate.** `Minn. Stat. § 480A.08, subd. 3` is now the
+   #1 MN statute at 7,436 cites and is the unpublished-opinion notice, not
+   a statute anyone argued. The rule layer already solves this; copy it.
+2. **Finish the rule surfaces** — bare-number routing (83 measured
+   collisions, disambiguate rather than guess), MCP `get_rule`,
+   `/sitemap-rules.xml`.
+3. **NH/AZ/LA rule vocabularies are UNMEASURED.** Measure before writing a
+   regex; the MN plan was missing a top-4 rule set.
 
 **MN 2020–2022 IS FIXED (2026-08-03): 0 → 3,102 opinions.** 2020=1,040,
 2021=1,092, 2022=970, read directly from the mn.gov State Law Library archive.
@@ -2948,7 +2962,7 @@ identity decoupled; semantic/keyword alerts refused-by-design, not stored).
 
 ## Where things stand right now
 
-(Numbers pulled live 2026-09-19. **Re-measure before quoting these
+(Numbers pulled live 2026-09-20. **Re-measure before quoting these
 anywhere public** — stale numbers on a public page are the exact class of
 problem the 2026-08-02 audit was cleaning up.)
 
@@ -2965,6 +2979,12 @@ problem the 2026-08-02 audit was cleaning up.)
 **Corpus-wide: 480,101 opinions; 87.5% carry a reporter cite** (up from
 21.5% on 2026-09-19). Citation graph 1.54M+ LA edges on top of 1,462,119
 across MN/AZ/NH; 5,188 non-default treatments.
+
+**Derived citation layers (2026-09-20):** statutes **636,360** rows
+(MN 186,556, including **52,742 lettered-chapter** cites that were filed
+under the WRONG chapter until this date); court rules **54,361** rows /
+18,229 MN opinions, of which 5,930 are flagged boilerplate and excluded
+from counts.
 
 **Parallel cites: 180,043 — MN 89,731 / AZ 56,790 / NH 33,522 / LA ZERO.**
 
