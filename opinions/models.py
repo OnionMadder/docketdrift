@@ -903,6 +903,26 @@ class StatuteCitation(models.Model):
     long as the parser produces the same canonical form for the same
     citation -- which is why the slug is dot-separated rather than
     label-derived (`minn.stat.609.185` instead of `minn-stat-609-185`).
+
+    ``is_boilerplate`` marks an occurrence that is a procedural notice
+    rather than the court relying on the statute. Today that is exactly
+    one citation in one state: every unpublished Minnesota opinion opens
+    by reciting Minn. Stat. Sec. 480A.08, subd. 3, the statute that
+    restricts citing it. Counted plainly, that publication-status footer
+    was the MOST-CITED STATUTE IN MINNESOTA at 7,436 cites -- 3.2x the
+    statutory-construction canons at 645.16.
+
+    The row is KEPT and flagged, never discarded: 480A.08 also has
+    genuine citations, where a court relies on it for the proposition
+    that unpublished opinions are not precedential. The flag is set PER
+    OCCURRENCE on text evidence in front of the cite, so those keep
+    counting. Pages and tools exclude flagged rows from their counts and
+    DISCLOSE the excluded total rather than silently shrinking a number
+    a reader could check against a full-text search.
+
+    Same field, same reasoning and the same 260-character cue as
+    ``RuleCitation.is_boilerplate``, which solved this first for Minn.
+    R. Civ. App. P. 136.01, subd. 1(c).
     """
 
     opinion = models.ForeignKey(
@@ -944,6 +964,13 @@ class StatuteCitation(models.Model):
         help_text=(
             "Character offset in opinion.raw_text where this citation "
             "starts. Used to pull surrounding context for the statute page."
+        ),
+    )
+    is_boilerplate = models.BooleanField(
+        default=False,
+        help_text=(
+            "True when this occurrence is a procedural notice rather than "
+            "the court relying on the statute. Kept, not dropped."
         ),
     )
     created_at = models.DateTimeField(auto_now_add=True)

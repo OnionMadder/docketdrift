@@ -1,4 +1,4 @@
-"""Minnesota statute citation extractor.
+r"""Minnesota statute citation extractor.
 
 Recognizes the common Bluebook + MN-house-style citation patterns:
 
@@ -131,6 +131,59 @@ CHAPTER_CITATION = re.compile(
 )
 
 
+# Every unpublished Minnesota opinion opens by reciting the statute that
+# restricts citing it: "This opinion will be unpublished and may not be
+# cited except as provided by Minn. Stat. Sec. 480A.08, subd. 3 (2024)."
+#
+# Counted plainly that made 480A.08 the MOST-CITED STATUTE IN MINNESOTA
+# at 7,436 cites -- 3.2x section 645.16, the statutory-construction
+# canons, and it is not a statute anyone argued. It is the same trap the
+# rule layer already handles for Minn. R. Civ. App. P. 136.01, subd.
+# 1(c), and the same trap as "accordingly, we" in the holdings
+# extractor: frequency is not significance.
+#
+# Measured on prod 2026-09-21, both directions:
+#
+#   * 96.6% of its 7,436 occurrences sit in the first 400 characters.
+#     Ranking every MN slug that way, the next entry is 73.8% and the
+#     one after that 36.2% -- a clean gap, so this is one statute and
+#     not a class. AZ, NH and LA top out at 55.8% and have no
+#     equivalent; the field stays False there on evidence.
+#   * On a 400-occurrence random sample this cue fires on 95.5%, and
+#     NONE of the 18 misses sit in the head. Every miss read by hand is
+#     a GENUINE cite: the court citing 480A.08 for the proposition that
+#     unpublished opinions are not precedential, deep in the discussion.
+#
+# That is why the cue is narrow. Widening it to "unpublished" or "not
+# precedential" would flag all 18 of those real citations, which is the
+# 136.01 lesson restated -- flag PER OCCURRENCE on text evidence, keep
+# the row, and never blanket-exclude by number.
+_BOILERPLATE_CUE = re.compile(
+    r"nonprecedential|not\s+be\s+cited|will\s+be\s+unpublished", re.I)
+
+# (chapter, section, subdivision) of the citation-restriction statute.
+_BOILERPLATE_CITE = ("480A", "08", "3")
+
+# The disclaimer sentence runs ahead of the cite, so the cue lives
+# behind it. 260 chars is the rule layer's window, kept identical
+# because the sentence is the same length in both places.
+_BOILERPLATE_WINDOW = 260
+
+
+def _is_boilerplate(text: str, start: int, chapter: str, section: str,
+                    subdivision: str) -> bool:
+    """True when this occurrence is the nonprecedential-opinion notice.
+
+    Gated on the specific statute AND on text evidence in front of it,
+    never on the number alone -- 480A.08 has genuine citations and they
+    must keep counting.
+    """
+    if (chapter.upper(), section, subdivision) != _BOILERPLATE_CITE:
+        return False
+    window = text[max(0, start - _BOILERPLATE_WINDOW):start]
+    return bool(_BOILERPLATE_CUE.search(window))
+
+
 def _build_slug_and_display(
     chapter: str,
     section: str,
@@ -253,6 +306,8 @@ def extract(text: str) -> list[ExtractedStatute]:
                 reference_slug=slug,
                 reference_display=display,
                 text_offset=match.start(),
+                is_boilerplate=_is_boilerplate(
+                    text, match.start(), chapter, section, subdivision),
             ))
 
     # Pass 2: chapter-only citations ("Minn. Stat. ch. 169").

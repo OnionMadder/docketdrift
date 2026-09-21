@@ -35,6 +35,24 @@ class ExtractedStatute:
     (which can have an ``-X`` suffix like 159-B) maps onto ``chapter``
     too. Storage stays uniform; the per-state ``reference_display``
     string carries the canonical Bluebook form for the public page.
+
+    ``is_boilerplate`` marks an occurrence that is a procedural NOTICE
+    rather than the court relying on the statute. It defaults to False
+    and stays False for every state but Minnesota, which is a measured
+    finding and not an omission: ranking each state's slugs by what
+    fraction of their occurrences sit in the first 400 characters (the
+    shape a document-header notice has, independent of any state's
+    wording) puts MN's 480A.08 at **96.6%** against a next-highest MN
+    entry of 73.8%, while AZ, NH and LA top out at 55.8% -- and those
+    are offense and post-conviction statutes named in the opening
+    sentence, which is a court applying a statute.
+
+    Do NOT reach for this field to quiet a statute that merely recurs.
+    A jurisdictional recitation ("we have jurisdiction pursuant to
+    A.R.S. Sec. 12-2101(A)") is the court invoking a statute and stays
+    counted; deciding it "doesn't really count" would be an editorial
+    read of the record, the same line the historic-disposition rule
+    draws when it transcribes rather than maps.
     """
 
     chapter: str
@@ -43,6 +61,7 @@ class ExtractedStatute:
     reference_slug: str
     reference_display: str
     text_offset: int
+    is_boilerplate: bool = False
 
 
 # Map state code -> module path. Modules are imported lazily on first

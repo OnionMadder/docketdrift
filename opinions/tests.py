@@ -391,3 +391,90 @@ class LetteredChapterTests(SimpleTestCase):
         self.assertEqual(bare_slug_candidates("518B.01"), ["minn.stat.518b.01"])
         self.assertEqual(bare_slug_candidates("518B.01, subd. 2"),
                          ["minn.stat.518b.01.subd.2", "minn.stat.518b.01"])
+
+
+class StatuteBoilerplateTests(SimpleTestCase):
+    """The nonprecedential notice is flagged per occurrence, never by number.
+
+    Every unpublished Minnesota opinion opens by reciting Minn. Stat.
+    480A.08, subd. 3 -- the statute restricting citation of it. Counted
+    plainly that was 7,436 occurrences and made a publication-status
+    footer the most-cited statute in Minnesota, 3.2x section 645.16.
+
+    Measured on prod 2026-09-21: 96.6% of its occurrences sit in the
+    first 400 characters (next MN statute: 73.8%), the cue fires on
+    95.5% of a 400-occurrence random sample, and NONE of the 18 misses
+    sit in the head -- every one read by hand was a court genuinely
+    citing the statute. Those 18 are what these tests protect.
+    """
+
+    def one(self, text):
+        found = [c for c in extract(text)
+                 if c.reference_slug.startswith("minn.stat.480a.08")]
+        self.assertEqual(len(found), 1, f"expected one 480A.08 cite in {text!r}")
+        return found[0]
+
+    def test_the_disclaimer_is_flagged(self):
+        # The real sentence, as it appears at the top of the document.
+        disclaimer = ("This opinion will be unpublished and may not be cited "
+                      "except as provided by Minn. Stat. § 480A.08, subd. 3 (2024).")
+        self.assertTrue(self.one(disclaimer).is_boilerplate)
+
+    def test_the_nonprecedential_spelling_is_flagged(self):
+        disclaimer = ("This opinion is nonprecedential except as provided by "
+                      "Minn. Stat. § 480A.08, subd. 3 (2022).")
+        self.assertTrue(self.one(disclaimer).is_boilerplate)
+
+    def test_a_GENUINE_cite_to_the_same_statute_is_NOT_flagged(self):
+        # Verbatim shape of the real misses: the court relying on
+        # 480A.08 for the proposition that unpublished opinions carry no
+        # precedential weight. 18 of 400 sampled occurrences look like
+        # this, and excluding by statute number would delete every one.
+        body = ("Appellant relies on two unpublished decisions of this court. "
+                "Unpublished opinions of this court are not precedential. "
+                "Minn. Stat. § 480A.08, subd. 3 (2020).")
+        self.assertFalse(self.one(body).is_boilerplate)
+
+    def test_the_cue_must_stay_NARROW(self):
+        # The trap this test exists to prevent: widening the cue to
+        # "unpublished" or "not precedential" would flag the genuine
+        # citations above. Neither phrase may fire on its own.
+        for phrase in ("Unpublished opinions of this court are not precedential.",
+                       "The parties cited several unpublished decisions."):
+            text = phrase + " Minn. Stat. § 480A.08, subd. 3 (2019)."
+            self.assertFalse(
+                self.one(text).is_boilerplate,
+                f"cue wrongly fired after {phrase!r}")
+
+    def test_the_flag_is_scoped_to_ONE_statute(self):
+        # A disclaimer-shaped sentence must not bleed onto a neighbouring
+        # statute. Only 480A.08, subd. 3 is the citation-restriction
+        # statute; 480A.08 bare and 480A.06 are different provisions.
+        text = ("This opinion will be unpublished and may not be cited except "
+                "as provided by Minn. Stat. § 480A.06, subd. 3 (2024).")
+        (cite,) = [c for c in extract(text)
+                   if c.reference_slug.startswith("minn.stat.480a.06")]
+        self.assertFalse(cite.is_boilerplate)
+
+    def test_ordinary_statutes_are_never_flagged(self):
+        # The default must hold for the other 636K rows, including when
+        # the opinion's own header disclaimer sits right beside them.
+        text = ("This opinion will be unpublished and may not be cited except "
+                "as provided by Minn. Stat. § 480A.08, subd. 3 (2024). "
+                "Appellant was convicted under Minn. Stat. § 609.185.")
+        by_slug = {c.reference_slug: c for c in extract(text)}
+        self.assertTrue(by_slug["minn.stat.480a.08.subd.3"].is_boilerplate)
+        self.assertFalse(by_slug["minn.stat.609.185"].is_boilerplate)
+
+    def test_other_states_carry_the_field_as_False(self):
+        # AZ/NH/LA have no equivalent notice -- measured, not assumed:
+        # their most head-concentrated statute is 55.8% against MN's
+        # 96.6%, and those are offense statutes named in the opening
+        # sentence. The shared dataclass default must still be present.
+        for state, text in (("AZ", "A.R.S. § 13-1105"),
+                            ("NH", "RSA 632-A:2"),
+                            ("LA", "La. R.S. 14:30.1")):
+            cites = extract_statutes(state, text)
+            self.assertTrue(cites, f"no cite extracted for {state}")
+            for c in cites:
+                self.assertFalse(c.is_boilerplate)

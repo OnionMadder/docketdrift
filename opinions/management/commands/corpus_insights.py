@@ -122,8 +122,16 @@ class Command(BaseCommand):
         w("=" * 66)
         w("Hot statutes (most-cited across all states):")
         w("=" * 66)
+        # is_boilerplate=False, or this leaderboard's #1 entry is
+        # Minn. Stat. 480A.08, subd. 3 at 7,436 -- the notice restricting
+        # citation of a nonprecedential opinion, printed at the top of
+        # every unpublished MN opinion, and 3.2x the real #1. This report
+        # is described as publishable content, so a footer masquerading
+        # as the most-litigated statute in Minnesota is the kind of thing
+        # that would go out under our name.
         hot = list(
             StatuteCitation.objects.exclude(reference_display="")
+            .filter(is_boilerplate=False)
             .values("reference_display")
             .annotate(n=Count("id"))
             .order_by("-n")[:20]

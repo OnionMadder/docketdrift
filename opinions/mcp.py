@@ -459,8 +459,17 @@ def tool_get_statute(args: dict) -> dict:
 
     # Materialize distinct opinion ids first (index-only), then one
     # literal id__in fetch -- the statute_detail strategy.
+    #
+    # ``is_boilerplate=False`` for the same reason the roll-up above
+    # exists: the web page and this tool must agree about one statute.
+    # Minn. Stat. 480A.08, subd. 3 appears in 7,436 places because every
+    # unpublished MN opinion opens by reciting the statute restricting
+    # citation of it -- returning those as "opinions citing 480A.08"
+    # would hand an agent thousands of cases that never discuss it, and
+    # a false match is worse for a model than for a human because it
+    # looks like an ordinary result and gets cited.
     opinion_ids = list(
-        StatuteCitation.objects.filter(scope)
+        StatuteCitation.objects.filter(scope, is_boilerplate=False)
         .order_by().values_list("opinion_id", flat=True).distinct()[:500]
     )
     court_ids = set(_court_ids(state))
@@ -470,11 +479,27 @@ def tool_get_statute(args: dict) -> dict:
         .select_related("court", "court__state")
         .order_by("-release_date")[:limit]
     )
-    return {
+    result = {
         "statute": meta["reference_display"],
         "citing_opinion_count": len(opinion_ids),
         "opinions": [_opinion_brief(o) for o in rows],
     }
+
+    # Disclose the exclusion instead of quietly shrinking the number,
+    # mirroring the public page. An agent that cannot see WHY a count is
+    # smaller than a full-text search suggests has no way to reconcile
+    # the two, and silence there is the overstatement-by-omission this
+    # project keeps correcting.
+    boilerplate = StatuteCitation.objects.filter(
+        scope, is_boilerplate=True).count()
+    if boilerplate:
+        result["excluded_boilerplate_mentions"] = boilerplate
+        result["excluded_boilerplate_note"] = (
+            "Excludes appearances of this statute in the standard notice "
+            "restricting citation of a nonprecedential opinion, which are "
+            "not a court relying on the statute."
+        )
+    return result
 
 
 # --------------------------------------------------------------------------

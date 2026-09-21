@@ -1729,6 +1729,13 @@ def statute_detail(request, reference):
     - Skip Paginator's default ``COUNT(*)`` pass by hard-coding the
       total to ``len(opinion_ids)``. The COUNT(*) over a join was
       doubling the page-render budget; the list length is already known.
+
+    Boilerplate occurrences are split out of every count here and the
+    excluded total is DISCLOSED on the page. See
+    ``StatuteCitation.is_boilerplate``; the same split, with the same
+    disclosure, lives in ``rule_detail`` and the MCP ``get_statute``
+    tool, because two surfaces disagreeing about one statute is worse
+    than either number alone.
     """
     state = getattr(request, "state", None)
 
@@ -1807,13 +1814,33 @@ def statute_detail(request, reference):
         StatuteCitation.objects
         .filter(scope)
         .order_by()  # <-- clear default Meta.ordering, keep this query simple
-        .values_list("opinion_id", "reference_display", "reference_slug")
+        .values_list("opinion_id", "reference_display", "reference_slug",
+                     "is_boilerplate")
         [:ROW_CAP]
     )
 
+    # BOILERPLATE IS SPLIT OUT, NOT DROPPED.
+    #
+    # Every unpublished Minnesota opinion opens by reciting Minn. Stat.
+    # Sec. 480A.08, subd. 3 -- the statute restricting citation of it.
+    # Counted as citations those 7,436 occurrences made a
+    # publication-status footer the most-cited statute in Minnesota,
+    # 3.2x the statutory-construction canons.
+    #
+    # An opinion whose ONLY appearance of this statute is the notice is
+    # not an opinion citing it, so it must not enter opinion_ids either
+    # -- otherwise the page lists thousands of opinions that never
+    # discuss the statute. An opinion carrying both still counts, which
+    # is why the flag is read per row rather than per opinion.
     opinion_ids, _seen = [], set()
     subdivision_slugs, _seen_sub = [], set()
-    for _oid, _display, _slug in rows:
+    mention_count = 0
+    boilerplate_count = 0
+    for _oid, _display, _slug, _boiler in rows:
+        if _boiler:
+            boilerplate_count += 1
+            continue
+        mention_count += 1
         if _oid not in _seen:
             _seen.add(_oid)
             opinion_ids.append(_oid)
@@ -1823,15 +1850,16 @@ def statute_detail(request, reference):
     subdivision_slugs.sort()
     subdivision_slugs = subdivision_slugs[:60]
 
-    # len(rows) IS the exact mention count unless we hit the cap, in
-    # which case fall back to a real COUNT rather than render a number
-    # that is quietly a floor. (No statute is anywhere near this today --
-    # the largest is ~1.9K rows -- but a count shown as exact must be
-    # exact, same rule as the capped /opinions/ paginator.)
-    if len(rows) < ROW_CAP:
-        mention_count = len(rows)
-    else:
-        mention_count = StatuteCitation.objects.filter(scope).count()
+    # The tallies above ARE exact unless we hit the cap, in which case
+    # fall back to real COUNTs rather than render a number that is
+    # quietly a floor. (No statute is anywhere near this today -- the
+    # largest is 7,436 rows -- but a count shown as exact must be exact,
+    # same rule as the capped /opinions/ paginator.)
+    if len(rows) >= ROW_CAP:
+        mention_count = StatuteCitation.objects.filter(
+            scope, is_boilerplate=False).count()
+        boilerplate_count = StatuteCitation.objects.filter(
+            scope, is_boilerplate=True).count()
 
     # (4) Opinion list -- literal IN-list, MariaDB picks the PK index.
     # ``.defer("raw_text", "html_content")`` keeps the two giant TEXT
@@ -1867,6 +1895,7 @@ def statute_detail(request, reference):
         "page_obj": page_obj,
         "total_count": paginator.count,
         "mention_count": mention_count,
+        "boilerplate_count": boilerplate_count,
         "active_nav": "statutes",
     })
 

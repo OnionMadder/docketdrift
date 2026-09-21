@@ -94,6 +94,31 @@
   </p>
 
   {% comment %}
+    DISCLOSE the boilerplate rather than silently dropping it.
+
+    Every unpublished Minnesota opinion opens by reciting Minn. Stat.
+    480A.08, subd. 3 -- the statute that restricts citing it. Counted
+    plainly that was 7,436 occurrences, making a publication-status
+    footer the most-cited statute in Minnesota at 3.2x the
+    statutory-construction canons.
+
+    Excluding it silently would be the other half of the same problem:
+    a reader comparing our number against a full-text search would find
+    a gap we never explained. Same posture as the empty search page
+    saying "we didn't search for it" instead of "no results", and the
+    same wording as the rule page, which solved this first for
+    Minn. R. Civ. App. P. 136.01.
+  {% endcomment %}
+  {% if boilerplate_count %}
+    <p class="subtle-lead">
+      A further <strong>{{ boilerplate_count }}</strong> appearance{{ boilerplate_count|pluralize }}
+      of this statute {{ boilerplate_count|pluralize:"is,are" }} the standard notice restricting
+      citation of a nonprecedential opinion, not a court relying on the statute. Those are
+      excluded from the counts above.
+    </p>
+  {% endif %}
+
+  {% comment %}
     Say WHICH subdivisions are folded in. This page used to show only the
     opinions that cited the section bare -- 17 of 35 for the IFP statute --
     with nothing on the page to suggest anything was missing. Rolling them
@@ -183,7 +208,17 @@
   </div>
 {% else %}
   <div class="glossy-frame">
-    <p class="glitch-line">No opinions cite this statute{% if request.state %} in {{ request.state.name }}{% endif %} yet.</p>
+    {% comment %}
+      A statute whose every appearance is the nonprecedential notice is
+      a real state and needs saying plainly -- "no opinions cite this
+      statute" would read as a coverage failure when it is an accurate
+      finding about how the statute is used.
+    {% endcomment %}
+    {% if boilerplate_count %}
+      <p class="glitch-line">No court has relied on this statute{% if request.state %} in {{ request.state.name }}{% endif %} in our corpus. Its {{ boilerplate_count }} appearance{{ boilerplate_count|pluralize }} {{ boilerplate_count|pluralize:"is,are" }} the standard notice restricting citation of a nonprecedential opinion.</p>
+    {% else %}
+      <p class="glitch-line">No opinions cite this statute{% if request.state %} in {{ request.state.name }}{% endif %} yet.</p>
+    {% endif %}
   </div>
 {% endif %}
 {% endblock %}

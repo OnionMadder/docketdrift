@@ -282,6 +282,12 @@ class Command(BaseCommand):
                             section=e.section,
                             subdivision=e.subdivision,
                             text_offset=e.text_offset,
+                            # getattr, not e.is_boilerplate: the field has
+                            # a default on the shared dataclass, but an
+                            # out-of-tree extractor returning its own
+                            # record shape should degrade to "not
+                            # boilerplate" rather than crash the sweep.
+                            is_boilerplate=getattr(e, "is_boilerplate", False),
                         ))
                     if len(pending) >= BULK_INSERT_CHUNK:
                         _flush_pending()
