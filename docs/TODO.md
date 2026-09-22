@@ -562,6 +562,18 @@ MN-specific bug.
   resolution went **0% → 93%**, and NH's citation graph went 71 → 75,051
   edges. Same shape both times — a number that reads as missing data
   pointing at a loader two layers away.
+- [ ] **AZ Division One roster — confirm the bench with the court.**
+  Found 2026-09-21 while writing the thank-you note for the portraits.
+  **Andrew W. Gould was seated as ACTIVE though he left the bench
+  2021-04-01** — fixed, Division One now seats 18 — but **David B.
+  Gass, Paul J. McMurdie and Henry S. Stevens sit at `UNKNOWN` while
+  voting in 2026**, and McMurdie has no portrait. Deliberately NOT
+  inferred from press releases: Tracy Randall (HR Manager, Division
+  One) offered to review how the judges are presented, so the email
+  asks her to confirm the list. Detector worth reusing: **a seated
+  judge should have voted recently** — exactly one ACTIVE row was
+  stale against ~2 months for everyone else. `audit_judges` has no
+  such check; add it.
 - [ ] **AZ Division Two judge portraits — two short.** Christopher J. O'Neil
   and Michael F. Kelly, at `appeals2.az.gov` (a different office from Div
   One). **Use the method that actually worked**: Division One's HR office

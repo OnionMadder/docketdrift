@@ -653,11 +653,37 @@ months of blocked scraping, closed by one email.
 
 Result: three judges had NO portrait (Michael J. Brown, Daniel J. Kiley,
 James B. Morse Jr.), four had scrapes now replaced by the court's own
-(Paton, Furuya, Catlett, Gaona). **Division One is 19 of 19** — and 19
-is also the court's own count of its sitting bench, so our roster agrees
-with theirs. Division TWO is two photos short (Christopher J. O'Neil,
-Michael F. Kelly) at `appeals2.az.gov`, a different office; the same
-approach should close it.
+(Paton, Furuya, Catlett, Gaona). Division TWO is two photos short
+(Christopher J. O'Neil, Michael F. Kelly) at `appeals2.az.gov`, a
+different office; the same approach should close it.
+
+> **CORRECTION 2026-09-21. This block claimed "Division One is 19 of
+> 19 — and 19 is also the court's own count of its sitting bench, so
+> our roster agrees with theirs." THAT WAS FALSE, and it was two
+> errors CANCELLING.** We showed 19 because **Andrew W. Gould was
+> marked ACTIVE** — he left Division One in 2016, was elevated to the
+> Supreme Court, and retired from the bench 2021-04-01 — while
+> **David B. Gass and Paul J. McMurdie sat at `UNKNOWN`** despite
+> voting in 2026. Matching the court's headline number is NOT the same
+> as matching the court's bench, and a count that agrees for the wrong
+> reasons is worse than one that visibly disagrees.
+>
+> Found by the cheap shape test, not by reading the roster: **a seated
+> judge should have voted recently.** Exactly one ACTIVE row was stale
+> (Gould, last vote 2021-03-18) while every other seated judge had
+> voted within ~2 months. Gould is now RETIRED and Division One seats
+> **18**; his page and his 604 votes are kept, because those are real
+> law. His `bio_url` pointed at fedsoc.org and the judge card renders
+> that as "Official bio", so we were calling a Federalist Society page
+> a judge's official biography — cleared, same overstatement class as
+> the eyecite claim and the photo credit.
+>
+> **STILL OPEN:** Gass / McMurdie / Henry S. Stevens are `UNKNOWN` with
+> 2026 votes, and McMurdie has no portrait. Left for the court to
+> confirm rather than inferred from press releases — the HR office
+> volunteered to review the roster, and an authoritative yes/no beats
+> our reconstruction. `audit_judges` does not currently flag
+> "seated but not voting lately"; that check is worth adding.
 
 **They sent print masters** — 2400-3363px, 3.8-7.0MB each, 36.6MB total.
 Display is at most ~300px (`.cast-thumb` in a `minmax(180px,1fr)` grid;
