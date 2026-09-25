@@ -2660,6 +2660,29 @@ Allow: /
 User-agent: CCBot
 Allow: /
 
+# Apple. Named explicitly as of 2026-09-24 because it had become our
+# single largest source of traffic while being the ONLY major search
+# crawler not on this list -- so it was falling through to the catch-all
+# Crawl-delay below, which is not what we want from it.
+#
+# Measured: Applebot went from ~1-2K requests/day to 159,937 on 22 Sep
+# and 162,747 on 23 Sep -- ~70% of all traffic, 62,421 distinct opinion
+# pages in one day. The site did not notice (5xx held at 0.02%) because
+# `applebot` is in INDEXER_CRAWLER_TOKENS and skips the cosine scan.
+#
+# Applebot (plain) feeds Siri, Spotlight and Safari search -- the same
+# discovery flywheel that took MN from 0% to 84% of live AI grounding.
+# Applebot-Extended is the SEPARATE token for training Apple's
+# generative models, and it is allowed for the same reason
+# Google-Extended and CCBot are: these are public-domain court opinions
+# and we want them redistributed. Declining here would be refusing by
+# omission what we offer by bulk download.
+User-agent: Applebot
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
+
 # Blocked: aggressive SEO crawlers that hammer per-page URLs without
 # providing search-discovery value to our users. We're not a commercial
 # SEO target; their crawl just saturates our single gunicorn worker
