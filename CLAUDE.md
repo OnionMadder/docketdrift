@@ -204,6 +204,49 @@ generalizes to CA and TX.
 coverage trough visible (MN COA 114 opinions in 2013 vs 1,257 in 2015 —
 CL coverage, not caseload). See the starred TODO section.
 
+## 2026-09-24 — Applebot went 80x and the site never noticed
+
+Applebot ran ~1-2K requests/day through 21 Sep, then **159,937 on 22 Sep
+and 162,747 on 23 Sep — about 70% of all traffic**, hitting **62,421
+distinct opinion pages in one day** against a 480K corpus. Tapering (33K
+on the 24th), so it reads as a full indexing pass.
+
+**Site-wide 5xx held at 0.02% straight through** (88 on the heaviest day
+vs 48-52 on a quiet one); Applebot itself took 46 500s out of 162,747.
+
+**The reason it was painless is `INDEXER_CRAWLER_TOKENS`.** `applebot`
+was already on that list, so it skipped the O(N) cosine scan. At 162K
+requests/day through ONE gunicorn worker that hole would have starved
+the site. **That list is load-bearing, not decoration** — when adding a
+crawler token, you are deciding whether a future 80x surge is survivable.
+
+**It is the SEARCH crawler, not the AI one.** The UA is plain
+`Applebot/0.1`; `Applebot-Extended` is Apple's separate
+generative-training token. Plain Applebot feeds Siri, Spotlight and
+Safari — the same discovery flywheel that took MN 0% → 84% of live AI
+grounding.
+
+Applebot was the ONLY major search crawler not named in robots.txt, so
+it fell through to `User-agent: *` and `Crawl-delay: 5` — a 17,280/day
+ceiling it exceeded ~9x. Most likely it honors the delay PER CRAWLER
+HOST and runs many in parallel: the top fifteen networks in the log were
+fifteen different Apple /24s. Both tokens are now explicitly `Allow: /`,
+Extended for the same reason Google-Extended and CCBot already are.
+
+**Method note:** the top-15-by-/24 view was ALL Apple, which made the
+non-bot traffic invisible until declared crawlers were filtered out.
+Filter the known bots first, then look. Also, the access log carries
+tracebacks on the same stream, so any field-2 aggregation must first
+require an access-line shape (`^IP net/NN [`) or the counts fill up with
+`pymysql/connections.py`.
+
+**awk `split(x, a, " ")` uses WHITESPACE MODE, not literal-space mode**,
+so leading spaces are stripped and `s[1]` is the first real token. I read
+`s[2]` for the status code and got byte counts instead, producing a
+completely fictional 5xx table (16,492 errors/day) that I nearly
+reported. Sanity-print one parsed line before trusting any log
+aggregation.
+
 ## 2026-09-21 — the statute boilerplate: MN's #1 statute was a footer
 
 `Minn. Stat. § 480A.08, subd. 3` was the **most-cited statute in
@@ -1202,6 +1245,23 @@ separate ways this session before diagnosis — greps returned July data,
 `tail` cut off mid-line, and a lifecycle grep reported the last worker
 boot as three weeks stale while the log was current to the second.
 Anything diagnosing an incident from that log was reading fiction.
+
+> **CORRECTION 2026-09-24: `du` IS NOT A SPARSENESS TEST ON THIS
+> FILESYSTEM, and `rotate_access_log.sh` prints it as if it were.** The
+> script's headline reads `apparent 0.47 GB / on disk 0.07 GB`, a 7x gap
+> that looks exactly like the hole described above. It was not. Measured
+> directly: apparent 506,542,002 bytes vs **non-NUL 506,544,026** (the
+> delta is the file growing between the two reads). **Zero NUL bytes.**
+> The gap is filesystem COMPRESSION — log lines share enormous common
+> prefixes, and during an Applebot surge the same 162K-times-repeated
+> user-agent string compresses to almost nothing.
+>
+> So that line will ALWAYS look alarming here and cannot distinguish a
+> real hole from good compression. The trustworthy check is the one the
+> script already runs AFTER rotating: **apparent bytes == NUL-stripped
+> bytes**. Use `tr -d ' ' < log | wc -c` against `wc -c < log` before
+> concluding anything is sparse. Rotating is still correct on SIZE
+> (~1GB apparent); just don't diagnose a bug from `du`.
 
 **NEVER TRUNCATE THAT FILE IN PLACE.** `run.sh` passes gunicorn
 `--access-logfile -`, so gunicorn writes to STDOUT and NFSN's daemon
