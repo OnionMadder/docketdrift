@@ -1,6 +1,6 @@
 {% extends "opinions/base.html" %}
 {% block title %}{{ state.name }} judges &middot; {{ heading }} &middot; DocketDrift{% endblock %}
-{% block description %}Currently-seated judges of the {{ state.name }} Supreme Court and Court of Appeals. {{ total_count }} judge{{ total_count|pluralize }} on the bench, with photos, appointment dates, and dossiers linking to their full voting records.{% endblock %}
+{% block description %}Currently-seated judges of {{ courts_phrase }}. {{ total_count }} judge{{ total_count|pluralize }} on the bench, with photos, appointment dates, and dossiers linking to their full voting records.{% endblock %}
 
 {% block og_title %}{{ state.name }} appellate judges &middot; Current roster{% endblock %}
 {% block og_description %}{{ total_count }} currently-seated {{ state.name }} appellate judges with dossiers, panel-vote graphs, and disposition lean.{% endblock %}
@@ -51,7 +51,7 @@
   <h1>{{ state.name }} Judges</h1>
   <p class="subtle-lead">
     {% if era == "current" %}
-      Currently-seated judges of the {{ state.name }} Supreme Court and Court of Appeals, sourced from the official judicial site. <strong>{{ total_count }}</strong> on the bench.
+      Currently-seated judges of {{ courts_phrase }}, sourced from the official judicial site. <strong>{{ total_count }}</strong> on the bench.
     {% elif era == "all" %}
       Every {{ state.name }} appellate judge on record &mdash; <strong>{{ total_count }}</strong> in all &mdash; placed by the years they sat on opinions.
     {% else %}
@@ -103,6 +103,37 @@
     {% endfor %}
   {% else %}
     <p class="glitch-line">No judges found for this period.</p>
+  {% endif %}
+
+  {% if serving %}
+    {% comment %}
+    Not members of the seated bench, but deciding cases: retired judges
+    serving by appointment and retired justices designated to sit. Derived
+    from the last six months of panel votes (views.current_judges).
+    {% endcomment %}
+    <div class="section-header">
+      <h2>Also hearing cases</h2>
+      <span class="section-count">{{ serving|length }} JUDGE{{ serving|length|pluralize:",S" }}</span>
+    </div>
+    <hr class="section-divider">
+    <p class="subtle-lead">
+      Not members of the seated bench, but sat on at least one panel in the last six months &mdash;
+      typically retired judges serving by appointment, or justices designated to sit when a member is recused.
+    </p>
+    <div class="cast-grid">
+      {% for judge in serving %}
+        <article class="entity-tile judicial">
+          {% if judge.photo_url %}
+            <img src="{{ judge.photo_url }}" alt="Portrait of {{ judge.full_name }}" class="cast-thumb" loading="lazy">
+          {% endif %}
+          <h3><a href="{% url 'opinions:judge_detail' slug=judge.slug %}">{{ judge.full_name }}</a></h3>
+          <p class="affiliation">{{ judge.tenure_label }}</p>
+          <div class="cast-links">
+            <a class="inspect-link" href="{% url 'opinions:judge_detail' slug=judge.slug %}">View dossier &rarr;</a>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
   {% endif %}
 </div>
 {% endblock %}

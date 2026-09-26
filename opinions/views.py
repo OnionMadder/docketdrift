@@ -1652,9 +1652,30 @@ def current_judges(request):
         else:  # most-recently-active first
             members.sort(key=lambda j: (-(j.last_vote_date.year if j.last_vote_date else 0), j.full_name))
 
+    # Judges who are NOT on the seated bench but sat on a panel recently:
+    # retired judges serving by appointment (MN's Court of Appeals uses
+    # several every month) and retired justices designated to sit when a
+    # member is recused (AZ). Leaving them off made the roster an incomplete
+    # answer to "who decides cases here", and AI answers cite this page.
+    # Derived from votes, so it needs no upkeep. Surname-only rows are
+    # excluded: they are byline fragments, not identified people.
+    serving = []
+    if era == "current":
+        cutoff = timezone.localdate() - timedelta(days=183)
+        serving = sorted(
+            (j for j in judges
+             if not j.is_currently_seated and j.last_vote_date
+             and j.last_vote_date >= cutoff and len(j.full_name.split()) >= 2),
+            key=lambda j: (-j.last_vote_date.toordinal(), j.full_name))
+        for j in serving:
+            j.tenure_label = "Last sat on a panel %s" % j.last_vote_date.strftime("%B %Y")
+
     return render(request, "opinions/current_judges.html", {
         "state": state,
         "judge_groups": groups,
+        "serving": serving,
+        "courts_phrase": _state_courts_phrase(
+            list(state.courts.values_list("id", flat=True))),
         "total_count": len(selected),
         "era": era,
         "decades": decades,
