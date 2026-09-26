@@ -277,4 +277,29 @@ def site_extras(request):
     return {
         "EXPLORE_TAGS": tags,
         "DISPOSITION_BUCKETS": DISPOSITION_BUCKETS,
+        "LIVE_STATES": _live_states(),
     }
+
+
+def _live_states():
+    """[(slug, name)] for every live state, for the footer's cross-state links.
+
+    Why the footer links every state: Google allots crawl per HOST, and over
+    three months it crawled mn. 87,525 times, az. 187 and nh. 654 -- because
+    nothing on the pages it crawls constantly pointed anywhere else (the
+    template linked only the apex). A link from every page is how crawl
+    demand flows from the trusted host to the neglected ones.
+
+    Cached an hour; a failure renders no links, never a broken page.
+    """
+    try:
+        states = cache.get("live_states_footer")
+        if states is None:
+            from opinions.models import State
+            states = list(State.objects.filter(is_live=True)
+                          .order_by("name").values_list("slug", "name"))
+            cache.set("live_states_footer", states, 3600)
+        return states
+    except Exception:
+        logger.warning("site_extras: live-states lookup failed", exc_info=True)
+        return []

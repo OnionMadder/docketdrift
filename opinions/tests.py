@@ -500,3 +500,20 @@ class IndexNowKeyViewTests(SimpleTestCase):
         for bad in ("", "short", "has space in it", "<script>alert(1)</script>"):
             with self.assertRaises(Http404):
                 self._get(bad)
+
+
+class OpinionAbsoluteUrlTests(SimpleTestCase):
+    """get_absolute_url feeds the MCP `url` field an agent will follow; a
+    raw space or comma from the docket must be percent-encoded."""
+
+    def test_docket_with_space_is_encoded(self):
+        from opinions.models import Court, Opinion, State
+        op = Opinion(case_number="No. 35908", court=Court(state=State(code="LA", slug="la")))
+        self.assertEqual(op.get_absolute_url(),
+                         "https://la.docketdrift.com/opinion/No.%2035908/")
+
+    def test_plain_docket_unchanged(self):
+        from opinions.models import Court, Opinion, State
+        op = Opinion(case_number="A24-1561", court=Court(state=State(code="MN", slug="mn")))
+        self.assertEqual(op.get_absolute_url(),
+                         "https://mn.docketdrift.com/opinion/A24-1561/")

@@ -612,11 +612,15 @@ class Opinion(models.Model):
         admin sits on the apex, the dossier lives on the per-state
         subdomain, and (court, case_number) uniqueness is per-court
         so the subdomain disambiguates.
+
+        Built with reverse(), NOT an f-string: dockets carry spaces and
+        commas ("No. 35908", "1 CA-CV 24-0308"), and a raw space in a URL
+        handed to an agent is the same bug as the old AZ sitemap. reverse()
+        percent-encodes exactly as the site's own links do.
         """
-        return (
-            f"https://{self.court.state.slug}.docketdrift.com"
-            f"/opinion/{self.case_number}/"
-        )
+        from django.urls import reverse
+        path = reverse("opinions:detail", kwargs={"case_number": self.case_number})
+        return f"https://{self.court.state.slug}.docketdrift.com{path}"
 
     @property
     def disposition_class(self) -> str:

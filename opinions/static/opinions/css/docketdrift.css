@@ -3701,6 +3701,40 @@ button.cta-primary {
   text-decoration-color: var(--neon-cyan);
 }
 
+/* Cross-state row: same quiet voice as the Support link, one line above it. */
+.site-footer__states {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.35rem 1rem;
+  margin-bottom: 0.9rem;
+  color: var(--muted, #948ca1);
+}
+
+.site-footer__label {
+  flex-basis: 100%;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.site-footer__state {
+  color: var(--muted, #948ca1);
+  text-decoration: none;
+  letter-spacing: 0.02em;
+  transition: color var(--transition);
+}
+
+a.site-footer__state:hover,
+a.site-footer__state:focus-visible {
+  color: var(--neon-cyan);
+}
+
+.site-footer__state[aria-current] {
+  color: var(--text, #e8e3f0);
+}
+
 /* /connect/ -- the MCP endpoint URL is the single thing a reader came for,
    so it gets the emphasis a bare <code> block would not. Uses the brand
    neon family, NOT the --dd-* outcome key: an endpoint carries no

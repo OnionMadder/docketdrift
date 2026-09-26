@@ -174,8 +174,25 @@ crawlers see structured data for every opinion + judge.
   on /support/ itself (Ko-fi widget + itemized costs). This footer
   is the discoverability path: every page has a quiet route to that
   page for a reader who wants to help.
+
+  The state row is the crawl path between subdomains. Google allots crawl
+  per host and had visited az. 187 times against mn. 87,525, because no
+  page it crawls linked anywhere but the apex. Absolute URLs, since each
+  state is its own host; the current state is named, not linked.
   {% endcomment %}
   <footer class="site-footer" role="contentinfo">
+    {% if LIVE_STATES %}
+    <nav class="site-footer__states" aria-label="Case law by state">
+      <span class="site-footer__label">Case law by state</span>
+      {% for slug, name in LIVE_STATES %}
+        {% if request.state and request.state.slug == slug %}
+          <span class="site-footer__state" aria-current="page">{{ name }}</span>
+        {% else %}
+          <a class="site-footer__state" href="https://{{ slug }}.docketdrift.com/">{{ name }}</a>
+        {% endif %}
+      {% endfor %}
+    </nav>
+    {% endif %}
     <a href="{% url 'opinions:support' %}" class="site-footer__support">Support DocketDrift</a>
   </footer>
 </div>
