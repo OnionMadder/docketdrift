@@ -27,6 +27,13 @@ admin-only, enforced by a test rather than a comment).
 **SEVEN consecutive sessions have each found a LIVE defect, and only one
 was found by a monitor.** Read these blocks before starting anything:
 
+- **2026-09-26** — **the latency monitor shipped.** The access log never
+  carried a duration, so starvation (the failure mode of every August–
+  September incident) was invisible to every check. Now `%(M)s` in the
+  log + `latency_check.sh` on heartbeat, transition-alerting.
+  `docs/MONITORING.md` lists what is watched and the six things that are
+  not.
+
 - **2026-09-21** — **MN's #1 most-cited statute was a footer.**
   `Minn. Stat. § 480A.08, subd. 3` at 7,436 cites, 3.2x the real #1, is
   the notice at the top of every unpublished opinion. Now flagged and
@@ -203,6 +210,58 @@ generalizes to CA and TX.
 **The band immediately earned its keep:** it made an undisclosed MN/AZ
 coverage trough visible (MN COA 114 opinions in 2013 vs 1,257 in 2015 —
 CL coverage, not caseload). See the starred TODO section.
+
+## 2026-09-26 — the latency monitor: starvation finally has a watcher
+
+**Every incident that mattered in Aug–Sep was starvation, and nothing
+could see it.** The 183s search under two users (08-02), the MCP load test
+driving the LA landing 0.02s → 6.3s (08-26), Applebot at 80x (09-22): all
+returned 200s, slowly. `error_rate_check` counts 5xx, `freshness_check`
+watches ingest, heartbeat's `/healthz` is one `SELECT 1` — every one
+reported green through every incident. **The access log carried no
+duration at all**, so there was nothing to watch.
+
+Shipped (`c80a5a1`): `run.sh` appends **`%(M)s` (milliseconds) as the
+LAST access-log field** — last on purpose, so `error_rate_check.sh`,
+`ai_citations.sh` and `ai_citation_profile` (all quote-split or
+UA-anchored) keep working unchanged. `scripts/latency_check.sh` reads it:
+p50/p95 per page shape over ~90 min, per-shape thresholds (search POST
+and sitemaps are legitimately slow; landing/opinion/judge are not), plus
+an overall-p50 starvation net. Wired into `heartbeat.sh`, NOT a new
+scheduled task — every task registered here has needed a member-panel
+step, and two sat broken behind one.
+
+**Alert on TRANSITION, never on state.** Heartbeat runs every 5–10 min;
+a check that exits 1 every tick for an incident's duration sends a dozen
+identical emails and trains the reader to delete them — how cited-by
+stayed dead 12 days. The state file `.latency_state` makes it fire once
+on OK→SLOW, once on SLOW→OK (recovery), and re-alert after 6h. A BLIND
+monitor (no log / no parse / no duration field) stays loud every tick on
+purpose. All four paths tested against broken fixtures, not just healthy
+ones. `/home/logs/latency_check.log` gets one line per run — **that is the
+baseline; re-tune thresholds from it, not from reasoning.**
+
+**A deploy restart WILL show up as one SLOW/RECOVERED pair** if the
+cold-cache stampede lasts long enough to move a median: AZ landing was
+10.8s cold right after this deploy. That is real slowness readers see,
+not a false alarm — run `precompute_explore_tags` after every restart,
+which the cheat sheet already says.
+
+**The systemic answer to "why do we find defects by accident" is in
+`docs/MONITORING.md`**: an inventory of every invariant that IS watched,
+the six that are NOT (ranked: no external probe → a cert expiry is
+invisible to every check; 5xx is weekly; no data-invariant check even
+though every expensive defect was a number that could not be right;
+task registration itself; log rotation by hand; per-state shape
+dilution), and the rules for adding a check. Read it before adding a
+monitor.
+
+**Two heredoc traps hit while building it:** a Python heredoc through the
+Bash tool on this Windows box mangles `\\` sequences (the first patch
+asserted on text it should have matched — write the patch to a file and
+run it), and awk's `print | "sort -k2"` breaks the moment a shape name
+carries a space (`POST /opinions/` → key is column 3). Shape names are
+now `POST:/opinions/`.
 
 ## 2026-09-24 — Applebot went 80x and the site never noticed
 

@@ -1248,6 +1248,22 @@ would be a fabricated statute citation.
   IS the thread count. Queueing behavior past 8 was not measured. If a launch
   moment is expected, measure 16/32 before assuming it scales further.
 
+- [x] **LATENCY / STARVATION MONITORING — BUILT 2026-09-26
+  (`scripts/latency_check.sh`, `%(M)s` in `run.sh`).** Rides `heartbeat`;
+  alerts on transitions only. See `docs/MONITORING.md`.
+- [ ] **External uptime probe** (`docs/MONITORING.md` blind spot #1). Every
+  check runs on the NFSN box against the internal address; DNS, TLS cert,
+  the front proxy and the subdomain aliases are unwatched. One free
+  third-party pinger on `https://mn.docketdrift.com/healthz` → `hello@`.
+  Cheapest item, largest hole. Onion registers (external account).
+- [ ] **Move `error_rate_check.sh` from weekly onto heartbeat** with the
+  same transition/state-file logic as latency (blind spot #2). Needs the
+  shape threshold re-calibrated to a ~90-min window instead of a week.
+- [ ] **`check_invariants` daily data check** (blind spot #3): future dates,
+  per-state count never decreasing, seated-judge-has-voted-recently
+  (`audit_judges` has most of it), most-cited statute not >3× #2, no
+  empty titles in the last week, every live sitemap index 200. Every
+  expensive defect this quarter was a number that could not be right.
 - [x] **5xx MONITORING — BUILT 2026-08-06 (`scripts/error_rate_check.sh`).**
   Called from `freshness_check.sh`, so it rides the already-registered
   `freshnesscheck` task — deliberately NOT a new task, since two monitors here
