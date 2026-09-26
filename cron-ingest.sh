@@ -87,6 +87,26 @@ for c in Court.objects.filter(state__is_live=True).order_by('state__code', 'leve
     done
 fi
 
+# Attach judges to the new opinions. Nothing in the weekly path did this, and
+# it went unnoticed for about six weeks (measured 2026-09-26): every state's
+# opinions from mid-August on carried NO panel votes -- MN September 0/59,
+# AZ 0/65, LA 0/63 -- so recent panels were blank and every judge's "last
+# voted" date froze, which made seated judges look inactive on
+# /current-judges/. Same $SINCE window as the ingest, which also sweeps up
+# the MN/NH scraper ingests that don't pass through this script.
+# Idempotent. No --create-missing: minting judges from bylines is an
+# editorial step, not an unattended one.
+for st in $(.venv/bin/python -c "
+import django, os
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'docketdrift_site.settings')
+django.setup()
+from opinions.models import State
+print(' '.join(State.objects.filter(is_live=True).order_by('code').values_list('code', flat=True)))
+"); do
+    echo "--- resolving judges ($st, since $SINCE) ---"
+    .venv/bin/python manage.py resolve_judges --state "$st" --since "$SINCE" --max-runtime 240
+done
+
 # Refresh the denormalized judge active-spans. These back /current-judges/
 # and its era filters; they are derived from panel votes, so any ingest can
 # move them. Cheap (seconds per state) and idempotent -- and NOT optional:
