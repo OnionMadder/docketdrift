@@ -62,12 +62,32 @@ class Command(BaseCommand):
             help="Stop after processing N clusters (useful for smoke tests).",
         )
         parser.add_argument(
+            "--until",
+            help=(
+                "ISO date (YYYY-MM-DD). Only clusters with date_filed on or "
+                "before this date. Lets a catch-up target a historical window "
+                "instead of re-walking everything newer than --since."
+            ),
+        )
+        parser.add_argument(
+            "--skip-existing",
+            action="store_true",
+            help=(
+                "Skip clusters whose CL id we already hold, BEFORE fetching "
+                "their text. For catch-ups: a listing page costs one request "
+                "for 20 clusters, but each held cluster would otherwise cost "
+                "2-3 more, and CL answers volume with multi-hour 429s. Off "
+                "by default so the weekly run still refreshes held rows."
+            ),
+        )
+        parser.add_argument(
             "--dry-run",
             action="store_true",
             help="Print what would be ingested without writing to the DB.",
         )
 
-    def handle(self, *args, courtlistener_id, since, limit, dry_run, **options):
+    def handle(self, *args, courtlistener_id, since, limit, dry_run,
+               until=None, skip_existing=False, **options):
         token = getattr(settings, "COURTLISTENER_TOKEN", "") or ""
         if not token:
             raise CommandError(
@@ -91,9 +111,18 @@ class Command(BaseCommand):
                 )
         else:
             since_date = date.today() - timedelta(days=DEFAULT_LOOKBACK_DAYS)
+        until_date = None
+        if until:
+            until_date = parse_date(until)
+            if until_date is None:
+                raise CommandError(
+                    f"--until must be ISO YYYY-MM-DD; got {until!r}"
+                )
 
         self.stdout.write(
             f"Ingesting {court.name} ({courtlistener_id}) since {since_date}"
+            + (f" until {until_date}" if until_date else "")
+            + (" (skip-existing)" if skip_existing else "")
             + (" (dry-run)" if dry_run else "")
         )
 
@@ -118,6 +147,7 @@ class Command(BaseCommand):
                 courtlistener_id,
                 since=since_date.isoformat(),
                 max_clusters=limit,
+                until=until_date.isoformat() if until_date else None,
             ):
                 clusters_seen += 1
                 cluster_id = cluster.get("id")
@@ -127,6 +157,16 @@ class Command(BaseCommand):
                 absolute_url = cluster.get("absolute_url") or ""
                 if absolute_url and not absolute_url.startswith("http"):
                     absolute_url = "https://www.courtlistener.com" + absolute_url
+
+                # Court-agnostic on purpose: LA/AZ rows get re-homed to
+                # another circuit/division after ingest but keep their CL id.
+                if skip_existing and Opinion.objects.filter(
+                    courtlistener_id=str(cluster_id)
+                ).exists():
+                    opinions_skipped += 1
+                    if limit and clusters_seen >= limit:
+                        break
+                    continue
 
                 # Concatenate plain_text from each sub-opinion. /search/?type=o
                 # embeds opinion IDs under cluster["opinions"]; we fetch each

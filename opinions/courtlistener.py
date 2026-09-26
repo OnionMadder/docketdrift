@@ -266,6 +266,7 @@ class CourtListenerClient:
         court_id: str,
         since: Optional[str] = None,
         max_clusters: Optional[int] = None,
+        until: Optional[str] = None,
     ) -> Iterator[dict]:
         """Yield opinion clusters for ``court_id``, newest first.
 
@@ -300,6 +301,8 @@ class CourtListenerClient:
         }
         if since:
             params["date_filed__gte"] = since
+        if until:
+            params["date_filed__lte"] = until
         seen = 0
         for item in self._paginate("clusters/", params):
             item = _normalize_cluster_result(item)
