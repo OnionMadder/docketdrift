@@ -41,7 +41,7 @@ Usage::
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import timedelta
+from datetime import date, timedelta
 
 from django.core.management.base import BaseCommand
 from django.db import connection, models
@@ -51,6 +51,12 @@ from opinions.models import Court, Judge, Opinion, PanelVote
 _SUFFIXES = {"jr", "sr", "ii", "iii", "iv", "2", "3", "4"}
 IMPOSSIBLE_SPAN_YEARS = 45
 GRACE_DAYS = 365
+# Roster shape checks [7]/[8]: "recently" means a panel vote inside this
+# window, and a court counts as active only above this many opinions/yr
+# (AZ Div Two and LA's Third Circuit publish few enough that a quiet judge
+# is normal there).
+SILENT_DAYS = 180
+QUIET_COURT_MIN_OPINIONS = 40
 
 
 def _surname(full_name: str) -> str:
@@ -189,9 +195,48 @@ class Command(BaseCommand):
             for j in [x for x in no_votes if not x.is_currently_seated][:limit_examples]:
                 self.stdout.write(f"      {j.full_name[:30]:<30} status={j.status}")
 
-            # -- 6. coverage -----------------------------------------------
+            # -- 7/8. roster shape ------------------------------------------
+            # The two cheap tests that found the 2026-09-21 Gould error and
+            # the 2026-09-26 LA/AZ roster defects: a seated judge should have
+            # voted recently, and a recent voter should be seated (or be a
+            # known retired-by-appointment judge). Report-only: both have
+            # legitimate cases (new appointee; MN's retired judges serving
+            # by appointment), so they never fail the build -- but a weekly
+            # reader should see them. Uses the denormalized span columns
+            # (backfill_judge_spans runs in cron) and ignores quiet courts.
+            today = date.today()
+            recent = today - timedelta(days=SILENT_DAYS)
             court_ids = list(Court.objects.filter(state__code=code)
                              .values_list("id", flat=True))
+            busy_courts = {
+                r["court_id"] for r in
+                Opinion.objects.filter(court_id__in=court_ids,
+                                       release_date__gte=today - timedelta(days=365))
+                .values("court_id").annotate(n=models.Count("id"))
+                if r["n"] >= QUIET_COURT_MIN_OPINIONS
+            }
+            silent = [j for j in judges
+                      if j.is_currently_seated and j.court_id in busy_courts
+                      and (j.last_vote_date is None or j.last_vote_date < recent)]
+            silent.sort(key=lambda j: (j.last_vote_date or date.min))
+            self.stdout.write(f"\n[7] seated but no panel vote in {SILENT_DAYS}d "
+                              f"(court active): {len(silent)}  [report only]")
+            for j in silent[:limit_examples]:
+                self.stdout.write(f"      {j.full_name[:30]:<30} last vote "
+                                  f"{j.last_vote_date or 'never'}")
+            unseated = [j for j in judges
+                        if not j.is_currently_seated and j.last_vote_date
+                        and j.last_vote_date >= recent
+                        and len(j.full_name.split()) >= 2]
+            unseated.sort(key=lambda j: -j.last_vote_date.toordinal())
+            self.stdout.write(f"\n[8] not seated but voted in the last {SILENT_DAYS}d: "
+                              f"{len(unseated)}  [report only -- retired-by-appointment "
+                              f"judges are expected; a surname twin is not]")
+            for j in unseated[:limit_examples]:
+                self.stdout.write(f"      {j.full_name[:30]:<30} status={j.status:<8} "
+                                  f"last vote {j.last_vote_date}")
+
+            # -- 6. coverage -----------------------------------------------
             total = Opinion.objects.filter(court_id__in=court_ids).count()
             paneled = (PanelVote.objects.filter(opinion__court_id__in=court_ids)
                        .values("opinion_id").distinct().count())

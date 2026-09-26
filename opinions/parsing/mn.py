@@ -222,8 +222,15 @@ DISPOSITION_RE = re.compile(
 #                 Affirmed
 #               Smith, Judge
 # would greedily capture "Affirmed\n... Smith" as a 2-word name.
+# Supreme Court captions put the author top-right on the SAME line as the
+# court below ("Court of Appeals        Gaïtas, J." / "Hennepin County
+# Hudson, C.J."), so the optional prefix is a court/county name followed
+# by a wide gap -- tight enough that a sentence-internal "X, Judge;" list
+# cannot match. Name class allows Latin-1 letters: Justice Gaïtas had 7
+# votes in two years because "ï" fell outside [A-Za-z] (2026-09-26).
 JUDGE_BYLINE_RE = re.compile(
-    r"^[ \t]*([A-Z][A-Za-z'\-]+(?:[ \t]+[A-Z][A-Za-z'\-]+){0,3}),[ \t]*"
+    r"^[ \t]*(?:[A-Z][A-Za-z' .]*?(?:Court|County|Appeals|Board|Commission)[ \t]{2,})?"
+    r"([A-ZÀ-ß][A-Za-zÀ-ÿ'\-]+(?:[ \t]+[A-ZÀ-ß][A-Za-zÀ-ÿ'\-]+){0,3}),[ \t]*"
     r"(Chief[ \t]+Justice|Justice|Chief[ \t]+Judge|Presiding[ \t]+Judge|Judge|J\.|C\.J\.)\.?[ \t]*$",
     re.MULTILINE,
 )

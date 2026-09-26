@@ -594,3 +594,35 @@ class ArizonaBylineNameTests(SimpleTestCase):
         self.assertEqual(g.author_last, "becke")
         self.assertIn("morse", g.panel_last)
         self.assertIn("howe", g.panel_last)
+
+
+class MinnesotaSupremeBylineTests(SimpleTestCase):
+    """Supreme captions put the author top-right on the same line as the
+    court below; Justice Gaïtas also carries a non-ASCII letter."""
+
+    def _author(self, text):
+        from opinions.parsing.mn import MinnesotaParser
+        return MinnesotaParser().parse(text).author or ""
+
+    def test_author_after_court_of_appeals_prefix_with_diaeresis(self):
+        text = ("STATE OF MINNESOTA\n\n            IN SUPREME COURT\n\n            A23-1948\n\n\n"
+                "Court of Appeals                                   Gaïtas, J.\n"
+                "                         Concurring in part, dissenting in part,\n"
+                "                                       Hudson, C.J., Thissen, J.\n"
+                "Jeremy McNitt,            Concurring in part, dissenting in part, Thissen, J.\n"
+                "                                       Took no part, Procaccini, J.\n"
+                "        Respondent/Cross-Appellant,\n\nvs.                       Filed: September 2, 2026\n")
+        self.assertTrue(self._author(text).startswith("Gaïtas"), self._author(text))
+
+    def test_author_after_county_prefix(self):
+        text = ("STATE OF MINNESOTA\n\n            IN SUPREME COURT\n\n            A24-0100\n\n\n"
+                "Hennepin County                                    Hudson, C.J.\n"
+                "                                        Dissenting, Thissen, J.\n"
+                "State of Minnesota,\n\n            Respondent,\n\nvs.       Filed: March 4, 2026\n")
+        self.assertTrue(self._author(text).startswith("Hudson"), self._author(text))
+
+    def test_sentence_internal_judge_list_is_not_a_byline(self):
+        text = ("STATE OF MINNESOTA\nIN COURT OF APPEALS\nA25-0001\n\nState of Minnesota,\nRespondent,\nvs.\n"
+                "John Doe,\nAppellant.\n\nFiled March 2, 2026\nAffirmed\nSMITH, Judge\n\n"
+                "Considered and decided by Smith, Presiding Judge; Jones, Judge; and Brown, Judge.\n")
+        self.assertTrue(self._author(text).lower().startswith("smith"), self._author(text))
