@@ -559,3 +559,38 @@ class LouisianaThirdCircuitPanelTests(SimpleTestCase):
                 "Court composed of Van H. Kyzar and Candyce G. Perret, Judges. Defendant, Robert Bolton, "
                 "appeals the judgment. Bolton argues the trial court erred.\n")
         self.assertEqual(self._panel(text), ["Van H. Kyzar", "Candyce G. Perret"])
+
+
+class ArizonaBylineNameTests(SimpleTestCase):
+    """Two ways a sitting AZ judge silently lost every vote (2026-09-26):
+    a typographic apostrophe in the opinion text, and a generational suffix
+    read as the surname."""
+
+    def test_curly_apostrophe_author_and_panel(self):
+        from opinions.management.commands.resolve_judges import _extract_generic_byline
+        text = ("IN THE\nARIZONA COURT OF APPEALS\nDIVISION TWO\n\nOPINION\n"
+                "Judge O’Neil authored the opinion of the Court, in which "
+                "Presiding Judge Gard and Judge Eckerstrom concurred.\n")
+        g = _extract_generic_byline(text)
+        self.assertEqual(g.author_last, "o'neil")
+        self.assertIn("gard", g.panel_last)
+
+    def test_curly_apostrophe_in_az_parser_author(self):
+        from opinions.parsing.az import ArizonaParser
+        text = ("IN THE\nARIZONA COURT OF APPEALS\nDIVISION TWO\n\nOPINION\n"
+                "Judge O’Neil authored the opinion of the Court, in which "
+                "Presiding Judge Gard and Judge Eckerstrom concurred.\n")
+        self.assertIn("O'Neil", ArizonaParser().parse(text).author or "")
+
+    def test_generational_suffix_is_not_the_surname(self):
+        from opinions.management.commands.resolve_judges import (
+            _extract_generic_byline, _last_name)
+        self.assertEqual(_last_name("James B. Morse Jr."), "Morse")
+        self.assertEqual(_last_name("Judge James B. Morse, Jr."), "Morse")
+        text = ("IN THE\nARIZONA COURT OF APPEALS\nDIVISION ONE\n\nMEMORANDUM DECISION\n"
+                "Presiding Judge Andrew J. Becke delivered the decision of the Court, in which "
+                "Judge James B. Morse Jr. and Chief Judge Randall M. Howe joined.\n")
+        g = _extract_generic_byline(text)
+        self.assertEqual(g.author_last, "becke")
+        self.assertIn("morse", g.panel_last)
+        self.assertIn("howe", g.panel_last)

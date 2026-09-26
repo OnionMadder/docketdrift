@@ -262,6 +262,9 @@ class ArizonaParser(StateParser):
         if not raw_text:
             return result
 
+        # Typographic apostrophe -> ASCII so "Judge O’Neil" matches the
+        # name classes below (they allow only U+0027). See resolve_judges.
+        raw_text = raw_text.replace("’", "'")
         head = raw_text[:6000]
         is_supreme = bool(AZ_SUPREME_RE.search(head))
         is_coa = bool(AZ_COA_RE.search(head))

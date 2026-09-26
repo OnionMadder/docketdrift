@@ -391,10 +391,14 @@ def _extract_generic_byline(raw_text: str) -> GenericByline:
     # Caption is typically within the first 3-4KB (preamble + counsel
     # block + "OPINION" header + first sentence of the byline). Scan
     # the first 5KB to be safe.
+    # Typographic apostrophe -> ASCII. AZ opinions print "Judge O’Neil"
+    # (U+2019); the name classes and the DB row ("O'Neil") use U+0027, so
+    # a sitting judge who AUTHORS opinions had zero votes (2026-09-26).
+    raw_text = raw_text.replace("’", "'")
     head = raw_text[:5000]
 
     def _last(name: str) -> str:
-        parts = name.strip().split()
+        parts = _strip_generational(name).split()
         if not parts:
             return ""
         tok = parts[-1]
@@ -591,17 +595,33 @@ def _titlecase_surname(upper: str) -> str:
     return upper[:1] + upper[1:].lower() if upper else upper
 
 
+_GENERATIONAL_RE = re.compile(r",?\s+(?:Jr|Sr|II|III|IV)\.?\s*$", re.IGNORECASE)
+
+
+def _strip_generational(name: str) -> str:
+    """Drop a trailing generational suffix so the LAST token is the surname.
+
+    'James B. Morse Jr.' -> 'James B. Morse'. Without this the resolver
+    took 'Jr.' as the surname, failed validation, and silently dropped the
+    judge from every panel that named him in full -- AZ Division One's
+    Morse had 10 votes and none since April 2025 while sitting on 2026
+    panels (found 2026-09-26).
+    """
+    return _GENERATIONAL_RE.sub("", (name or "").strip())
+
+
 def _last_name(name: str) -> str:
     """Return the last token of ``name`` after stripping role suffix.
 
     'Jennifer L. Frisch'      -> 'Frisch'
     'Frisch, Judge'           -> 'Frisch'
     'L. Frisch, J.'           -> 'Frisch'
+    'James B. Morse Jr.'      -> 'Morse'
     'Van Buren, Judge'        -> 'Buren'   (acceptable miss for v1)
     """
     if not name:
         return ""
-    cleaned = _ROLE_SUFFIX_RE.sub("", name).strip()
+    cleaned = _strip_generational(_ROLE_SUFFIX_RE.sub("", name).strip())
     # Re-strip just in case ",..." remains
     if "," in cleaned:
         cleaned = cleaned.split(",", 1)[0].strip()
