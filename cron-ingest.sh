@@ -34,38 +34,6 @@ if [ -n "$1" ]; then
     # debugging a state's parser or rerunning a single court after a fix).
     .venv/bin/python manage.py ingest_court "$1" --since "$SINCE"
 
-    # LA COA post-step: all five circuits arrive down CourtListener's single
-    # 'lactapp' feed, so every ingest lands them in the landing court (First
-    # Circuit -- the only circuit with a real CL id). Without this, circuits
-    # 2-5 stay frozen at their last re-home and new opinions are attributed
-    # to the wrong court. Verified 2026-08-19: of 21 freshly-ingested rows,
-    # 4 were Second Circuit cases (e.g. 56,983-CA, Shreveport's comma-
-    # numbered docket format) sitting in First Circuit.
-    #
-    # --since bounds it to the same window we just ingested, so this is a
-    # few dozen rows, not a 341K re-scan. Idempotent: an opinion already in
-    # its correct circuit is a no-op.
-    if [ "$1" = "lactapp" ]; then
-        echo "--- re-homing LA COA circuits (since $SINCE) ---"
-        .venv/bin/python manage.py assign_la_circuits --apply \
-            --since "$SINCE" --max-runtime 240
-    fi
-
-    # AZ COA post-step: the SAME shape as the LA circuits above. Both AZ
-    # Court of Appeals divisions arrive down CourtListener's single
-    # 'arizctapp' feed, so a fresh ingest lands every Division Two opinion
-    # (dockets '2 CA-...') in Division One, the court that owns the CL id.
-    # Left unchained for weeks as "filed, not fixed blind"; chained now that
-    # AZ COA needed a measured catch-up (2026-08-26), rather than waiting for
-    # a Div-2 opinion to show up misfiled on a live page.
-    #
-    # No --since here (unlike LA): the command has no such flag and does not
-    # need one -- AZ COA is ~24K rows, not LA's 341K, and a full dry-run
-    # measures 1.5s. Idempotent; a correctly-homed opinion is a no-op.
-    if [ "$1" = "arizctapp" ]; then
-        echo "--- re-homing AZ COA divisions ---"
-        .venv/bin/python manage.py assign_az_divisions --apply
-    fi
 else
     # Auto-discover: every CL court id belonging to a live state, ordered
     # by state code then court level so logs read predictably across runs.
@@ -86,6 +54,21 @@ for c in Court.objects.filter(state__is_live=True).order_by('state__code', 'leve
         .venv/bin/python manage.py ingest_court "$cid" --since "$SINCE"
     done
 fi
+
+# Re-home multi-panel courts. All five LA circuits arrive down CourtListener's
+# single 'lactapp' feed and land in the First Circuit (the only circuit with
+# a CL id); both AZ COA divisions arrive down 'arizctapp' and land in
+# Division One. Until 2026-09-26 these steps ran ONLY in the manual
+# single-court branch above, so the weekly auto run -- the one that actually
+# executes -- never re-homed anything: Second Circuit opinions from
+# 2026-08-26 were still sitting in the First Circuit a month later, with
+# their judges' votes counted against the wrong court. Both are idempotent.
+# LA is bounded to the ingest window (a full pass is a 341K re-scan); AZ COA
+# is ~24K rows and a full pass measures 1.5s, and the command has no --since.
+echo "--- re-homing LA COA circuits (since $SINCE) ---"
+.venv/bin/python manage.py assign_la_circuits --apply --since "$SINCE" --max-runtime 240
+echo "--- re-homing AZ COA divisions ---"
+.venv/bin/python manage.py assign_az_divisions --apply
 
 # Attach judges to the new opinions. Nothing in the weekly path did this, and
 # it went unnoticed for about six weeks (measured 2026-09-26): every state's
