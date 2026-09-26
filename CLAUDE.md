@@ -353,13 +353,23 @@ loops get culled at ~10–20 min: drive chunk sweeps from OUTSIDE, two
 chunks per call, resume from the logged cursor, and clear a stale pidfile
 before relaunching.
 
-**Still open:** LA Supreme "Guidry, J." 2025+ and First Circuit 2015–24
-recovery depends on the re-sweep (his `appointment_date` was nulled for
-it and must be restored to 2025-01-01 afterward); AZ Div One roster
-(Gass/McMurdie/Stevens) waits on the court's reply; the IA item's loose
-PDFs are queued for deletion on IA's side (rerun the `ia delete` once the
-queue clears); `docs/CONTEXT_PRUNING_PLAN.md` is being produced in a
-separate session.
+**Result:** the 1997+ LA re-sweep ran in 34 outside-driven chunks and
+recovered **38,695 votes**; LA's seated bench went from 39/60 rows with
+any vote to **59/60** (Chehardy 0→1,253, Guidry 0→1,945, Gremillion
+0→777, all twelve Third Circuit judges populated). Guidry's
+`appointment_date` is restored to 2025-01-01.
+
+**Still open:** **Rachael D. Johnson (4th Cir) has 0 votes and Marc E.
+Johnson (5th Cir) stops in 2021** — two SEATED Johnsons with open
+windows, so the date-window disambiguation cannot split them; the fix is
+to prefer the candidate whose court matches the opinion's court (a
+resolver change, not data). "Cleveland J. Marcel" (pk 607) is a
+party-name leak to cull; "John Guidry" (579) still mixes a 1970s–90s
+Third Circuit Guidry with Greg Guidry's 2006–08 Fifth Circuit votes. AZ
+Div One roster (Gass/McMurdie/Stevens) waits on the court's reply. The
+IA item's loose PDFs are queued for deletion on IA's side (rerun the
+`ia delete` once the queue clears). `docs/CONTEXT_PRUNING_PLAN.md` is
+being produced in a separate session.
 
 ## 2026-09-24 — Applebot went 80x and the site never noticed
 
