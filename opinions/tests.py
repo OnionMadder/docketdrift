@@ -517,3 +517,4 @@ class OpinionAbsoluteUrlTests(SimpleTestCase):
         op = Opinion(case_number="A24-1561", court=Court(state=State(code="MN", slug="mn")))
         self.assertEqual(op.get_absolute_url(),
                          "https://mn.docketdrift.com/opinion/A24-1561/")
+

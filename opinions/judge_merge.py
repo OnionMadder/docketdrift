@@ -12,7 +12,7 @@ collision -- then delete the now-vote-less loser row.
 
 from django.db import transaction
 
-from opinions.models import PanelVote
+from opinions.models import JudgeSlugAlias, PanelVote
 
 # Vote-type strength: on an (opinion, judge) collision after reassignment we
 # keep the higher-ranked type. Authoring any opinion outranks merely joining;
@@ -151,6 +151,17 @@ def merge_judge(loser, survivor, apply: bool) -> tuple[int, int]:
         # Preserve the loser's editorial metadata before it's gone.
         if _carry_metadata_forward(loser, survivor):
             survivor.save()
+        # The loser's slug is a public URL (indexed, linked from opinion
+        # pages, cited by AI answers). Leave a 301 behind, exactly as
+        # rename_judge_slug does -- and move any aliases that already point
+        # at the loser, because JudgeSlugAlias.judge is CASCADE and they
+        # would otherwise vanish with the row.
+        JudgeSlugAlias.objects.filter(judge=loser).update(judge=survivor)
+        if loser.slug and loser.slug != survivor.slug:
+            JudgeSlugAlias.objects.get_or_create(
+                judge=survivor, slug=loser.slug,
+                defaults={"note": "merged from duplicate row %r" % loser.full_name},
+            )
         # PROTECT on PanelVote.judge is now satisfied (loser has no votes).
         loser.delete()
 
