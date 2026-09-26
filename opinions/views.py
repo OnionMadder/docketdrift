@@ -2800,6 +2800,21 @@ def bing_site_auth(request):
     return HttpResponse(body, content_type="text/xml; charset=utf-8")
 
 
+def indexnow_key(request):
+    """Serve /indexnow-key.txt -- the IndexNow ownership proof.
+
+    IndexNow (Bing, Yandex, Seznam, Naver) verifies a ping by fetching the
+    key from the pinged host. Like BingSiteAuth, each subdomain is its own
+    host, so one route serves all four. Same guard as the Bing token: a
+    malformed or absent key 404s rather than serving something that would
+    fail verification. The protocol allows 8-128 of [A-Za-z0-9-].
+    """
+    key = (getattr(settings, "INDEXNOW_KEY", "") or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9-]{8,128}", key):
+        raise Http404("IndexNow is not configured.")
+    return HttpResponse(key, content_type="text/plain; charset=utf-8")
+
+
 # llms.txt -- the "robots.txt for LLMs" emerging convention. Tells AI
 # crawlers / assistants what this site is, the URL grammar it uses, and
 # how to cite it. The actual file format spec is at llmstxt.org but is

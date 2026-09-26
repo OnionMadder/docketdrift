@@ -347,6 +347,13 @@ DONATE_URL = os.environ.get("DONATE_URL", "")
 # read as a failed verification.
 BING_SITE_AUTH_TOKEN = os.environ.get("BING_SITE_AUTH_TOKEN", "")
 
+# IndexNow key, served at /indexnow-key.txt on every subdomain and sent
+# with each ping (see `indexnow_ping`). Public by design -- the protocol
+# proves ownership by the key being fetchable from the host -- but kept in
+# the environment like the Bing token so a fork does not ping as us.
+# Unset -> the view 404s and the command refuses to run.
+INDEXNOW_KEY = os.environ.get("INDEXNOW_KEY", "")
+
 
 # --- Tag suggestion thresholds --------------------------------------------
 # Cosine similarity bands for the suggest_tags command. Calibrated to the

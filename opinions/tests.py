@@ -478,3 +478,25 @@ class StatuteBoilerplateTests(SimpleTestCase):
             self.assertTrue(cites, f"no cite extracted for {state}")
             for c in cites:
                 self.assertFalse(c.is_boilerplate)
+
+
+class IndexNowKeyViewTests(SimpleTestCase):
+    """The key file is the ownership proof. A malformed or missing key must
+    404 -- serving a bad one makes every ping fail verification."""
+
+    def _get(self, key):
+        from django.test import RequestFactory, override_settings
+        from opinions.views import indexnow_key
+        with override_settings(INDEXNOW_KEY=key):
+            return indexnow_key(RequestFactory().get("/indexnow-key.txt"))
+
+    def test_serves_valid_key_verbatim(self):
+        resp = self._get("0123456789abcdef0123456789abcdef")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.content.decode(), "0123456789abcdef0123456789abcdef")
+
+    def test_missing_or_malformed_key_404s(self):
+        from django.http import Http404
+        for bad in ("", "short", "has space in it", "<script>alert(1)</script>"):
+            with self.assertRaises(Http404):
+                self._get(bad)

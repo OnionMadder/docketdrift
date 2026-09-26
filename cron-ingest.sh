@@ -97,4 +97,15 @@ fi
 echo "--- refreshing judge spans ---"
 .venv/bin/python manage.py backfill_judge_spans
 
+# Hand the week's new opinion URLs to IndexNow (Bing et al.) instead of
+# waiting for a sitemap re-crawl. The 200h window covers everything created
+# since the last weekly run -- including the MN/NH scraper ingests, which
+# don't pass through this script -- with overlap; re-pinging is harmless.
+# Last on purpose: a rejected ping exits non-zero (NFSN emails) without
+# having blocked the ingest or the span refresh above.
+if [ -n "$(grep '^INDEXNOW_KEY=.' .env 2>/dev/null)" ]; then
+    echo "--- IndexNow ping ---"
+    .venv/bin/python manage.py indexnow_ping --hours 200
+fi
+
 echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] cron-ingest done"
