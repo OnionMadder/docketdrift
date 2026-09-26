@@ -58,7 +58,7 @@ SHAPE_MIN=${DD_LAT_SHAPE_MIN:-20}
 # BEGIN block below, next to the shape definitions, so the two stay together.
 P50_MS=${DD_LAT_P50_MS:-2000}
 # Starvation net: median across ALL requests.
-OVERALL_P50_MS=${DD_LAT_OVERALL_P50_MS:-1500}
+OVERALL_P50_MS=${DD_LAT_OVERALL_P50_MS:-2000}
 # Re-send the alert if SLOW persists this long without a state change.
 REALERT_HOURS=${DD_LAT_REALERT_HOURS:-6}
 
@@ -121,6 +121,21 @@ BEGIN {
     # because smallest"); sitemap chunks are big index walks; /mcp mixes
     # 3ms lookups with multi-second searches. Everything a reader lands on
     # cold -- landing, opinion, judge, statute -- gets the tight default.
+    # CALIBRATED 2026-09-26 on 1,500 warm requests (~10 min, evening,
+    # crawler-dominated, right after a restart + cache warm): measured p50 /
+    # p95 per shape, threshold set at ~3-5x the median so it fires on
+    # STARVATION (everything several times slower) and not on a busy hour.
+    #   /opinion/<X>/   837 / 2604  (n=997)   -> 3000
+    #   /statute/<X>/  1607 / 3241  (n=145)   -> 5000  (crawlers hit cold
+    #                                             statutes; warm is ~50ms)
+    #   /judge/<X>/    6135 / 8963  (n=9)     -> 8000  (small n; re-measure
+    #                                             -- 6s medians are a finding)
+    #   /              188          (n=3)     -> default
+    #   overall         581 / 2659            -> 2000
+    # Re-tune from /home/logs/latency_check.log, not from reasoning.
+    thr["/opinion/<X>/"]   = 3000
+    thr["/statute/<X>/"]   = 5000
+    thr["/judge/<X>/"]     = 8000
     thr["POST:/opinions/"] = 15000
     thr["/sitemap*.xml"]   = 15000
     thr["/mcp"]            = 8000

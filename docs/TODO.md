@@ -1269,6 +1269,10 @@ would be a fabricated statute citation.
 - [x] **LATENCY / STARVATION MONITORING — BUILT 2026-09-26
   (`scripts/latency_check.sh`, `%(M)s` in `run.sh`).** Rides `heartbeat`;
   alerts on transitions only. See `docs/MONITORING.md`.
+  **First calibration finding:** `/judge/<X>/` read a **6.1s median** on
+  its first warm sample (n=9, crawler hits). Small n, but a 6s judge page
+  is a real cost if it holds -- re-read `/home/logs/latency_check.log`
+  after a day and profile `judge_detail` if it does.
 - [ ] **External uptime probe** (`docs/MONITORING.md` blind spot #1). Every
   check runs on the NFSN box against the internal address; DNS, TLS cert,
   the front proxy and the subdomain aliases are unwatched. One free
