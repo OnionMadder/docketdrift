@@ -3,6 +3,24 @@
 Snapshot 2026-08-16. Prioritized. Each item says what it is, why it matters,
 and roughly how big. "Onion" items need the member panel or are editorial.
 
+**2026-09-26 session (full detail in CLAUDE.md's session block):** the
+"why do complaints come from MN" question is answered — EXPOSURE (MN is
+75% of real reads / 77% of live-AI fetches at 15% of the corpus), and
+Google crawls the hosts wildly unequally (mn. 87,525 vs az. 187 in 3
+months) because no page linked across subdomains. Shipped: cross-state
+footer, IndexNow (chained into cron), **LA parallel cites 367,468 (TODO
+#3 closed)**, MCP URL encoding fix. Then the judge layer: **weekly cron
+never ran `resolve_judges` or the LA/AZ re-homing** (both chained now);
+LA's seated benches had zero votes (no `appointment_date` on seeded
+rows + surname twins + Third Circuit panel line never parsed → 0→100%);
+~7,000 LA votes reattributed with sourced dates (`reassign_judge_votes`),
+4 name-variant merges (merge now leaves a 301), AZ O'Neil/Morse byline
+bugs fixed (0→43, 10→890 votes). **Open:** finish the 1997+ LA re-sweep
+(driven from outside, cursor in `/home/tmp/la_resweep.log`), restore
+John Michael Guidry's `appointment_date` = 2025-01-01 after it, re-run
+the roster probe; AZ Div One roster waits on the court; IA loose-PDF
+delete queued on IA's side; `docs/CONTEXT_PRUNING_PLAN.md` in flight.
+
 **2026-08-10→16 session (full detail in CLAUDE.md's session block):**
 **PDF page anchors live** (`#page-N` from pypdf `\f`; AZ 50% modern coverage,
 NH 2020s 98%; the rest is CL's upstream gap, not ours — pypdf paths fixed to

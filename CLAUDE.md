@@ -24,9 +24,18 @@ is the individual path). `/takedown/` states the removal policy and
 requests are flagged internally (`RemovalRequest`, migration 0042 —
 admin-only, enforced by a test rather than a comment).
 
-**SEVEN consecutive sessions have each found a LIVE defect, and only one
+**EIGHT consecutive sessions have each found a LIVE defect, and only one
 was found by a monitor.** Read these blocks before starting anything:
 
+- **2026-09-26b** — **the judge layer was wrong in every state, and the
+  weekly cron had never attached judges to new opinions.** LA's seated
+  Third/Fourth/Fifth Circuit benches showed ZERO votes (seeded rows had no
+  `appointment_date`, votes went to surname twins from other eras, and
+  the Third Circuit panel line was never parsed); AZ's O'Neil (curly
+  apostrophe) and Morse (`Jr.` read as the surname) had lost every vote.
+  Found by a cheap shape test — a seated judge should have voted
+  recently — the same test that caught Gould. Copilot cites judge pages
+  ~20×/day and NO opinion pages, so roster accuracy is the AI surface.
 - **2026-09-26** — **the latency monitor shipped.** The access log never
   carried a duration, so starvation (the failure mode of every August–
   September incident) was invisible to every check. Now `%(M)s` in the
@@ -77,11 +86,14 @@ A figure that cannot be right is the cheapest defect detector here.
    `/sitemap-rules.xml`.
 2. **NH/AZ/LA rule vocabularies are UNMEASURED.** Measure before writing a
    regex; the MN plan was missing a top-4 rule set.
-3. **Check whether CL carries PARALLEL cites for Louisiana.** LA has zero
-   `ParallelCite` rows and the stated reason ("CL has none") is FALSE —
-   317,223 LA reporter cites came out of CL's own export. One cheap pass;
-   when parallel cites landed for AZ, official `Ariz.` resolution went
-   0% → 93%.
+3. ~~**Check whether CL carries PARALLEL cites for Louisiana.**~~ ✅ DONE
+   2026-09-26 — CL had 723,784 citations for our LA clusters all along;
+   **367,468 loaded** (LEXIS/WL identifiers skipped), and an official
+   `196 La. 541` now resolves via `lookup_citation`. Whether LA's citation
+   extractor needs a re-sweep to pick up official-cite edges (as AZ did)
+   is unmeasured.
+4. **Finish the LA judge re-sweep and restore Guidry's date** (see the
+   2026-09-26 block), then re-run the roster probe on all four states.
 
 **MN 2020–2022 IS FIXED (2026-08-03): 0 → 3,102 opinions.** 2020=1,040,
 2021=1,092, 2022=970, read directly from the mn.gov State Law Library archive.
@@ -262,6 +274,92 @@ asserted on text it should have matched — write the patch to a file and
 run it), and awk's `print | "sort -k2"` breaks the moment a shape name
 carries a space (`POST /opinions/` → key is column 3). Shape names are
 now `POST:/opinions/`.
+
+## 2026-09-26 — why complaints come from MN; the judge layer was wrong in every state
+
+Started from Onion's question "why is Minnesota the state that produces
+people complaining about their presence in the index." Measured, not
+reasoned, and the answer is EXPOSURE: filtering the access log to
+browsers that also loaded the stylesheet, **MN is 75% of real reads and
+77% of live-AI fetches** while being 15% of the corpus; LA is 73% of
+the corpus and 10% of reads. Four complaints, all MN, is what the
+traffic predicts (0.75⁴ ≈ 0.32). Titles are not the differentiator
+(MN 90% name a private person, LA 87%, NH 87%; AZ ~6% because it writes
+`State v. Smith`); MN's case mix is (family / unemployment /
+postconviction / commitment ≈ a fifth of named unpublished titles).
+Forecast on file: as LA readership climbs, LA complaints follow.
+
+**Google crawls per host, and the hosts are NOT equal:** Crawl stats
+show **mn. 87,525 / la. 14,882 / nh. 654 / az. 187** requests in three
+months, with 120,123 URLs "Discovered – currently not indexed." Not a
+duplicate-content verdict (that row is absent) and not speed (cold AZ/NH
+opinion pages measure 0.06–0.10s) — nothing on any page linked to another
+subdomain, so crawl demand never flowed. Shipped: a **cross-state footer
+on every page** (`LIVE_STATES` context), **IndexNow** (`indexnow_ping`,
+key served per host from `INDEXNOW_KEY`, chained into cron-ingest; a
+703-URL seed was accepted by all four hosts), **LA parallel cites
+loaded (367,468 — TODO #3 closed; official `La.` cites now resolve)**,
+and `Opinion.get_absolute_url` now percent-encodes (the MCP `url` field
+carried a raw space). Also: the LA sitemap had never been submitted to
+Bing; Onion submitted it. Google's LA sitemap shows "Couldn't fetch" but
+every chunk returns 200 as Googlebot — likely stale; resubmit if it stays.
+
+**Bing's AI Performance report shows Copilot cites us ~20×/day and EVERY
+cited page is a judge page** (`/current-judges/`, dossiers) — none are
+opinions. That made roster accuracy the priority, and measuring it
+("a seated judge should have voted recently", "a voter should be seated")
+found the judge layer wrong in every state:
+
+- **Nothing in the weekly cron ran `resolve_judges`.** Every state's
+  opinions from mid-August carried NO panel votes (MN Sep 0/59, AZ 0/65,
+  LA 0/63). Caught up (+830 votes) and chained per state after ingest.
+- **The cron never re-homed LA circuits / AZ divisions either** — those
+  steps sat inside the manual single-court branch. Now unconditional.
+- **LA's seated bench had ZERO votes across the Third, Fourth and Fifth
+  Circuits and part of the Supreme Court.** Three causes stacked: (1)
+  seeded roster rows had no `appointment_date` and no votes, so the
+  resolver's service window could never bound them and they could never
+  win a byline; (2) votes went to surname twins from other eras (Luther
+  F. Cole held Cade R. Cole's; Ernest "Dutch" Morial held Monique
+  Morial's 2026 votes; Enos McClendon held Chief Judge Page McClendon's
+  entire career, double-counted with a surname-only row) or to
+  name-variant rows ("Rose Ledet", "Daniel Dysart"); (3) **the parser
+  never matched the Third Circuit's panel line at all** (`Court composed
+  of A, B, and C, Judges.` — no "Judge" prefix, no parens) → 0 → 100%.
+  Fixed with sourced start dates (two research passes, every date cited),
+  ~7,000 votes moved via the new `reassign_judge_votes` (per-vote text
+  gate, dry-run default), four name-variant merges (merge_judge now
+  writes a 301 alias for the deleted slug — it used to kill the URL),
+  and a 1997+ LA re-sweep. "Cleveland J. Marcel" is not a judge (party
+  name leak; Timothy S. Marcel's pro-tem votes were on it). "Burris" on
+  the First Circuit is William J. Burris, a retired district judge pro
+  tempore — the justice's father — renamed, not merged.
+- **AZ: two sitting judges had lost every vote mechanically.** `Judge
+  O’Neil` (U+2019 apostrophe) never matched the ASCII name classes → 0
+  votes for an authoring judge (now 43); `James B. Morse Jr.` reduced to
+  the token `Jr.` and failed surname validation → 10 votes (now 890).
+- `/current-judges/` now lists non-seated judges with a panel vote in the
+  last six months under "Also hearing cases" (MN's retired judges by
+  appointment; AZ's designated retired justices) and no longer says
+  "Supreme Court and Court of Appeals" on NH.
+
+**Method notes:** the roster probe (seated-but-silent / voting-but-
+unseated / court mismatch) is the reusable part — run it after any
+roster edit. A "no other judge of that surname" negative from web search
+is not proof; the corpus's own vote eras per court are the stronger
+check, and they caught the McClendon double-count and the Wicker split
+(Thomas C. Wicker Jr.'s 1986–98 votes on Fredericka's row). `daemon(8)`
+loops get culled at ~10–20 min: drive chunk sweeps from OUTSIDE, two
+chunks per call, resume from the logged cursor, and clear a stale pidfile
+before relaunching.
+
+**Still open:** LA Supreme "Guidry, J." 2025+ and First Circuit 2015–24
+recovery depends on the re-sweep (his `appointment_date` was nulled for
+it and must be restored to 2025-01-01 afterward); AZ Div One roster
+(Gass/McMurdie/Stevens) waits on the court's reply; the IA item's loose
+PDFs are queued for deletion on IA's side (rerun the `ia delete` once the
+queue clears); `docs/CONTEXT_PRUNING_PLAN.md` is being produced in a
+separate session.
 
 ## 2026-09-24 — Applebot went 80x and the site never noticed
 
