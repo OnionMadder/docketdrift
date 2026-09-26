@@ -622,6 +622,22 @@ COA_COURT_COMPOSED_RE = re.compile(
     r"(?:\s+[A-Z][A-Za-z.'\-]+){0,3},?\s*)+)\)",
     re.IGNORECASE)
 
+# COA 3rd Circuit, two forms (measured 2026-09-26 on 400 recent opinions:
+# 351 / 48 / 1 none). Neither was matched before, so the Third Circuit had
+# ZERO panel votes and its twelve seated judges read as never sitting.
+#   (a) "Court composed of Elizabeth A. Pickett, Jonathan W. Perry, and
+#       Wilbur L. Stiles, Judges." -- full names, no "Judge" prefix, no
+#       parens (the 4th Cir regex above requires both).
+#   (b) Rehearing notices: "BEFORE JUDGES:\nHon. Shannon J. Gremillion\n
+#       Hon. Gary J. Ortego\nHon. Wilbur L. Stiles"
+COA_COURT_COMPOSED_BARE_RE = re.compile(
+    r"Court\s+composed\s+of\s+(?!Judge)([A-Z][^\n]{0,160}(?:\n[^\n]{0,160}){0,2})")
+# One name per line, so name tokens may not cross a newline -- with \s+
+# the first name swallowed "\nHon. Gary J." as its own middle names.
+COA_BEFORE_JUDGES_HON_RE = re.compile(
+    r"BEFORE\s+JUDGES\s*:\s*((?:Hon\.[ \t]+[A-Z][A-Za-z.'\-]+"
+    r"(?:[ \t]+[A-Z][A-Za-z.'\-]+){1,4},?\s*){1,6})")
+
 # COA 1st Circuit "BEFORE : WOLFE, STROMBERG, AND BALFOUR, JJ."
 # GREEDY capture, deliberately: the lazy version stopped at the FIRST
 # ", J." -- on "BEFORE: WHIPPLE, C. J., PENZATO AND HESTER, JJ." it
@@ -665,6 +681,40 @@ _PANEL_ROLE_TOKENS = {
     # judge named "Iii".
     "jr", "sr", "ii", "iii", "iv",
 }
+
+
+_FULL_NAME_RE = re.compile(
+    r"^[A-Z][A-Za-z.'\-]+(?:\s+[A-Z][A-Za-z.'\-]+)+"
+    r"(?:,?\s+(?:Jr|Sr|II|III|IV)\.?)?$")
+
+
+def _full_names_from_blob(blob: str) -> list[str]:
+    """Split a 'A, B, and C' panel blob into full names.
+
+    Cuts at the end of the panel SENTENCE first (a period after a word of
+    2+ letters that is not a generational suffix or the St./Ste. particle;
+    single-letter initials keep the list going), so reporter-style text
+    that flows straight into the opinion body cannot mint party names as
+    judges -- the "Defendant"/"Bolton" leak of 2026-08-25. Drops role words
+    ("Judges", "Judge", "Hon.") and anything that is not a 2+-token name.
+    """
+    blob = re.split(r"\n\s*\n|[()]", blob, 1)[0]
+    for dot in re.finditer(r"([A-Za-z'\-]+)\.", blob):
+        w = dot.group(1)
+        if len(w) >= 2 and w.lower() not in (
+                "jr", "sr", "ii", "iii", "iv", "st", "ste", "hon"):
+            blob = blob[:dot.end() - 1]
+            break
+    names = []
+    for chunk in re.split(r",\s+and\s+|,\s*|\s+and\s+", blob):
+        chunk = re.sub(r"^\s*(?:Hon\.|(?:Chief\s+)?Judges?)\s+", "", chunk)
+        chunk = _space_name_particles(" ".join(chunk.split()).rstrip("."))
+        chunk = re.sub(r",?\s+Judges?$", "", chunk)
+        if not chunk or _norm_panel_token(chunk) in _PANEL_ROLE_TOKENS:
+            continue
+        if _FULL_NAME_RE.match(chunk) and chunk not in names:
+            names.append(chunk)
+    return names
 
 
 def _norm_panel_token(chunk: str) -> str:
@@ -1080,6 +1130,21 @@ class LouisianaParser(StateParser):
                     name = " ".join(name.split())  # collapse \n and runs
                     if name and name not in panel:
                         panel.append(name)
+            # 3rd Cir: bare "Court composed of A, B, and C, Judges." and
+            # the rehearing-notice "BEFORE JUDGES: Hon. A Hon. B Hon. C".
+            if not panel:
+                bm3 = COA_COURT_COMPOSED_BARE_RE.search(raw_text[:6000])
+                if bm3:
+                    for name in _full_names_from_blob(bm3.group(1)):
+                        if name not in panel:
+                            panel.append(name)
+            if not panel:
+                hm = COA_BEFORE_JUDGES_HON_RE.search(raw_text[:6000])
+                if hm:
+                    for name in re.split(r"\s*Hon\.\s+", hm.group(1)):
+                        name = " ".join(name.split()).rstrip(".,")
+                        if _FULL_NAME_RE.match(name) and name not in panel:
+                            panel.append(name)
             # 5th Cir "Panel composed of Judges A, B, and C" -- capture
             # the FULL comma-and-"and"-separated tail after the marker.
             if not panel:

@@ -518,3 +518,44 @@ class OpinionAbsoluteUrlTests(SimpleTestCase):
         self.assertEqual(op.get_absolute_url(),
                          "https://mn.docketdrift.com/opinion/A24-1561/")
 
+
+
+class LouisianaThirdCircuitPanelTests(SimpleTestCase):
+    """The Third Circuit writes its panel as full names with no 'Judge'
+    prefix and no parens; rehearing notices use 'BEFORE JUDGES:' + 'Hon.'
+    lines. Neither matched before, so the circuit had zero panel votes."""
+
+    def _panel(self, text):
+        from opinions.parsing.la import LouisianaParser
+        return LouisianaParser().parse(text).panel
+
+    def test_bare_court_composed_of(self):
+        text = ("STATE OF LOUISIANA\nCOURT OF APPEAL, THIRD CIRCUIT\n25-629\n"
+                "STATE OF LOUISIANA VERSUS SAMMY CHEATHAM\n**********\n"
+                "APPEAL FROM THE SIXTEENTH JUDICIAL DISTRICT COURT\n**********\n"
+                "Court composed of Elizabeth A. Pickett, Jonathan W. Perry, and Wilbur L. Stiles,\n"
+                "Judges.\nPICKETT, Judge.\nThe defendant, Sammy Cheatham, appeals his conviction.\n")
+        self.assertEqual(self._panel(text),
+                         ["Elizabeth A. Pickett", "Jonathan W. Perry", "Wilbur L. Stiles"])
+
+    def test_before_judges_hon_lines(self):
+        text = ("STATE OF LOUISIANA\nCOURT OF APPEAL, THIRD CIRCUIT\nP.O. Box 16577 Lake Charles LA 70616\n"
+                "NOT DESIGNATED FOR PUBLICATION\nCA-0025-0298\n"
+                "BEFORE JUDGES:\nHon. Shannon J. Gremillion\nHon. Gary J. Ortego\nHon. Wilbur L. Stiles\n"
+                "As counsel of record in the captioned case, you are hereby notified that the "
+                "application for rehearing filed by James Cureton has this day been DENIED.\n")
+        self.assertEqual(self._panel(text),
+                         ["Shannon J. Gremillion", "Gary J. Ortego", "Wilbur L. Stiles"])
+
+    def test_fourth_circuit_parenthesized_form_still_wins(self):
+        text = ("COURT OF APPEAL\nFOURTH CIRCUIT\nSTATE OF LOUISIANA\n2026-C-0149\n"
+                "(Court composed of Judge Daniel L. Dysart, Judge Rosemary Ledet, Judge\nNakisha Ervin-Knott)\n"
+                "DYSART, J.\nRelator seeks review of the trial court's ruling.\n")
+        self.assertEqual(self._panel(text),
+                         ["Daniel L. Dysart", "Rosemary Ledet", "Nakisha Ervin-Knott"])
+
+    def test_bare_form_does_not_swallow_body_prose(self):
+        text = ("COURT OF APPEAL, THIRD CIRCUIT\n24-101\n"
+                "Court composed of Van H. Kyzar and Candyce G. Perret, Judges. Defendant, Robert Bolton, "
+                "appeals the judgment. Bolton argues the trial court erred.\n")
+        self.assertEqual(self._panel(text), ["Van H. Kyzar", "Candyce G. Perret"])
