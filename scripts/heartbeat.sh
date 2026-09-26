@@ -96,4 +96,13 @@ if [ -s "$EMBED_STATE" ]; then
     fi
 fi
 
+# --- (3) Latency / starvation ---------------------------------------------
+# /healthz above is a single SELECT 1 and stays instant while the ONE gunicorn
+# worker is saturated serving slow pages -- every incident that mattered in
+# Aug-Sep 2026 was exactly that, and this task reported green through all of
+# them. latency_check.sh reads request durations from the access log and
+# alerts on TRANSITIONS only (it keeps its own state file), so calling it
+# every tick does not spam. See the header of that script.
+/bin/sh /home/private/docketdrift/scripts/latency_check.sh || fail=1
+
 exit $fail

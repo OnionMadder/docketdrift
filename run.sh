@@ -60,6 +60,17 @@
 #   dynamically-reassigned /24 fingerprints a datacenter range and geolocates
 #   at country level without singling out a reader. Do not "temporarily"
 #   widen it to the full address. See docketdrift_site/gunicorn_logging.py.
+#
+# - %(M)s trailing field (2026-09-26): request duration in MILLISECONDS,
+#   appended LAST so every existing parser (error_rate_check.sh,
+#   ai_citations.sh, ai_citation_profile) keeps working -- they split on the
+#   quote character or anchor on the UA and ignore anything after it. This
+#   is what scripts/latency_check.sh reads. Every incident that mattered
+#   through September 2026 (the MCP load test, the Applebot 80x surge, the
+#   August search cliff) was STARVATION -- slow 200s, not 5xx -- and nothing
+#   watched for it because the log carried no duration. Keep this field
+#   last; anything that parses by position must tolerate a line without it
+#   (lines written before this change have no trailing number).
 
 cd /home/private/docketdrift
 exec ./.venv/bin/gunicorn docketdrift_site.wsgi:application \
@@ -74,4 +85,4 @@ exec ./.venv/bin/gunicorn docketdrift_site.wsgi:application \
     --access-logfile - \
     --error-logfile - \
     --logger-class docketdrift_site.gunicorn_logging.NetworkOnlyLogger \
-    --access-logformat '%(h)s %({x-client-net}i)s %(t)s "%(m)s %(U)s %(H)s" %(s)s %(b)s "%(a)s"'
+    --access-logformat '%(h)s %({x-client-net}i)s %(t)s "%(m)s %(U)s %(H)s" %(s)s %(b)s "%(a)s" %(M)s'
