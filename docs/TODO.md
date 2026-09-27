@@ -30,8 +30,12 @@ rows + surname twins + Third Circuit panel line never parsed → 0→100%);
 4 name-variant merges (merge now leaves a 301), AZ O'Neil/Morse byline
 bugs fixed (0→43, 10→890 votes). Re-sweep DONE: 38,695 votes recovered, LA seated bench 39/60 → 59/60
 rows with votes. Court-aware surname tiebreak shipped (Rachael D. Johnson 0→177, Marc E.
-Johnson 254→660). **Open:** cull "Cleveland J. Marcel"
-(party-name leak); AZ Div One roster waits on the court; IA loose-PDF
+Johnson 254→660). Marcel is a REAL 1970s–80s judge (leak verdict retracted). Guidry row split
+(Greg 19→113, John Michael →1,993; row named Edmond L. Guidry Jr., 967 votes;
+34 stray votes on a surname-only row). Henry N. Brown Jr. row fixed — which
+exposed 4,710 Second Circuit opinions misfiled on other circuits (re-homed by
+docket shape; 2d Cir 10,548→15,258) and 91 LA judges homed on the wrong court
+(set by vote majority; never for seated judges). **Open:** AZ Div One roster waits on the court; IA loose-PDF
 delete queued on IA's side; `docs/CONTEXT_PRUNING_PLAN.md` in flight.
 
 **2026-08-10→16 session (full detail in CLAUDE.md's session block):**
