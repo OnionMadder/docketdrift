@@ -610,6 +610,30 @@ def _strip_generational(name: str) -> str:
     return _GENERATIONAL_RE.sub("", (name or "").strip())
 
 
+def _pick_by_court(hits: list, court_id) -> Judge | None:
+    """Second-stage tiebreak for a shared surname: the opinion's own court.
+
+    Two SEATED judges with one surname on DIFFERENT courts both have open
+    service windows, so the date test alone can never separate them.
+    Louisiana had exactly that (2026-09-26): Rachael D. Johnson (Fourth
+    Circuit) had ZERO votes and Marc E. Johnson (Fifth Circuit) stopped
+    in 2021, because every "Johnson" byline after her appointment was
+    ambiguous and dropped. A byline on a Fourth Circuit opinion is the
+    Fourth Circuit's Johnson.
+
+    Still conservative: only when the date test left more than one
+    candidate, and only when exactly ONE of them sits on the opinion's
+    court. A designated / pro tempore judge sitting on another court is
+    not matched here -- that stays a skip, as before. ``court_id`` is the
+    Judge's home court; multi-panel systems (LA circuits, AZ divisions)
+    are distinct Court rows, which is what makes this work.
+    """
+    if court_id is None or len(hits) < 2:
+        return None
+    same = [j for j in hits if j.court_id == court_id]
+    return same[0] if len(same) == 1 else None
+
+
 def _last_name(name: str) -> str:
     """Return the last token of ``name`` after stripping role suffix.
 
@@ -816,10 +840,13 @@ class Command(BaseCommand):
                 return False
             return True
 
-        def _disambiguate(candidates: list, when) -> Judge | None:
-            """Exactly one candidate on the bench at ``when``, else None."""
+        def _disambiguate(candidates: list, when, court_id=None) -> Judge | None:
+            """Exactly one candidate on the bench at ``when``; if several
+            were, exactly one of THOSE sitting on the opinion's own court."""
             hits = [j for j in candidates if _in_window(j, when)]
-            return hits[0] if len(hits) == 1 else None
+            if len(hits) == 1:
+                return hits[0]
+            return _pick_by_court(hits, court_id)
 
         def _get_or_create_byline_judge(last_lower: str) -> Judge | None:
             """Return Judge for ``last_lower`` (state-scoped), creating one
@@ -1027,7 +1054,7 @@ class Command(BaseCommand):
             if author_last:
                 pre_existing = last_name_map.get(author_last, [])
                 if len(pre_existing) > 1:
-                    author_judge = _disambiguate(pre_existing, opinion.release_date)
+                    author_judge = _disambiguate(pre_existing, opinion.release_date, opinion.court_id)
                     if author_judge is not None:
                         author_resolved += 1
                         disambiguated += 1
@@ -1057,7 +1084,7 @@ class Command(BaseCommand):
             for panel_last in panel_lasts:
                 pre_existing = last_name_map.get(panel_last, [])
                 if len(pre_existing) > 1:
-                    _picked = _disambiguate(pre_existing, opinion.release_date)
+                    _picked = _disambiguate(pre_existing, opinion.release_date, opinion.court_id)
                     if _picked is None:
                         panel_ambiguous += 1
                         continue
@@ -1092,7 +1119,7 @@ class Command(BaseCommand):
             for dissenter_last in dissenter_lasts:
                 pre_existing = last_name_map.get(dissenter_last, [])
                 if len(pre_existing) > 1:
-                    _picked = _disambiguate(pre_existing, opinion.release_date)
+                    _picked = _disambiguate(pre_existing, opinion.release_date, opinion.court_id)
                     if _picked is None:
                         dissent_ambiguous += 1
                         continue
@@ -1130,7 +1157,7 @@ class Command(BaseCommand):
             for concurrer_last in concurrer_lasts:
                 pre_existing = last_name_map.get(concurrer_last, [])
                 if len(pre_existing) > 1:
-                    _picked = _disambiguate(pre_existing, opinion.release_date)
+                    _picked = _disambiguate(pre_existing, opinion.release_date, opinion.court_id)
                     if _picked is None:
                         concur_ambiguous += 1
                         continue

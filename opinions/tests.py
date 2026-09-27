@@ -626,3 +626,29 @@ class MinnesotaSupremeBylineTests(SimpleTestCase):
                 "John Doe,\nAppellant.\n\nFiled March 2, 2026\nAffirmed\nSMITH, Judge\n\n"
                 "Considered and decided by Smith, Presiding Judge; Jones, Judge; and Brown, Judge.\n")
         self.assertTrue(self._author(text).lower().startswith("smith"), self._author(text))
+
+
+class ResolverCourtTiebreakTests(SimpleTestCase):
+    """Two seated judges sharing a surname on different courts: the
+    opinion's court decides; same court or no court stays a skip."""
+
+    def _judges(self):
+        from opinions.models import Judge
+        return (Judge(pk=1, full_name="Rachael D. Johnson", court_id=11, is_currently_seated=True),
+                Judge(pk=2, full_name="Marc E. Johnson", court_id=12, is_currently_seated=True))
+
+    def test_picks_the_judge_on_the_opinions_court(self):
+        from opinions.management.commands.resolve_judges import _pick_by_court
+        a, b = self._judges()
+        self.assertIs(_pick_by_court([a, b], 11), a)
+        self.assertIs(_pick_by_court([a, b], 12), b)
+
+    def test_no_court_or_other_court_or_same_court_is_a_skip(self):
+        from opinions.management.commands.resolve_judges import _pick_by_court
+        from opinions.models import Judge
+        a, b = self._judges()
+        self.assertIsNone(_pick_by_court([a, b], None))
+        self.assertIsNone(_pick_by_court([a, b], 7))
+        c = Judge(pk=3, full_name="Other Johnson", court_id=11, is_currently_seated=True)
+        self.assertIsNone(_pick_by_court([a, c], 11))
+        self.assertIsNone(_pick_by_court([a], 11))
