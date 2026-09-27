@@ -3,6 +3,19 @@
 Snapshot 2026-08-16. Prioritized. Each item says what it is, why it matters,
 and roughly how big. "Onion" items need the member panel or are editorial.
 
+**★ OPEN 2026-09-26b — finish the AZ/LA 2026 COA catch-up (CL penalty-boxed us).**
+Done so far: +70 AZ Div One (Jun partial, Jul-Sep now match CL), derived
+passes run (ids 489208-489277). STILL MISSING vs CL: AZ Apr ~63, May ~72,
+Jun ~46; LA COA Jan ~11, Feb ~7, Mar ~13, Apr-Jul ~536, Aug ~86, Sep ~43.
+Resume after CL's 72,714s Retry-After (issued 2026-09-26 ~23:05Z) clears:
+`ingest_court arizctapp|lactapp --since 2026-01-01 --until 2026-09-26
+--skip-existing` in `timeout 540` chunks, then assign_la_circuits --since
+2026-01-01, extract_statutes/citations/holdings_text + resolve_judges from
+the new top-of-PK id, backfill_judge_spans. **Cron fix PROPOSED, not
+applied:** drop `set -e` around the per-court loop (continue, exit non-zero
+at the end) and have the CL client RAISE on a Retry-After > ~600s instead
+of sleeping into the NFSN cull. See CLAUDE.md 2026-09-26b.
+
 **2026-09-26 session (full detail in CLAUDE.md's session block):** the
 "why do complaints come from MN" question is answered — EXPOSURE (MN is
 75% of real reads / 77% of live-AI fetches at 15% of the corpus), and

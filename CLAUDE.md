@@ -371,6 +371,57 @@ IA item's loose PDFs are queued for deletion on IA's side (rerun the
 `ia delete` once the queue clears). `docs/CONTEXT_PRUNING_PLAN.md` is
 being produced in a separate session.
 
+## 2026-09-26b — AZ/LA 2026 COA hole: NOT the 30-day window; a catch-up that never finished
+
+AZ COA Apr-Jun 2026 read 6/4/7 opinions and LA COA Apr-Jul read **zero**,
+against CL `/clusters/` counts of **69/76/86** (`arizctapp`) and
+**125/134/141/136** (`lactapp`). MN/NH normal. CL has them; we don't.
+
+**The obvious theory was WRONG, and one probe killed it.** "cron's 30-day
+`--since` misses clusters CL publishes late" predicts a big
+`date_created - date_filed` lag on the missing clusters. Measured on 60
+missing clusters: **lag = 0 days, every one.** CL had each the day it was
+filed. The window was never the problem; do not widen it on this evidence.
+
+What actually happened, per court:
+- **AZ Apr-Jun = the `/search/` era.** `1e32c95` (2026-05-31) listed via
+  `/search/` (~10% recall); `3a0488f` (2026-07-20) fixed it. The CL bulk
+  export stops 2026-03-31. Nobody re-ingested the gap between them; the
+  TODO "finish the CL catch-up" item from 2026-07-20 was never closed.
+- **LA COA Apr-Aug = the 2026-08-19 catch-up died.** `la-coa-catchup.log`
+  shows a `--since 2026-03-01` run hitting a **21,126s** 429 after the
+  newest handful of clusters. LA was not `is_live` (so not in the cron)
+  until 08-25, so nothing else ever covered Apr-Jul.
+- **LA Supreme 2026 matches CL exactly** (Jan 0, Feb 0, Mar 12, Apr 1...):
+  the known upstream hole, not ours. lasc.org is the only source.
+- **AZ Div Two reads 1-6/month all year** and CL `arizctapp` totals equal
+  our Div One counts, so CL appears to carry little Div Two at all.
+  UNVERIFIED against the court's own output; worth one check at
+  appeals2.az.gov before calling it an upstream hole.
+
+**★ THE WEEKLY CRON ALSO MISSES CLUSTERS INSIDE ITS OWN WINDOW**, found by
+the catch-up creating August opinions (`1 CA-CV 25-0730`, 2026-08-11). Two
+mechanisms in the code, neither yet confirmed against the task log (it
+lives only in the NFSN member panel):
+1. `cron-ingest.sh` runs `set -e`. A third consecutive 429 makes
+   `ingest_court` raise, and ONE throttled court aborts every later court
+   plus `resolve_judges`, spans and IndexNow.
+2. **CL hands out 429s of 40 min to 20 hours** (measured today: 2,559s,
+   5,150s, 72,714s) and the client sleeps them. NFSN's wallclock cull
+   kills the process mid-sleep with no log line. It killed a `daemon(8)`
+   catch-up today exactly that way, 23 clusters in.
+
+### How to run a CL catch-up now (`ingest_court --until --skip-existing`, new)
+
+Drive it from OUTSIDE NFSN in `timeout 540` chunks with a ~10-min gap,
+and let `--skip-existing` make each retry resume (a held cluster costs
+nothing past its listing page). `--until` bounds the listing to the hole.
+**Stop when `Retry-After` goes past a few hours** -- poking a 20-hour
+penalty every 19 min buys nothing. The IDs of fresh rows are the top of
+the PK: find them with `ORDER BY id DESC LIMIT N`, NOT `created_at` beside
+`court_id` (1969, the documented trap -- I hit it running the derived
+passes and they silently scanned old rows).
+
 ## 2026-09-24 — Applebot went 80x and the site never noticed
 
 Applebot ran ~1-2K requests/day through 21 Sep, then **159,937 on 22 Sep
