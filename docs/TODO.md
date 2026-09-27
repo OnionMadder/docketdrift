@@ -29,9 +29,8 @@ rows + surname twins + Third Circuit panel line never parsed → 0→100%);
 ~7,000 LA votes reattributed with sourced dates (`reassign_judge_votes`),
 4 name-variant merges (merge now leaves a 301), AZ O'Neil/Morse byline
 bugs fixed (0→43, 10→890 votes). Re-sweep DONE: 38,695 votes recovered, LA seated bench 39/60 → 59/60
-rows with votes. **Open:** court-aware surname disambiguation in
-`resolve_judges` (two seated Johnsons on different circuits — Rachael D.
-Johnson 0 votes, Marc E. Johnson stops 2021); cull "Cleveland J. Marcel"
+rows with votes. Court-aware surname tiebreak shipped (Rachael D. Johnson 0→177, Marc E.
+Johnson 254→660). **Open:** cull "Cleveland J. Marcel"
 (party-name leak); AZ Div One roster waits on the court; IA loose-PDF
 delete queued on IA's side; `docs/CONTEXT_PRUNING_PLAN.md` in flight.
 

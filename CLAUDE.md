@@ -359,11 +359,17 @@ any vote to **59/60** (Chehardy 0→1,253, Guidry 0→1,945, Gremillion
 0→777, all twelve Third Circuit judges populated). Guidry's
 `appointment_date` is restored to 2025-01-01.
 
-**Still open:** **Rachael D. Johnson (4th Cir) has 0 votes and Marc E.
-Johnson (5th Cir) stops in 2021** — two SEATED Johnsons with open
-windows, so the date-window disambiguation cannot split them; the fix is
-to prefer the candidate whose court matches the opinion's court (a
-resolver change, not data). "Cleveland J. Marcel" (pk 607) is a
+**Fixed same day:** Rachael D. Johnson (4th Cir) had 0 votes and Marc
+E. Johnson (5th Cir) stopped in 2021 — two SEATED Johnsons with open
+windows, which the date test can never split. `resolve_judges` now
+breaks such a tie by the OPINION'S COURT (`_pick_by_court`: only when
+the date test leaves several, only when exactly one sits on that court);
+a 2022+ LA re-sweep took her 0→177 and him 254→660. Gotcha met on the
+way: `--since 2022 --min-id 0` walks the PRIMARY key from 0 through the
+whole table (chunks died at 300s printing nothing) — start the cursor
+at the first id of the window instead.
+
+**Still open:** "Cleveland J. Marcel" (pk 607) is a
 party-name leak to cull; "John Guidry" (579) still mixes a 1970s–90s
 Third Circuit Guidry with Greg Guidry's 2006–08 Fifth Circuit votes. AZ
 Div One roster (Gass/McMurdie/Stevens) waits on the court's reply. The
