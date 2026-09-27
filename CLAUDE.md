@@ -371,6 +371,20 @@ way: `--since 2022 --min-id 0` walks the PRIMARY key from 0 through the
 whole table (chunks died at 300s printing nothing) — start the cursor
 at the first id of the window instead.
 
+**Also 2026-09-27 — 4,710 Second Circuit opinions were filed on the wrong
+circuit.** Chasing "Henry Brown"'s ~200 First Circuit votes found the
+votes were his: the OPINIONS were misfiled. Second Circuit dockets have
+a shape no other circuit uses (`44,798-CA`, `24368-KA`), and 4,692 of
+them sat on the First Circuit (plus 18 on others) — reporter-era rows
+with no court header, which is why `assign_la_circuits` (header + parish)
+never caught them. Re-homed by docket shape with Onion's approval:
+Second Circuit 10,548 → 15,258 opinions. Then 91 bulk-loaded LA judges
+had their home court set to the court holding ≥80% of their votes
+(every CL-derived LA judge had been homed on the First Circuit by
+default). **Never apply that rule to a SEATED judge** — it moved John
+Michael Guidry off the Supreme Court onto his old First Circuit seat for
+a minute; a sitting judge's home court is the current seat, period.
+
 **Still open:** "Cleveland J. Marcel" (pk 607) is a REAL 1970s–80s judge (the
 "leak" verdict was search-only and wrong; home court corrected to the
 Fifth Circuit); "John Guidry" (579) was split 2026-09-27: 94 Fifth
