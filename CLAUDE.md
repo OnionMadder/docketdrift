@@ -330,8 +330,10 @@ found the judge layer wrong in every state:
   ~7,000 votes moved via the new `reassign_judge_votes` (per-vote text
   gate, dry-run default), four name-variant merges (merge_judge now
   writes a 301 alias for the deleted slug — it used to kill the URL),
-  and a 1997+ LA re-sweep. "Cleveland J. Marcel" is not a judge (party
-  name leak; Timothy S. Marcel's pro-tem votes were on it). "Burris" on
+  and a 1997+ LA re-sweep. "Cleveland J. Marcel" IS a judge (4th Cir 1970s,
+  5th Cir 1980s — `Before KLIEBERT, GAUDIN and MARCEL, JJ.`); a web
+  search called him a party-name leak and the corpus text refuted it.
+  Timothy S. Marcel's pro-tem votes had been on that row. "Burris" on
   the First Circuit is William J. Burris, a retired district judge pro
   tempore — the justice's father — renamed, not merged.
 - **AZ: two sitting judges had lost every vote mechanically.** `Judge
@@ -369,9 +371,13 @@ way: `--since 2022 --min-id 0` walks the PRIMARY key from 0 through the
 whole table (chunks died at 300s printing nothing) — start the cursor
 at the first id of the window instead.
 
-**Still open:** "Cleveland J. Marcel" (pk 607) is a
-party-name leak to cull; "John Guidry" (579) still mixes a 1970s–90s
-Third Circuit Guidry with Greg Guidry's 2006–08 Fifth Circuit votes. AZ
+**Still open:** "Cleveland J. Marcel" (pk 607) is a REAL 1970s–80s judge (the
+"leak" verdict was search-only and wrong; home court corrected to the
+Fifth Circuit); "John Guidry" (579) was split 2026-09-27: 94 Fifth
+Circuit votes naming GREG G. GUIDRY in full → Greg Gerard Guidry (19→113),
+45 First Circuit 1998+ votes plus 3 First Circuit opinions misfiled on the
+Fifth Circuit (re-homed) → John Michael Guidry (→1,993); the 1,001 that
+remain are a 1975–99 Third Circuit judge whose name is being sourced. AZ
 Div One roster (Gass/McMurdie/Stevens) waits on the court's reply. The
 IA item's loose PDFs are queued for deletion on IA's side (rerun the
 `ia delete` once the queue clears). `docs/CONTEXT_PRUNING_PLAN.md` is
