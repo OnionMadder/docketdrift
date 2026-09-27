@@ -376,8 +376,12 @@ at the first id of the window instead.
 Fifth Circuit); "John Guidry" (579) was split 2026-09-27: 94 Fifth
 Circuit votes naming GREG G. GUIDRY in full → Greg Gerard Guidry (19→113),
 45 First Circuit 1998+ votes plus 3 First Circuit opinions misfiled on the
-Fifth Circuit (re-homed) → John Michael Guidry (→1,993); the 1,001 that
-remain are a 1975–99 Third Circuit judge whose name is being sourced. AZ
+Fifth Circuit (re-homed) → John Michael Guidry (→1,993); the row itself is
+**Edmond L. Guidry Jr.** (Third Circuit 1976–94, Chief Judge at retirement,
+pro tem 1995; obituary + lasc.org in memoriam), 967 votes, slug renamed
+with a 301; 34 stray votes on other courts (1996 First Circuit = Carl A.
+Guidry pro tem, etc.) sit on a surname-only "Guidry" row rather than on a
+named man's page. AZ
 Div One roster (Gass/McMurdie/Stevens) waits on the court's reply. The
 IA item's loose PDFs are queued for deletion on IA's side (rerun the
 `ia delete` once the queue clears). `docs/CONTEXT_PRUNING_PLAN.md` is
