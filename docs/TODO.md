@@ -11,10 +11,11 @@ Resume after CL's 72,714s Retry-After (issued 2026-09-26 ~23:05Z) clears:
 `ingest_court arizctapp|lactapp --since 2026-01-01 --until 2026-09-26
 --skip-existing` in `timeout 540` chunks, then assign_la_circuits --since
 2026-01-01, extract_statutes/citations/holdings_text + resolve_judges from
-the new top-of-PK id, backfill_judge_spans. **Cron fix PROPOSED, not
-applied:** drop `set -e` around the per-court loop (continue, exit non-zero
-at the end) and have the CL client RAISE on a Retry-After > ~600s instead
-of sleeping into the NFSN cull. See CLAUDE.md 2026-09-26b.
+the new top-of-PK id, backfill_judge_spans. **Resume STARTED 2026-09-28
+~01:40Z** (penalty had cleared); new rows will have id > 489278.
+**Cron fix APPLIED 2026-09-27 (`f8516af`):** no `set -e` (every step runs,
+exit 1 at the end naming failures), CL client raises on Retry-After > 600s,
+AZ/LA re-homing now runs in auto mode too. See CLAUDE.md 2026-09-26b.
 
 **2026-09-26 session (full detail in CLAUDE.md's session block):** the
 "why do complaints come from MN" question is answered — EXPOSURE (MN is

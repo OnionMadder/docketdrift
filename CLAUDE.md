@@ -441,13 +441,26 @@ lives only in the NFSN member panel):
    kills the process mid-sleep with no log line. It killed a `daemon(8)`
    catch-up today exactly that way, 23 clusters in.
 
+**Both FIXED 2026-09-27 (`f8516af`).** `cron-ingest.sh` no longer runs
+`set -e`: each step goes through `step()`, failures are collected, and the
+script exits 1 at the END naming them. `CourtListenerClient` RAISES on any
+Retry-After above `MAX_RETRY_AFTER_SECONDS` (600) with a "Resume in ~XhYm"
+hint instead of sleeping into the cull (`max_retry_after=None` opts out,
+for a local run only). Same pass found the AZ/LA re-homing post-steps ran
+ONLY in single-court mode, never in auto-discover; they now run per court
+in both paths. **A CL penalty now fails a weekly run LOUDLY** (NFSN
+email) where it used to shrink it silently -- expect those emails, and
+treat them as "re-run that court later", not as a broken pipeline.
+
 ### How to run a CL catch-up now (`ingest_court --until --skip-existing`, new)
 
 Drive it from OUTSIDE NFSN in `timeout 540` chunks with a ~10-min gap,
 and let `--skip-existing` make each retry resume (a held cluster costs
 nothing past its listing page). `--until` bounds the listing to the hole.
-**Stop when `Retry-After` goes past a few hours** -- poking a 20-hour
-penalty every 19 min buys nothing. The IDs of fresh rows are the top of
+**Honor a long `Retry-After` rather than re-poking** -- poking a 20-hour
+penalty every 19 min buys nothing. The client's capped error prints
+"Resume in ~XhYm"; a driver should sleep that long (+ a few min) and
+continue. The IDs of fresh rows are the top of
 the PK: find them with `ORDER BY id DESC LIMIT N`, NOT `created_at` beside
 `court_id` (1969, the documented trap -- I hit it running the derived
 passes and they silently scanned old rows).
