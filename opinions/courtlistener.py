@@ -28,6 +28,12 @@ USER_AGENT = "DocketDrift/0.1 (+https://docketdrift.com)"
 DEFAULT_PAGE_SIZE = 50
 MAX_RETRIES_ON_429 = 3
 RETRY_AFTER_FALLBACK = 60  # seconds when Retry-After header is missing
+# Longest Retry-After we will sleep through. CL answers volume with waits of
+# 40 min to 20 h (measured 2026-09-26: 2,559s / 5,150s / 72,714s), and NFSN's
+# ~10-minute wallclock cull kills a process mid-sleep with no log line -- so
+# a long sleep never recovers, it just dies silently. Past this cap, raise at
+# once: a loud failure the caller can report, and one a re-run can resume.
+MAX_RETRY_AFTER_SECONDS = 600
 
 # Network-level retry config (separate from 429): ReadTimeout /
 # ConnectionError / SSL drops mid-request. CL occasionally stalls past
@@ -160,6 +166,7 @@ class CourtListenerClient:
         base_url: str = BASE_URL,
         session: Optional[requests.Session] = None,
         sleep_fn=resilient_sleep,
+        max_retry_after: Optional[int] = MAX_RETRY_AFTER_SECONDS,
     ):
         if not token:
             raise ValueError(
@@ -169,6 +176,9 @@ class CourtListenerClient:
         self._token = token
         self._base_url = base_url
         self._sleep = sleep_fn
+        # None = sleep through any Retry-After; only for a caller that is NOT
+        # subject to the NFSN cull (e.g. a local run).
+        self._max_retry_after = max_retry_after
         self._session = session or requests.Session()
         self._session.headers.update({
             "Authorization": f"Token {token}",
@@ -210,6 +220,14 @@ class CourtListenerClient:
                         wait = int(retry_after) if retry_after else RETRY_AFTER_FALLBACK
                     except ValueError:
                         wait = RETRY_AFTER_FALLBACK
+                    if (self._max_retry_after is not None
+                            and wait > self._max_retry_after):
+                        raise CourtListenerError(
+                            f"Rate limited on {url}: Retry-After {wait}s exceeds "
+                            f"the {self._max_retry_after}s cap; not sleeping into "
+                            f"the NFSN cull. Resume in ~{wait // 3600}h"
+                            f"{(wait % 3600) // 60:02d}m."
+                        )
                     logger.warning(
                         "courtlistener: 429 on %s, sleeping %ss (attempt %s/%s)",
                         url, wait, attempt + 1, MAX_RETRIES_ON_429,
