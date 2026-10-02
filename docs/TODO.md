@@ -3,6 +3,26 @@
 Snapshot 2026-08-16. Prioritized. Each item says what it is, why it matters,
 and roughly how big. "Onion" items need the member panel or are editorial.
 
+**★ OPEN 2026-10-01 — Internet Archive loose-PDF cleanup (third attempt, throttled).**
+Item `minnesota-appellate-opinions-2017-2026` is FINE for users: the 1.63GB zip
+verifies (HTTP 200, Content-Length 1,630,920,906) + manifest.csv + README.md.
+The mess: **1,162 leftover loose PDFs** (mostly 2017-18 unpublished) whose OCR
+derivatives are **12.5GB of the 14.7GB item**, plus 2,403 `history/` copies
+(0.37GB, from the Aug 7-8 re-uploads; harmless). Delete passes on Aug 8-9 and
+Sep 26 each stalled partway — every cascade delete queues ~2+ IA tasks and IA
+refuses past `bucket_tasks_queued`. One stale red `derive.php` (Aug 11, rerun by
+IA staff Aug 19, still red) is the OCR of these PDFs; expect it moot after.
+**Now:** a local script (`scripts/ia_cleanup.py`, run from the Windows venv: `.venv/Scripts/python.exe -u scripts/ia_cleanup.py --apply`) deletes with
+`cascade_delete` and BLOCKS while the item's queued+running tasks ≥ 60 instead
+of retrying into the limit. Resumable — it re-reads the item each run. Measured
+2026-10-01: IA drains this queue SLOWLY (sat at ~60 for 40+ min, 1 running,
+**5 tasks `paused`** on IA's side), so ~25-50 of 1,162 done in the first hour;
+at that rate this is days, not hours. If the paused count persists, IA is
+holding the item — ask IA (info@archive.org) rather than pushing harder.
+**Then:** run the script with `--sweep` for orphaned derivatives, confirm the
+item is down to zip + manifest + README + IA system files, and delete this
+entry. Do not re-upload anything to this item meanwhile.
+
 **★ OPEN 2026-09-26b — finish the AZ/LA 2026 COA catch-up (CL penalty-boxed us).**
 Done so far: +70 AZ Div One (Jun partial, Jul-Sep now match CL), derived
 passes run (ids 489208-489277). STILL MISSING vs CL: AZ Apr ~63, May ~72,
@@ -37,7 +57,7 @@ Johnson 254→660). Marcel is a REAL 1970s–80s judge (leak verdict retracted).
 exposed 4,710 Second Circuit opinions misfiled on other circuits (re-homed by
 docket shape; 2d Cir 10,548→15,258) and 91 LA judges homed on the wrong court
 (set by vote majority; never for seated judges). **Open:** AZ Div One roster waits on the court; IA loose-PDF
-delete queued on IA's side; `docs/CONTEXT_PRUNING_PLAN.md` in flight.
+delete (see the 2026-10-01 block above); `docs/CONTEXT_PRUNING_PLAN.md` in flight.
 
 **2026-08-10→16 session (full detail in CLAUDE.md's session block):**
 **PDF page anchors live** (`#page-N` from pypdf `\f`; AZ 50% modern coverage,
