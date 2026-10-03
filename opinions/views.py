@@ -1658,14 +1658,18 @@ def current_judges(request):
     # member is recused (AZ). Leaving them off made the roster an incomplete
     # answer to "who decides cases here", and AI answers cite this page.
     # Derived from votes, so it needs no upkeep. Surname-only rows are
-    # excluded: they are byline fragments, not identified people.
+    # excluded: they are byline fragments, not identified people. A judge
+    # who RETIRED inside the window is excluded too: their recent votes are
+    # opinions decided before they left and filed after, not service by
+    # appointment (the court asked us to take Gass and Thumma off).
     serving = []
     if era == "current":
         cutoff = timezone.localdate() - timedelta(days=183)
         serving = sorted(
             (j for j in judges
              if not j.is_currently_seated and j.last_vote_date
-             and j.last_vote_date >= cutoff and len(j.full_name.split()) >= 2),
+             and j.last_vote_date >= cutoff and len(j.full_name.split()) >= 2
+             and not (j.retirement_date and j.retirement_date >= cutoff)),
             key=lambda j: (-j.last_vote_date.toordinal(), j.full_name))
         for j in serving:
             j.tenure_label = "Last sat on a panel %s" % j.last_vote_date.strftime("%B %Y")

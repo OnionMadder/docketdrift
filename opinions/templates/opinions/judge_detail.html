@@ -74,11 +74,12 @@ stacked layout.
 
     <h1>{{ judge.full_name }}</h1>
 
-    {% if judge.court or judge.appointment_date %}
+    {% if judge.court or judge.appointment_date or judge.retirement_date %}
       <p class="opinion-meta">
         {% if judge.court %}<strong>{{ judge.court.name }}</strong>{% endif %}
         {% if judge.court and judge.appointment_date %} &middot; {% endif %}
         {% if judge.appointment_date %}Appointed {{ judge.appointment_date|date:"F j, Y" }}{% endif %}
+        {% if judge.retirement_date %}{% if judge.court or judge.appointment_date %} &middot; {% endif %}Retired {{ judge.retirement_date|date:"F j, Y" }}{% endif %}
       </p>
     {% endif %}
 

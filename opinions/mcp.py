@@ -352,6 +352,8 @@ def tool_get_judge(args: dict) -> dict:
         "court": judge.court.short_label if judge.court else None,
         "status": judge.get_status_display() if judge.status else None,
         "currently_seated": judge.is_currently_seated,
+        "retirement_date": (str(judge.retirement_date)
+                            if judge.retirement_date else None),
         "url": judge.get_absolute_url(),
         "active_span": {"first_opinion": str(first) if first else None,
                         "last_opinion": str(last) if last else None},

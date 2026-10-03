@@ -207,6 +207,22 @@ class Judge(models.Model):
         blank=True,
         help_text="When this judge took the bench in their current role.",
     )
+    # Editorial, set from a SOURCED date (the court's own word, an order,
+    # an obituary) -- never inferred from votes. Opinions a judge joined
+    # keep being filed for months after they leave, so last_vote_date runs
+    # past retirement and cannot stand in for it (Gass retired 2026-06-30
+    # with votes to 09-03; Thumma 08-28 with votes to 09-24, per the
+    # Division One HR office). /current-judges/ uses this to keep a recent
+    # retiree out of "Also hearing cases", which is for judges serving by
+    # appointment, not for a departed judge's pipeline.
+    retirement_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text=(
+            "When this judge left the bench, from a cited source. Leave empty "
+            "if unknown -- do not infer it from the last vote."
+        ),
+    )
     # DERIVED, denormalized on purpose (2026-08-26). The active span is
     # MIN/MAX release_date over the judge's panel votes. Computing it live
     # means joining panel votes to the 2.75GB opinions table and reading a

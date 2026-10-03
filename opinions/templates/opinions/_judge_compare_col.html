@@ -15,11 +15,12 @@ photo treatment that wouldn't survive a 2-col squeeze.
     <a href="{% url 'opinions:judge_detail' slug=judge.slug %}">{{ judge.full_name }}</a>
   </h2>
 
-  {% if judge.court or judge.appointment_date %}
+  {% if judge.court or judge.appointment_date or judge.retirement_date %}
     <p class="opinion-meta">
       {% if judge.court %}<strong>{{ judge.court.name }}</strong>{% endif %}
       {% if judge.court and judge.appointment_date %} &middot; {% endif %}
       {% if judge.appointment_date %}Appointed {{ judge.appointment_date|date:"F j, Y" }}{% endif %}
+      {% if judge.retirement_date %}{% if judge.court or judge.appointment_date %} &middot; {% endif %}Retired {{ judge.retirement_date|date:"F j, Y" }}{% endif %}
     </p>
   {% endif %}
 
