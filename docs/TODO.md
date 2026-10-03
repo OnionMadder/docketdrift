@@ -14,11 +14,19 @@ refuses past `bucket_tasks_queued`. One stale red `derive.php` (Aug 11, rerun by
 IA staff Aug 19, still red) is the OCR of these PDFs; expect it moot after.
 **Now:** a local script (`scripts/ia_cleanup.py`, run from the Windows venv: `.venv/Scripts/python.exe -u scripts/ia_cleanup.py --apply`) deletes with
 `cascade_delete` and BLOCKS while the item's queued+running tasks ≥ 60 instead
-of retrying into the limit. Resumable — it re-reads the item each run. Measured
-2026-10-01: IA drains this queue SLOWLY (sat at ~60 for 40+ min, 1 running,
-**5 tasks `paused`** on IA's side), so ~25-50 of 1,162 done in the first hour;
-at that rate this is days, not hours. If the paused count persists, IA is
-holding the item — ask IA (info@archive.org) rather than pushing harder.
+of retrying into the limit. Resumable — it re-reads the item each run. **Measured 2026-10-02: 440 of
+1,162 actually gone, 722 still serve, 0 failures; ~19 PDFs/hour** (IA runs
+~1 task at a time against the 60-task cap), so ~1.5-2 more days. The 5
+`paused` tasks seen 10-01 cleared on their own.
+
+**★ IA's FILE LISTING LAGS THE DELETES BY A DAY OR MORE — do not measure
+progress from it.** `/metadata/<item>` still listed all 1,162 PDFs while 440
+of them returned 404 on download (a Sep 26 delete only just left the
+listing). That lag is likely why the Aug/Sep passes LOOKED like they failed.
+Ground truth is a HEAD on `archive.org/download/<item>/<path>` for each
+listed PDF (8 threads, ~5 min for all 1,162): 404 = gone. And since the
+script builds its target list from the stale listing, a rerun re-sends
+deletes for files already gone — harmless, but it inflates its "ok" count.
 **Then:** run the script with `--sweep` for orphaned derivatives, confirm the
 item is down to zip + manifest + README + IA system files, and delete this
 entry. Do not re-upload anything to this item meanwhile.
