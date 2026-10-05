@@ -13,6 +13,7 @@ All rendering goes through the ``opinions/*.html`` templates in
 dark/neon design system loaded via the base template.
 """
 import re
+from collections import Counter
 from datetime import date, timedelta
 
 from django.conf import settings
@@ -1254,17 +1255,27 @@ def opinion_detail(request, case_number):
     CITED_BY_CAP = 12    # citing documents shown before the "all N" link
     received = opinion.citations_received
 
-    # .order_by() strips OpinionCitation's Meta.ordering so it can't bleed
-    # into the GROUP BY (the StatuteCitation .distinct()/aggregate gotcha).
-    cluster_sizes = {
-        r["cluster_label"]: r["n"]
-        for r in received.values("cluster_label").annotate(n=models.Count("id")).order_by()
-    }
+    # ONE pass over the incoming edges feeds every count on the page (cluster
+    # sizes, distinct citing total, treatment mix) and picks the newest
+    # citing documents. It used to be three separate aggregates plus a
+    # select_related sort that dragged each citing opinion's full raw_text
+    # through a filesort: 24.7s on Thiele v. Stich (2,724 incoming), 15s of
+    # it that one sort -- against a 25s cap whose KILL poisons the pool.
+    # Louisiana's graph resolving (2026-10-05) gives landmark LA cases
+    # counts like that. Small columns only; the 2*CAP edges actually shown
+    # are fetched afterwards by id. .order_by() strips Meta.ordering.
+    _incoming = list(
+        received.order_by().values_list(
+            "id", "citing_opinion_id", "treatment", "cluster_label", "source",
+            "citing_opinion__release_date")
+    )
+    cluster_sizes = Counter(r[3] for r in _incoming)
     cited_how = list(
         received.filter(is_cluster_lead=True)
         .exclude(context_quote="")
         .select_related("citing_opinion", "citing_opinion__court",
                      "citing_opinion__court__state")
+        .defer("citing_opinion__raw_text", "citing_opinion__html_content")
     )
     for e in cited_how:
         e.similar_count = max(0, cluster_sizes.get(e.cluster_label, 1) - 1)
@@ -1292,13 +1303,20 @@ def opinion_detail(request, case_number):
                 best[k] = e
         return list(best.values())
 
-    # .order_by() strips Meta.ordering so it can't bleed into the DISTINCT.
-    cited_by_total = (received.order_by()
-                      .values("citing_opinion_id").distinct().count())
+    cited_by_total = len({r[1] for r in _incoming})
+    _newest = sorted(
+        _incoming,
+        key=lambda r: r[5].toordinal() if r[5] else 0,
+        reverse=True,
+    )[:CITED_BY_CAP * 2]
+    _by_id = {
+        e.id: e for e in received.filter(id__in=[r[0] for r in _newest])
+        .select_related("citing_opinion", "citing_opinion__court",
+                        "citing_opinion__court__state")
+        .defer("citing_opinion__raw_text", "citing_opinion__html_content")
+    }
     cited_by = _prefer_extracted(
-        received.select_related("citing_opinion", "citing_opinion__court",
-                     "citing_opinion__court__state")
-        .order_by("-citing_opinion__release_date")[:CITED_BY_CAP * 2],
+        [_by_id[r[0]] for r in _newest if r[0] in _by_id],
         lambda e: e.citing_opinion_id,
     )[:CITED_BY_CAP]
     cites = _prefer_extracted(
@@ -1309,10 +1327,7 @@ def opinion_detail(request, case_number):
         lambda e: e.cited_opinion_id or e.cited_reference,
     )
     cites.sort(key=lambda e: e.text_offset or 0)
-    _counts = {
-        r["treatment"]: r["n"]
-        for r in received.values("treatment").annotate(n=models.Count("id")).order_by()
-    }
+    _counts = Counter(r[2] for r in _incoming)
     _labels = [("OVERRULED", "Overruled"), ("DISTINGUISHED", "Distinguished"),
                ("CRITICIZED", "Criticized"), ("FOLLOWED", "Followed"),
                ("EXPLAINED", "Explained")]
