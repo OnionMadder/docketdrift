@@ -1,27 +1,41 @@
-"""Bluebook citation formatting for opinions (NH proving-ground first).
+"""Bluebook citation formatting for opinions -- all live states.
 
 ``bluebook_cite_for(opinion)`` returns a plain-text, copy-pasteable
-Bluebook citation. NH adopted neutral citations in 2024, so a modern NH
-slip opinion's ``reporter_cite`` ("2026 N.H. 7") already identifies the
-court -- no court name in the parenthetical, just the decision date:
+Bluebook citation. The parenthetical depends on what the reporter cite
+already tells the reader (Bluebook R10.4):
 
-    State v. Smith, 2026 N.H. 7 (June 11, 2026).
+* **Regional reporter** (N.W.2d, P.3d, So. 3d, A.2d ...) does not identify
+  the court, so the parenthetical names it::
 
-When ``reporter_cite`` is empty (older opinions, or a state we haven't
-backfilled), we fall back to the court-assigned docket number with an
-explicit court tag in the parenthetical:
+      Doe v. Roe, 900 N.W.2d 100 (Minn. Ct. App. 2018).
 
-    State v. Smith, No. 2024-0123 (N.H. June 11, 2026).
+* **Official state reporter** (Minn., Ariz., Ariz. App., N.H., La. Ann.)
+  identifies the court, so the parenthetical is the year alone::
 
-The case name is the parser's already-normalized ``Opinion.title`` used
-AS IS -- we don't re-munge party names. Output is plain text suitable to
-paste into a Word brief; the template/CSS layer handles any italics.
+      Doe v. Roe, 300 Minn. 100 (1974).
 
-The court abbreviation is hard-coded ``N.H.`` because the live corpus is
-NH Supreme only. When NH Superior Court / NH Court of Appeals are added,
-revisit ``_court_abbrev`` against Bluebook Table T1.3.
+* **Neutral cite** (NH since 2024: "2026 N.H. 7") carries the year and the
+  court already; we keep the courtesy date parenthetical NH shipped with::
+
+      State v. Smith, 2026 N.H. 7 (June 11, 2026).
+
+* **No reporter cite** (unpublished, or too recent for West to have
+  assigned one) falls back to the court's own docket number with the court
+  and the full decision date::
+
+      State v. Smith, No. A26-0649 (Minn. Ct. App. Sept. 2, 2026).
+
+The case name is the parser's already-normalized ``Opinion.title`` used AS
+IS -- we don't re-munge party names. A docket that already carries its own
+"No."/"Nos." prefix (CL bulk rows: "No. 2016-CJ-1426") keeps it rather
+than doubling it. Output is plain text suitable to paste into a brief; the
+template/CSS layer handles any italics.
+
+Everything here is assembled from stored fields. Nothing is generated.
 """
 from __future__ import annotations
+
+import re
 
 from django import template
 from django.urls import reverse
@@ -34,6 +48,20 @@ _BLUEBOOK_MONTHS = {
     1: "Jan.", 2: "Feb.", 3: "Mar.", 4: "Apr.", 5: "May", 6: "June",
     7: "July", 8: "Aug.", 9: "Sept.", 10: "Oct.", 11: "Nov.", 12: "Dec.",
 }
+
+# Reporters that identify the deciding court by themselves, per state.
+# Measured on prod 2026-10-05: everything else we hold is regional (N.W.,
+# N.W.2d, P., P.2d, P.3d, A., A.2d, A.3d, So., So. 2d, So. 3d) or Teiss.
+# (Orleans Court of Appeal, not self-identifying in modern usage).
+_OFFICIAL_REPORTERS = {
+    "MN": {"Minn."},
+    "AZ": {"Ariz.", "Ariz. App."},
+    "NH": {"N.H."},
+    "LA": {"La.", "La. Ann."},
+}
+
+_CITE_RE = re.compile(r"^(?P<vol>\d+)\s+(?P<reporter>.+?)\s+(?P<page>\d+)$")
+_DOCKET_PREFIX_RE = re.compile(r"^(nos?)\.?\s*", re.IGNORECASE)
 
 
 def _collapse(text: str) -> str:
@@ -52,51 +80,89 @@ def _bluebook_date(release_date) -> str:
 
 
 def _court_abbrev(opinion) -> str:
-    """Bluebook court abbreviation for the parenthetical fallback.
+    """Bluebook court abbreviation for a parenthetical.
 
-    Live corpus is NH Supreme only, so this is constant for now. Kept as a
-    function so the NH-Superior / NH-COA rollout has one place to extend.
+    Louisiana keeps its circuit ("La. Ct. App. 1st Cir.") -- Louisiana
+    practice always names it, and the five circuits are separate courts.
+    Arizona drops the division: Bluebook omits it unless it matters, and
+    "Ariz. Ct. App." is how the court's own opinions cite one another.
     """
-    return "N.H."
+    court = opinion.court
+    if court.state_id == "LA":
+        return court.short_label
+    return court._base_short_label()
 
 
-def bluebook_cite_for(opinion) -> str:
-    """Full Bluebook citation string (with courtesy date parenthetical)."""
+def _docket(opinion) -> str:
+    """'No. A26-0649' -- reusing the stored prefix instead of doubling it."""
+    docket = _collapse(opinion.case_number)
+    m = _DOCKET_PREFIX_RE.match(docket)
+    if m:
+        label = "Nos." if m.group(1).lower() == "nos" else "No."
+        return "%s %s" % (label, docket[m.end():])
+    return "No. %s" % docket
+
+
+def _parenthetical(opinion, cite: str) -> str:
+    """The parenthetical's contents for a reporter cite, or '' for none."""
+    date = opinion.release_date
+    year = str(date.year) if date else ""
+    m = _CITE_RE.match(cite)
+    official = _OFFICIAL_REPORTERS.get(opinion.court.state_id, set())
+    if m and m.group("reporter") in official:
+        if len(m.group("vol")) == 4:
+            # Neutral cite ("2026 N.H. 7"): year + court are in the cite.
+            return _bluebook_date(date)
+        return year
+    return ("%s %s" % (_court_abbrev(opinion), year)).strip()
+
+
+def bluebook_cite_for(opinion, name_limit: int | None = None) -> str:
+    """Full Bluebook citation, without the trailing period.
+
+    ``name_limit`` truncates a long caption (with an ellipsis) for places
+    with a hard width budget, like the <title> tag. The copyable cite never
+    truncates.
+    """
     name = _collapse(opinion.title)
-    date_str = _bluebook_date(opinion.release_date)
+    if name_limit and len(name) > name_limit:
+        name = name[: name_limit - 1].rstrip(" ,;:") + "…"
     cite = _collapse(opinion.reporter_cite)
 
     if cite:
-        paren = " (%s)" % date_str if date_str else ""
-        body = "%s, %s%s" % (name, cite, paren)
+        paren = _parenthetical(opinion, cite)
+        rest = "%s (%s)" % (cite, paren) if paren else cite
     else:
-        docket = _collapse(opinion.case_number)
+        date_str = _bluebook_date(opinion.release_date)
         court = _court_abbrev(opinion)
-        inner = ("%s %s" % (court, date_str)).strip() if date_str else court
-        body = "%s, No. %s (%s)" % (name, docket, inner)
+        rest = "%s (%s)" % (_docket(opinion), ("%s %s" % (court, date_str)).strip())
 
-    return _collapse(body) + "."
+    return _collapse("%s, %s" % (name, rest) if name else rest)
 
 
 def plain_cite_for(opinion) -> str:
-    """Short reference cite -- no courtesy parenthetical, no trailing period.
+    """Short reference cite -- no parenthetical, no trailing period.
 
         State v. Smith, 2026 N.H. 7
         State v. Smith, No. 2024-0123   (reporter_cite missing)
     """
     name = _collapse(opinion.title)
-    cite = _collapse(opinion.reporter_cite)
-    if cite:
-        return _collapse("%s, %s" % (name, cite))
-    docket = _collapse(opinion.case_number)
-    return _collapse("%s, No. %s" % (name, docket))
+    rest = _collapse(opinion.reporter_cite) or _docket(opinion)
+    return _collapse("%s, %s" % (name, rest) if name else rest)
 
 
 @register.simple_tag
 def bluebook_cite(opinion) -> str:
     # simple_tag output is auto-escaped in the template context, so case
     # names carrying stray '&' / '<' punctuation render safely.
-    return bluebook_cite_for(opinion)
+    return bluebook_cite_for(opinion) + "."
+
+
+@register.simple_tag
+def head_cite(opinion) -> str:
+    """Name-first cite for <title> / og:title: no period, caption capped so
+    the reporter cite survives Google's ~60-char truncation more often."""
+    return bluebook_cite_for(opinion, name_limit=70)
 
 
 @register.simple_tag

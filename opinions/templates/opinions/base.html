@@ -34,16 +34,18 @@ CLAUDE.md "Data is sacred."
 {% comment %}
 Canonical + Open Graph + Twitter cards. Pages override the og_title /
 og_description / og_url blocks where the title block alone isn't enough.
-og:type defaults to 'website'; opinion + judge detail templates flip it
+A view may pass ``canonical_path`` (already percent-encoded, e.g. from
+reverse()) when several URLs serve one page -- opinion_detail does, since
+every spelling of a docket resolves. og:type defaults to 'website'; opinion + judge detail templates flip it
 to 'article'/'profile' accordingly. og:image defaults to the apple-touch
 favicon -- a brand image swap is a v1.1 task.
 {% endcomment %}
-<link rel="canonical" href="{% block canonical_url %}https://{{ request.get_host }}{{ request.path|urlencode }}{% endblock %}">
+<link rel="canonical" href="{% block canonical_url %}https://{{ request.get_host }}{% if canonical_path %}{{ canonical_path }}{% else %}{{ request.path|urlencode }}{% endif %}{% endblock %}">
 <meta property="og:site_name" content="DocketDrift">
 <meta property="og:title" content="{% block og_title %}DocketDrift{% endblock %}">
 <meta property="og:description" content="{% block og_description %}Real opinions from state appellate courts, organized for human review.{% endblock %}">
 <meta property="og:type" content="{% block og_type %}website{% endblock %}">
-<meta property="og:url" content="https://{{ request.get_host }}{{ request.path|urlencode }}">
+<meta property="og:url" content="https://{{ request.get_host }}{% if canonical_path %}{{ canonical_path }}{% else %}{{ request.path|urlencode }}{% endif %}">
 {% comment %}
 X / Twitter, LinkedIn, Slack, Facebook all fall back to the og:* tags when
 a platform-specific tag is absent -- twitter:title -> og:title,

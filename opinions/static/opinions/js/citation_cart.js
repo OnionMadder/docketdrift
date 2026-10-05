@@ -1,4 +1,4 @@
-/* DocketDrift -- "Cite this case" + client-side citation cart (NH only).
+/* DocketDrift -- "Cite this case" + client-side citation cart (all states).
  *
  * Privacy posture ("Data is sacred", see CLAUDE.md): this module is 100%
  * client-side. The cart lives in localStorage on the visitor's browser and
@@ -6,7 +6,9 @@
  * a researcher is assembling is work product; we cannot be subpoenaed for
  * what we never stored. Do not add a network call to this file.
  *
- * Loaded only on NH opinion_detail pages (template-side state.code gate).
+ * Loaded on every opinion_detail page. localStorage is per-origin, so each
+ * state subdomain keeps its own cart; the "nh" in STORAGE_KEY is historical
+ * (NH was the proving ground) and is kept so existing NH carts survive.
  * Vanilla JS, no dependencies. Hydrates two things:
  *   1. the inline "Cite this case" tool (.cite-tool) on the page, and
  *   2. a floating cart FAB (built here, appended to <body>).

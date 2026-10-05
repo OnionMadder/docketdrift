@@ -2,11 +2,11 @@
 {% load opinion_text %}
 {% load citations %}
 {% load static %}
-{% block title %}{{ opinion.case_number }} &middot; {{ opinion.title|truncatechars:60 }} &middot; DocketDrift{% endblock %}
+{% block title %}{% head_cite opinion %} &middot; DocketDrift{% endblock %}
 {% block description %}{{ opinion.case_number }}{% if opinion.reporter_cite %} &middot; {{ opinion.reporter_cite }}{% endif %}: {{ opinion.title|truncatechars:150 }}{% if opinion.disposition %} &mdash; {{ opinion.disposition }}{% endif %} &mdash; {{ opinion.court.name }}, {{ opinion.release_date|date:"F Y" }}.{% endblock %}
 
 {% block og_type %}article{% endblock %}
-{% block og_title %}{{ opinion.case_number }} &middot; {{ opinion.title|truncatechars:90 }}{% endblock %}
+{% block og_title %}{% head_cite opinion %}{% endblock %}
 {% block og_description %}{{ opinion.court.name }} &middot; Filed {{ opinion.release_date|date:"F j, Y" }}{% if opinion.disposition %} &middot; {{ opinion.disposition }}{% endif %}.{% endblock %}
 
 {% block jsonld %}
@@ -121,10 +121,10 @@
     </div>
   {% endif %}
 
-  {% if opinion.court.state.code == 'NH' %}
   {% comment %}
-  NH-only (proving-ground rollout): "Cite this case" tool. Renders a
-  Bluebook-formatted cite (citations.py), copy-to-clipboard, add-to-cart,
+  "Cite this case" tool, all states (proved on NH first, rolled out
+  2026-10-05). Renders a Bluebook-formatted cite (citations.py),
+  copy-to-clipboard, add-to-cart,
   and a Bluebook<->plain quick-reference toggle. The cart that the "Add to
   cart" button feeds is 100% client-side (localStorage) -- see
   citation_cart.js. The data-* attributes carry the pre-formatted strings so
@@ -146,7 +146,6 @@
       </div>
     </div>
   </div>
-  {% endif %}
   </div>{# /.opinion-action-row #}
 </div>
 
@@ -582,11 +581,12 @@ Vanilla JS, no dependencies. Honors prefers-reduced-motion.
 })();
 </script>
 
+{% endif %}{# /NH-only paragraph polish #}
+
 {% comment %}
-NH-only "Cite this case" + client-side citation cart. The cart lives in
+"Cite this case" + client-side citation cart, all states. The cart lives in
 localStorage and NEVER posts to the server ("Data is sacred" -- CLAUDE.md).
 Loaded last so the .cite-tool markup and <body> exist when it hydrates.
 {% endcomment %}
 <script src="{% static 'opinions/js/citation_cart.js' %}" defer></script>
-{% endif %}
 {% endblock %}

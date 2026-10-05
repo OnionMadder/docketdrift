@@ -652,3 +652,63 @@ class ResolverCourtTiebreakTests(SimpleTestCase):
         c = Judge(pk=3, full_name="Other Johnson", court_id=11, is_currently_seated=True)
         self.assertIsNone(_pick_by_court([a, c], 11))
         self.assertIsNone(_pick_by_court([a], 11))
+
+
+class BluebookCiteTests(SimpleTestCase):
+    """The "Cite this case" string, for every reporter shape held on prod
+    (measured 2026-10-05). Unsaved model instances -- no DB."""
+
+    def _op(self, state, level, title, cite="", docket="X", division="", when=(2018, 9, 4)):
+        import datetime
+        from opinions.models import Court, Opinion
+        court = Court(state_id=state, level=level, division=division, name="n")
+        op = Opinion(title=title, reporter_cite=cite, case_number=docket,
+                     release_date=datetime.date(*when))
+        op.court = court
+        return op
+
+    def cite(self, *a, **k):
+        from opinions.templatetags.citations import bluebook_cite_for
+        return bluebook_cite_for(self._op(*a, **k))
+
+    def test_regional_reporter_names_the_court(self):
+        self.assertEqual(self.cite("MN", "APPEALS", "Doe v. Roe", "900 N.W.2d 100"),
+                         "Doe v. Roe, 900 N.W.2d 100 (Minn. Ct. App. 2018)")
+        self.assertEqual(self.cite("MN", "SUPREME", "Doe v. Roe", "190 N.W. 1", when=(1922, 1, 6)),
+                         "Doe v. Roe, 190 N.W. 1 (Minn. 1922)")
+        self.assertEqual(self.cite("NH", "SUPREME", "Doe v. Roe", "650 A.2d 1"),
+                         "Doe v. Roe, 650 A.2d 1 (N.H. 2018)")
+
+    def test_official_reporter_is_year_only(self):
+        self.assertEqual(self.cite("MN", "SUPREME", "Doe v. Roe", "300 Minn. 100"),
+                         "Doe v. Roe, 300 Minn. 100 (2018)")
+        self.assertEqual(self.cite("LA", "SUPREME", "Doe v. Roe", "45 La. Ann. 10"),
+                         "Doe v. Roe, 45 La. Ann. 10 (2018)")
+
+    def test_nh_neutral_cite_keeps_courtesy_date(self):
+        self.assertEqual(self.cite("NH", "SUPREME", "State v. Smith", "2026 N.H. 7", when=(2026, 6, 11)),
+                         "State v. Smith, 2026 N.H. 7 (June 11, 2026)")
+
+    def test_arizona_drops_division_louisiana_keeps_circuit(self):
+        self.assertEqual(self.cite("AZ", "APPEALS", "Doe v. Roe", "400 P.3d 1", division="2"),
+                         "Doe v. Roe, 400 P.3d 1 (Ariz. Ct. App. 2018)")
+        self.assertEqual(self.cite("LA", "APPEALS", "Doe v. Roe", "100 So. 3d 1", division="1"),
+                         "Doe v. Roe, 100 So. 3d 1 (La. Ct. App. 1st Cir. 2018)")
+
+    def test_no_reporter_cite_uses_docket_and_full_date(self):
+        self.assertEqual(self.cite("MN", "APPEALS", "Doe v. Roe", docket="A26-0649"),
+                         "Doe v. Roe, No. A26-0649 (Minn. Ct. App. Sept. 4, 2018)")
+
+    def test_stored_docket_prefix_is_not_doubled(self):
+        self.assertEqual(self.cite("LA", "SUPREME", "Doe v. Roe", docket="NO. 2017-C-0345"),
+                         "Doe v. Roe, No. 2017-C-0345 (La. Sept. 4, 2018)")
+        self.assertEqual(self.cite("MN", "SUPREME", "Doe v. Roe", docket="Nos. 18,829-(87)"),
+                         "Doe v. Roe, Nos. 18,829-(87) (Minn. Sept. 4, 2018)")
+
+    def test_empty_caption_and_title_truncation(self):
+        self.assertEqual(self.cite("MN", "APPEALS", "", "900 N.W.2d 100"),
+                         "900 N.W.2d 100 (Minn. Ct. App. 2018)")
+        from opinions.templatetags.citations import bluebook_cite_for
+        long = self._op("MN", "APPEALS", "In re the Welfare of the Children of: " + "A" * 80, "900 N.W.2d 100")
+        out = bluebook_cite_for(long, name_limit=70)
+        self.assertTrue(out.endswith("…, 900 N.W.2d 100 (Minn. Ct. App. 2018)"), out)

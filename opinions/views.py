@@ -1180,6 +1180,20 @@ def opinion_detail(request, case_number):
     opinion = _pick_opinion(matches, request.GET.get("court"), request.GET.get("on"))
     siblings = [o for o in matches if o.pk != opinion.pk]
 
+    # Canonical URL = the opinion's OWN stored docket, never the request
+    # path. _match_opinions deliberately serves every spelling of a docket
+    # ("/opinion/No. C8-86-714/" and "/opinion/C8-86-714/"), and while the
+    # canonical echoed request.path each spelling declared ITSELF canonical:
+    # 6,060 pages in Search Console's "Duplicate, Google chose different
+    # canonical than user" (2026-10-05). A sibling that is not the default
+    # pick keeps its ?court=&on= selector, or its canonical would name a
+    # different decision and Google would never index it.
+    canonical_path = reverse("opinions:detail", kwargs={"case_number": opinion.case_number})
+    if siblings and opinion.pk != _pick_opinion(matches).pk:
+        canonical_path += "?court=%s" % opinion.court.level_slug
+        if opinion.release_date:
+            canonical_path += "&on=%s" % opinion.release_date.isoformat()
+
     # Similar-opinions widget. One cosine-distance (VEC_DISTANCE_COSINE)
     # query against the corpus using the opinion's own stored embedding.
     # SKIP it for crawlers: they don't use the widget, and at crawl scale
@@ -1323,6 +1337,7 @@ def opinion_detail(request, case_number):
         # Using ``.get("q", "")`` from the view side gives templates
         # a plain string they can default + truthiness-test cleanly.
         "search_q": request.GET.get("q", ""),
+        "canonical_path": canonical_path,
         "active_nav": "opinions",
     })
 
