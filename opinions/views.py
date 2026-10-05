@@ -2383,11 +2383,35 @@ def _judge_stats(judge, recent_limit=15, cohort_limit=10):
     compare view shows fewer rows per column than the standalone
     dossier so the two-column layout doesn't get unmanageably tall.
     """
-    from django.db.models import Count
+    # Cached per judge: every number here only moves when an ingest lands
+    # (weekly), and computing it walks the judge's whole voting record.
+    cache_key = "judge_stats:v2:%s:%s:%s" % (judge.pk, recent_limit, cohort_limit)
+    cached = cache.get(cache_key)
+    if cached is not None:
+        cached["judge"] = judge
+        return cached
+
     from opinions.models import PanelVote, Court as _Court
 
-    opinions_qs = Opinion.objects.filter(panel_votes__judge=judge).distinct()
-    total_opinions = opinions_qs.count()
+    # ONE pass over the judge's votes for every breakdown. Each used to be
+    # its own join from panel votes into the 2.75GB opinions table (a
+    # clustered-row read per vote, ~2s each for a judge with ~2,000 votes),
+    # and the COUNT and MIN/MAX ran as SELECT DISTINCT over every column --
+    # raw_text and html_content included. Measured 2026-10-05: Howe's page
+    # 21.5s, 20.2s of it database. Only four small columns are needed.
+    vote_rows = list(
+        PanelVote.objects.filter(judge=judge).values_list(
+            "opinion_id", "opinion__court_id", "opinion__disposition_bucket",
+            "opinion__release_date",
+        )
+    )
+    by_opinion = {}
+    yearly = Counter()
+    for op_id, court_id, bucket, released in vote_rows:
+        by_opinion[op_id] = (court_id, bucket, released)
+        if released is not None:
+            yearly[released.year] += 1
+    total_opinions = len(by_opinion)
 
     vote_counts = dict(
         PanelVote.objects.filter(judge=judge)
@@ -2405,48 +2429,40 @@ def _judge_stats(judge, recent_limit=15, cohort_limit=10):
         "recused": vote_counts.get(PanelVote.Vote.RECUSED, 0),
     }
 
-    date_range = opinions_qs.aggregate(
-        first=models.Min("release_date"),
-        last=models.Max("release_date"),
-    ) if total_opinions else {"first": None, "last": None}
+    dates = [d for (_c, _b, d) in by_opinion.values() if d is not None]
+    date_range = {"first": min(dates) if dates else None,
+                  "last": max(dates) if dates else None}
 
-    # Court breakdown -- group by court_id (a real column), resolve to
-    # Court instances after aggregation. short_label is a Python
-    # @property so it can't appear in .values().
-    court_breakdown_rows = list(
-        opinions_qs.values("court_id")
-        .annotate(n=models.Count("id"))
-        .order_by("-n")
-    )
-    courts_map = {
-        c.id: c for c in _Court.objects.filter(
-            id__in=[r["court_id"] for r in court_breakdown_rows]
-        )
-    }
+    # Court breakdown, resolved to Court instances after counting
+    # (short_label is a Python @property). Ties keep court-id order.
+    court_counts = Counter(c for (c, _b, _d) in by_opinion.values())
+    courts_map = {c.id: c for c in _Court.objects.filter(id__in=list(court_counts))}
     court_breakdown = [
-        {"court": courts_map[row["court_id"]], "n": row["n"]}
-        for row in court_breakdown_rows
-        if row["court_id"] in courts_map
+        {"court": courts_map[cid], "n": n}
+        for cid, n in sorted(court_counts.items(), key=lambda kv: (-kv[1], kv[0]))
+        if cid in courts_map
     ]
 
-    disposition_breakdown = list(
-        opinions_qs.exclude(disposition_bucket="")
-        .values("disposition_bucket")
-        .annotate(n=models.Count("id"))
-        .order_by("-n")
-    )
+    disposition_breakdown = [
+        {"disposition_bucket": b, "n": n}
+        for b, n in sorted(Counter(b for (_c, b, _d) in by_opinion.values() if b).items(),
+                           key=lambda kv: (-kv[1], kv[0]))
+    ]
 
-    # Defer the two giant TEXT columns: list views never render raw_text
-    # and pulling it pumps multi-MB across the wire for a 15-row list.
-    recent_opinions = list(
-        opinions_qs.defer("raw_text", "html_content")
-        .select_related("court")
-        .order_by("-release_date")[:recent_limit]
+    # Newest first, picked from the pass above; fetch only those rows, with
+    # the two giant TEXT columns deferred.
+    newest = sorted((d, op_id) for op_id, (_c, _b, d) in by_opinion.items() if d is not None)
+    recent_ids = [op_id for _d, op_id in reversed(newest[-recent_limit:])]
+    rank = {op_id: i for i, op_id in enumerate(recent_ids)}
+    recent_opinions = sorted(
+        Opinion.objects.filter(id__in=recent_ids)
+        .defer("raw_text", "html_content").select_related("court"),
+        key=lambda o: rank[o.id],
     )
 
     cohort = _cohort_with_heat(judge, top_n=cohort_limit) if total_opinions > 0 else []
 
-    return {
+    stats = {
         "judge": judge,
         "total_opinions": total_opinions,
         "role_summary": role_summary,
@@ -2455,8 +2471,10 @@ def _judge_stats(judge, recent_limit=15, cohort_limit=10):
         "disposition_breakdown": disposition_breakdown,
         "recent_opinions": recent_opinions,
         "cohort": cohort,
-        "yearly_votes": _yearly_panel_votes(judge.pk) if total_opinions > 0 else [],
+        "yearly_votes": [{"year": y, "n": n} for y, n in sorted(yearly.items())],
     }
+    cache.set(cache_key, stats, 60 * 60 * 6)
+    return stats
 
 
 @cache_control(public=True, max_age=CACHE_SEC_DETAIL)
