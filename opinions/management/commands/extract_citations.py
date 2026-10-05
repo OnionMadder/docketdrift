@@ -76,12 +76,20 @@ class Command(BaseCommand):
                  "chunk builds and saves the map; later chunks load it in "
                  "about a second. Rebuilt when older than --map-cache-hours.")
         parser.add_argument("--map-cache-hours", type=float, default=24.0)
+        parser.add_argument(
+            "--resolve-only", action="store_true",
+            help="Do not re-read opinion text. Re-resolve EXISTING unresolved "
+                 "extracted edges against the current map (reporter cites, "
+                 "parallel cites, dockets). For when the map grew after "
+                 "extraction -- LA's graph was extracted before its cites "
+                 "were loaded and resolved nothing. One batched UPDATE per "
+                 "batch instead of delete + re-insert through 7 indexes.")
         parser.add_argument("--min-id", type=int, default=0,
                             help="Resume from this opinion id (see "
                                  "--max-runtime).")
 
     def handle(self, *args, state, limit, max_runtime, min_id, map_cache=None,
-               map_cache_hours=24.0, **options):
+               map_cache_hours=24.0, resolve_only=False, **options):
         started = time.time()
         # Batch work, not a web request: the 25s cap from settings would kill
         # the corpus-wide map builds below.
@@ -143,7 +151,90 @@ class Command(BaseCommand):
                 "%s: scanning %d citing opinions (%d resolvable targets)..."
                 % (code, len(ids), len(cite_map))
             )
-            self._sweep(code, ids, cite_map, max_runtime, started)
+            if resolve_only:
+                self._resolve(code, ids, cite_map, max_runtime, started)
+            else:
+                self._sweep(code, ids, cite_map, max_runtime, started)
+
+    def _resolve(self, code, ids, cite_map, max_runtime, started):
+        """Fill cited_opinion on existing extracted edges; no text re-read.
+
+        Reproduces the extractor's rules exactly, so the result equals a
+        full re-extraction with the current map: rows were inserted in cite
+        order, so walking a citing opinion's rows by id visits its cites in
+        text order; the FIRST row reaching a target keeps it, a later row
+        reaching the same target is dropped (the extractor writes one edge
+        per resolved target -- parallel-cite pairs), and a row resolving to
+        the citing opinion itself is dropped (never an edge to self).
+        Rows that still resolve to nothing are left as external authority.
+        """
+        scanned = resolved = dropped = 0
+        stopped_at = 0
+        for start in range(0, len(ids), BATCH):
+            if max_runtime and (time.time() - started) > max_runtime:
+                stopped_at = ids[start]
+                self.stdout.write(self.style.WARNING(
+                    "  time budget hit; resume with:  --min-id %d" % stopped_at))
+                break
+            chunk = ids[start:start + BATCH]
+            for attempt in range(1, DB_MAX_RETRIES + 1):
+                try:
+                    edges = list(
+                        OpinionCitation.objects.filter(
+                            citing_opinion_id__in=chunk,
+                            source=OpinionCitation.Source.EXTRACTED,
+                        ).order_by("id").values_list(
+                            "id", "citing_opinion_id", "cited_opinion_id",
+                            "cited_reference")
+                    )
+                    seen: dict[int, set] = {}
+                    for _id, citing, cited, _ref in edges:
+                        if cited is not None:
+                            seen.setdefault(citing, set()).add(cited)
+                    updates: dict[int, int] = {}
+                    drop: list[int] = []
+                    for _id, citing, cited, ref in edges:
+                        if cited is not None:
+                            continue
+                        target = cite_map.get(ref)
+                        if target is None:
+                            continue
+                        mine = seen.setdefault(citing, set())
+                        if target == citing or target in mine:
+                            drop.append(_id)
+                        else:
+                            mine.add(target)
+                            updates[_id] = target
+                    with transaction.atomic():
+                        if updates:
+                            case = " ".join("WHEN %d THEN %d" % (k, v)
+                                            for k, v in updates.items())
+                            with connection.cursor() as cur:
+                                cur.execute(
+                                    "UPDATE opinions_opinioncitation "
+                                    "SET cited_opinion_id = CASE id %s END "
+                                    "WHERE id IN (%s)"
+                                    % (case, ",".join(str(k) for k in updates)))
+                        if drop:
+                            OpinionCitation.objects.filter(id__in=drop).delete()
+                    resolved += len(updates)
+                    dropped += len(drop)
+                    scanned += len(chunk)
+                    break
+                except BaseException as exc:
+                    if attempt >= DB_MAX_RETRIES:
+                        raise
+                    self.stderr.write(
+                        "  batch @%d failed (%s); reconnect %d/%d"
+                        % (start, type(exc).__name__, attempt, DB_MAX_RETRIES))
+                    try:
+                        connection.close()
+                    except BaseException:
+                        pass
+                    time.sleep(DB_RETRY_SLEEP)
+        self.stdout.write(self.style.SUCCESS(
+            "%s resolve done. scanned=%d resolved=%d dropped=%d"
+            % (code, scanned, resolved, dropped)))
 
     @staticmethod
     def _load_map_cache(path, max_hours):
