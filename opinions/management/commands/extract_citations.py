@@ -30,7 +30,7 @@ import re
 import time
 
 from django.core.management.base import BaseCommand
-from django.db import connection
+from django.db import connection, transaction
 
 from opinions.models import (Court, Opinion, OpinionCitation, ParallelCite,
                              State)
@@ -226,22 +226,14 @@ class Command(BaseCommand):
                             Opinion.objects.filter(id__in=chunk)
                             .only("id", "raw_text", "reporter_cite", "case_number")
                         )
+                        bulk = []
+                        batch_internal = 0
                         for op in rows:
                             # Pass BOTH self keys. Without the docket, every MN
                             # opinion cites itself out of its own caption.
                             own = "%s|%s" % (op.reporter_cite or "",
                                              (op.case_number or "").strip())
                             cites = extract_citations(code, op.raw_text, self_cite=own)
-                            # Rebuild only OUR OWN edges. Deleting everything
-                            # would wipe CourtListener's bulk map (335,998 MN
-                            # edges), which resolves against their full corpus
-                            # and reaches cases we don't hold -- our regex
-                            # cannot reproduce those.
-                            OpinionCitation.objects.filter(
-                                citing_opinion_id=op.id,
-                                source=OpinionCitation.Source.EXTRACTED,
-                            ).delete()
-                            bulk = []
                             # One edge per RESOLVED TARGET, not per cite
                             # string. Courts routinely give both cites for one
                             # case in a single reference -- "State v. Doe, 221
@@ -261,6 +253,7 @@ class Command(BaseCommand):
                                     if target in seen_targets:
                                         continue
                                     seen_targets.add(target)
+                                    batch_internal += 1
                                 bulk.append(OpinionCitation(
                                     citing_opinion_id=op.id,
                                     cited_opinion_id=target,
@@ -271,11 +264,27 @@ class Command(BaseCommand):
                                     text_offset=c.text_offset,
                                     source=OpinionCitation.Source.EXTRACTED,
                                 ))
-                                if target:
-                                    internal += 1
+                        # Rebuild only OUR OWN edges. Deleting everything
+                        # would wipe CourtListener's bulk map (335,998 MN
+                        # edges), which resolves against their full corpus
+                        # and reaches cases we don't hold -- our regex
+                        # cannot reproduce those.
+                        #
+                        # ONE delete + ONE insert per batch, in a transaction.
+                        # Per-opinion delete/insert was ~3 round-trips per
+                        # opinion (~6 opinions/s on LA, a 16-hour sweep), and
+                        # a kill between an opinion's delete and its insert
+                        # silently lost its edges (the --force trap). Now a
+                        # killed batch rolls back whole.
+                        with transaction.atomic():
+                            OpinionCitation.objects.filter(
+                                citing_opinion_id__in=[op.id for op in rows],
+                                source=OpinionCitation.Source.EXTRACTED,
+                            ).delete()
                             if bulk:
-                                OpinionCitation.objects.bulk_create(bulk)
-                                edges += len(bulk)
+                                OpinionCitation.objects.bulk_create(bulk, batch_size=500)
+                        edges += len(bulk)
+                        internal += batch_internal
                         scanned += len(rows)
                         break
                     except BaseException as exc:
