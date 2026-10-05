@@ -1387,7 +1387,21 @@ tool understands the researcher's mental model. Three items ranked by
 researcher-quality-gain-per-unit-of-work — pursue after LA is live, in this
 order:
 
-- [ ] **Inline cite hyperlinks in opinion body.** When an opinion cites
+- [x] **Inline cite hyperlinks in opinion body.** ✅ 2026-10-05 -- the
+  linker already existed (MN 98% / AZ 98% / NH 100% of resolved targets
+  linked in text, measured). The gap was LOUISIANA: its ~1.5M extracted
+  edges resolved to NOTHING, because the LA extractor ran in August before
+  LA reporter cites (9/19) and parallel cites (9/26) were loaded. Fixed with
+  `extract_citations --resolve-only` (re-resolves existing edges with one
+  batched UPDATE; validated byte-identical to a full re-extraction on three
+  windows) + `--map-cache` (LA's map build is ~5.5 min, past the cull).
+  Sweep driven from outside 2026-10-05; ~68% of LA edges resolve. Also fixed
+  in the linker: "So.2d" spacing never matched (LA 0% -> 100% in-text) and a
+  missing digit boundary that linked "39 So. 2d 73" inside "639 So. 2d 730".
+  And because LA landmarks now get thousands of incoming cites: the
+  opinion page's incoming-citation scan is one pass, bounded 12s, cached
+  per opinion (Thiele v. Stich 24.7s -> 0.3s warm).
+  Original note: When an opinion cites
   `902 So. 2d 373` (or any reporter cite in our extracted graph), and that
   target opinion is in our corpus, render the cite as a link, not text.
   Enables the researcher's core motion: read a paragraph, jump to the case
@@ -1397,7 +1411,12 @@ order:
   to swap text spans for anchors at the offsets we already store.
   ~1 day. **Highest gain per unit of work.**
 
-- [ ] **"Copy Bluebook cite" button in opinion header.** One click,
+- [x] **"Copy Bluebook cite" button in opinion header.** ✅ 2026-10-05 --
+  the NH "Cite this case" tool (copy + client-side cart) rolled out to all
+  states; formatter generalized per Bluebook R10.4 (regional reporter ->
+  court + year; official reporter -> year; uncited -> docket + court + full
+  date). Page <title>s now lead with that cite instead of the docket.
+  Original note: One click,
   Bluebook-form string on clipboard, ready to paste into a brief. Trivial
   UI (~2 hr) and immediate everyday value to anyone actually writing.
   Format: `<Case Name>, <reporter_cite> (<court short_label> <YYYY>)`
