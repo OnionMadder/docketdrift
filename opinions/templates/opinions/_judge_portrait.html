@@ -1,0 +1,17 @@
+{% load judges %}
+{% comment %}
+  A judge's portrait, or -- when no official image is on file -- an
+  initials monogram the same size, so the roster grid stays even. The
+  monogram is deliberately NOT a face or silhouette: a stand-in photo is
+  how a wrong person ended up on a judge's page (Fabian, 2026-10). It is
+  aria-hidden; the judge's name is already the tile's heading.
+  Pass extra_class for the dossier's sizing.
+{% endcomment %}
+{% if judge.photo_url %}
+  <img src="{{ judge.photo_url }}" alt="Portrait of {{ judge.full_name }}" class="cast-thumb{% if extra_class %} {{ extra_class }}{% endif %}" loading="lazy">
+{% else %}
+  <div class="cast-thumb cast-thumb--monogram{% if extra_class %} {{ extra_class }}{% endif %}">
+    <span class="cast-thumb__initials" aria-hidden="true">{{ judge.full_name|initials }}</span>
+    <span class="cast-thumb__note">Official portrait not yet available</span>
+  </div>
+{% endif %}

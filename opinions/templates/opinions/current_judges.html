@@ -81,9 +81,7 @@
             {% if judge.role and judge.role != "UNKNOWN" %}
               <span class="role-chip judicial">{{ judge.get_role_display }}</span>
             {% endif %}
-            {% if judge.photo_url %}
-              <img src="{{ judge.photo_url }}" alt="Portrait of {{ judge.full_name }}" class="cast-thumb" loading="lazy">
-            {% endif %}
+            {% include "opinions/_judge_portrait.html" %}
             <h3><a href="{% url 'opinions:judge_detail' slug=judge.slug %}">{{ judge.full_name }}</a></h3>
             {% if judge.tenure_label %}
               <p class="affiliation">{{ judge.tenure_label }}</p>
@@ -123,9 +121,7 @@
     <div class="cast-grid">
       {% for judge in serving %}
         <article class="entity-tile judicial">
-          {% if judge.photo_url %}
-            <img src="{{ judge.photo_url }}" alt="Portrait of {{ judge.full_name }}" class="cast-thumb" loading="lazy">
-          {% endif %}
+          {% include "opinions/_judge_portrait.html" %}
           <h3><a href="{% url 'opinions:judge_detail' slug=judge.slug %}">{{ judge.full_name }}</a></h3>
           <p class="affiliation">{{ judge.tenure_label }}</p>
           <div class="cast-links">

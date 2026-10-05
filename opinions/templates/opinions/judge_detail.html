@@ -91,9 +91,9 @@ stacked layout.
       happened, which is the same class of overstatement as the eyecite
       and goatcounter claims.
     {% endcomment %}
-    {% if judge.photo_url %}
-      <img src="{{ judge.photo_url }}" alt="Portrait of {{ judge.full_name }}" class="cast-thumb judge-bio-card__photo" loading="lazy">
-      {% if judge.photo_credit %}
+    {% if judge.photo_url or judge.is_currently_seated %}
+      {% include "opinions/_judge_portrait.html" with extra_class="judge-bio-card__photo" %}
+      {% if judge.photo_url and judge.photo_credit %}
         <p class="judge-photo-credit">Photograph courtesy of the {{ judge.photo_credit }}.</p>
       {% endif %}
     {% endif %}
