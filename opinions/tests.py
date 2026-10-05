@@ -712,3 +712,32 @@ class BluebookCiteTests(SimpleTestCase):
         long = self._op("MN", "APPEALS", "In re the Welfare of the Children of: " + "A" * 80, "900 N.W.2d 100")
         out = bluebook_cite_for(long, name_limit=70)
         self.assertTrue(out.endswith("…, 900 N.W.2d 100 (Minn. Ct. App. 2018)"), out)
+
+
+class InTextCiteLinkTests(SimpleTestCase):
+    """Matching of resolved cites inside opinion text (opinion_text.py)."""
+
+    def pat(self, *cites):
+        from opinions.templatetags.opinion_text import _build_cite_pattern
+        return _build_cite_pattern(list(cites))
+
+    def test_spacing_after_periods_is_optional(self):
+        p = self.pat("639 So. 2d 730")
+        for text in ("639 So.2d 730", "639 So. 2d 730", "639 So.\n2d 730", "639  So. 2d\n730"):
+            self.assertIsNotNone(p.search(text), text)
+        self.assertIsNotNone(self.pat("131 N.W.2d 855").search("131 N. W. 2d 855"))
+
+    def test_digit_boundaries_prevent_substring_links(self):
+        p = self.pat("39 So. 2d 73")
+        self.assertIsNone(p.search("639 So. 2d 730"))
+        self.assertIsNone(p.search("39 So. 2d 730"))
+        self.assertIsNotNone(p.search("see 39 So. 2d 73, 75"))
+
+    def test_longest_first(self):
+        m = self.pat("12 N.H. 34", "12 N.H. 345").search("12 N.H. 345")
+        self.assertEqual(m.group(0), "12 N.H. 345")
+
+    def test_keys_collapse_spelling_variants(self):
+        from opinions.templatetags.opinion_text import _normalize_cite
+        self.assertEqual(_normalize_cite("639 So.2d 730"), _normalize_cite("639 So. 2d\n730"))
+        self.assertNotEqual(_normalize_cite("39 So. 2d 730"), _normalize_cite("39 So. 2d 73"))

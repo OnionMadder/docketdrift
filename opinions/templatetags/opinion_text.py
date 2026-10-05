@@ -119,35 +119,52 @@ def _wrap_citation(match: re.Match) -> str:
 
 
 def _normalize_cite(s: str) -> str:
-    """Collapse runs of whitespace to a single space, strip ends.
+    """Lookup key for a cite: every whitespace run removed.
 
-    The extractor's ``cited_reference`` values are normalized to a
-    canonical spaced form (e.g. ``"902 So. 2d 373"``) but real opinion
-    text can carry the same cite as ``"902 So.2d 373"`` (no space) or
-    with a linebreak in the middle. Normalizing both sides of the map
-    lookup makes the linker forgiving of the source spelling.
+    The extractor stores a canonical spaced form ("639 So. 2d 730"), but
+    opinion text writes the same cite as "639 So.2d 730" (Louisiana courts,
+    routinely), "131 N. W. 2d 855" (OCR), or with a line break inside.
+    Collapsing whitespace to ONE space -- what this used to do -- still
+    missed "So.2d", so LA's resolved citations rendered as plain text. With
+    all whitespace gone those spellings share one key. Volume and page stay
+    distinct because the reporter's letters sit between them.
     """
-    return " ".join((s or "").split())
+    return "".join((s or "").split())
+
+
+def _cite_regex(cite: str) -> str:
+    """Pattern for one cite, tolerant of how opinions actually space it.
+
+    Whitespace is OPTIONAL after a period ("So. 2d" == "So.2d", "N.W." ==
+    "N. W.") and REQUIRED (any run, including a line break) elsewhere --
+    "425 N.W.2d" must not match "425N.W.2d"-shaped noise.
+    """
+    out = []
+    prev = ""
+    for ch in " ".join(cite.split()):
+        if ch == " ":
+            if prev != ".":
+                out.append(r"\s+")
+        elif ch == ".":
+            out.append(r"\.\s*")
+        else:
+            out.append(re.escape(ch))
+        prev = ch
+    return "".join(out)
 
 
 def _build_cite_pattern(cite_strings: list[str]) -> re.Pattern | None:
-    """Compile ONE regex that matches any of ``cite_strings`` verbatim
-    but tolerates arbitrary whitespace between tokens.
+    """Compile ONE regex matching any of ``cite_strings``.
 
-    Sorting longest-first prevents e.g. ``"12 N.H. 34"`` from being
-    matched as a prefix of ``"12 N.H. 345"``. Empty list -> None so the
-    caller can skip the substitution pass entirely.
+    Longest-first so "12 N.H. 34" is never taken as a prefix of
+    "12 N.H. 345", and DIGIT-BOUNDED at both ends: without the lookarounds
+    "39 So. 2d 73" matched inside "639 So. 2d 730" and linked the WRONG
+    case. Empty list -> None so the caller skips the pass.
     """
     if not cite_strings:
         return None
-    parts = []
-    for cite in sorted(set(cite_strings), key=len, reverse=True):
-        # Escape then relax whitespace: any run of whitespace in the
-        # canonical cite matches any whitespace run in the text (e.g.
-        # linebreak between "N.H." and the page number in a PDF extract).
-        p = re.escape(cite).replace(r"\ ", r"\s+")
-        parts.append(p)
-    return re.compile("(?:" + "|".join(parts) + ")")
+    parts = [_cite_regex(c) for c in sorted(set(cite_strings), key=len, reverse=True)]
+    return re.compile(r"(?<![\d.])(?:" + "|".join(parts) + r")(?!\d)")
 
 
 @register.filter(is_safe=True)
@@ -173,6 +190,7 @@ def format_opinion_text(opinion, highlight: str = "") -> str:
     # or a raw string (legacy call sites).
     raw_text = ""
     cite_targets: dict[str, object] = {}
+    cite_strings: dict[str, str] = {}   # key -> one stored spelling, for the regex
     if opinion is None:
         return ""
     if isinstance(opinion, str):
@@ -200,6 +218,7 @@ def format_opinion_text(opinion, highlight: str = "") -> str:
                 key = _normalize_cite(oc.cited_reference)
                 if key:
                     cite_targets[key] = oc.cited_opinion
+                    cite_strings[key] = oc.cited_reference
 
     if not raw_text:
         return ""
@@ -226,7 +245,7 @@ def format_opinion_text(opinion, highlight: str = "") -> str:
     # <cite> italic wrapper -- then this pass wraps just the cite
     # portion (nested inside <cite>) in <a href>. Nesting is fine:
     # <cite class="op-cite">Name v. Name, <a href="...">cite</a></cite>.
-    cite_pattern = _build_cite_pattern(list(cite_targets.keys()))
+    cite_pattern = _build_cite_pattern(list(cite_strings.values()))
 
     def _linkify_cites(escaped_html: str) -> str:
         if cite_pattern is None:
