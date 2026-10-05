@@ -27,6 +27,10 @@ admin-only, enforced by a test rather than a comment).
 **EIGHT consecutive sessions have each found a LIVE defect, and only one
 was found by a monitor.** Read these blocks before starting anything:
 
+- **2026-10-05** — **a residential-proxy scraper starved the site through
+  the similar-opinions scan, and warming the cache after a restart made
+  it worse.** Also: Judge Fabian's page carried a photo of Governor
+  Hobbs (a news-article scrape). See the 2026-10-05 block.
 - **2026-09-26b** — **the judge layer was wrong in every state, and the
   weekly cron had never attached judges to new opinions.** LA's seated
   Third/Fourth/Fifth Circuit benches showed ZERO votes (seeded rows had no
@@ -179,6 +183,113 @@ The `about.html`/`how_we_differ.html` landmine (LLM "summarized holding" claims
 in indexed JSON-LD) was reverted — extractive holdings = "no generated text",
 the strong original posture, is correct. Migrations 0026 (holdings) + 0027
 (clustering) are on main and applied on prod.
+
+## 2026-10-05 — scraper starvation, AZ roster for the court, official portraits
+
+### ★ DO NOT run `precompute_explore_tags` right after a restart while a scraper is on the site
+
+The cheat sheet says to warm caches after every restart. Under scraper
+load that is backwards. Measured: restart at 15:25 with a residential
+scraper at ~3 opinion pages/s, warm-up started alongside it, and
+`/healthz` went from 0.003s to **46s** (one probe timed out at 60s). Its
+per-tag FULLTEXT COUNTs held the shared DB (one ran 52s), so every
+request queued. Killing the warm-up brought `/healthz` back to 0.28s at
+once. Check `traffic.py`-style load first (below); if browser-UA opinion
+traffic is heavy, restart and let the cache fill on demand, or warm later.
+
+### The scraper, and why it hurt
+
+3,921 networks in one hour, 1-3 fetches each, rotating Chrome 124-133 and
+Safari UAs, **zero stylesheet loads**, every path distinct: a paid
+residential-proxy pool, the same shape as August's "Singapore readers".
+It looks like a browser, so `request_is_crawler` never fired, and
+`opinion_detail` ran the similar-opinions cosine scan (12s bound) on
+every hit. Every one of 1,909 requests over 5s that hour was its; site
+p95 sat at 12.4s, exactly the scan's bound. **Blocking by address is
+hopeless against that rotation; make the expensive thing reader-only.**
+
+- **Similar opinions are lazy now** (`f16cdc9`): the page ships an empty
+  slot; `/similar/<pk>/` (`opinion_similar`, `_similar_opinions.html`)
+  is fetched only after a real interaction (scroll/pointer/touch/key)
+  AND once the slot is within 600px of the viewport. A plain on-load
+  fetch would not do: the August scraper of this shape executed JS.
+  Crawlers get no slot; the fragment is noindex + Disallow'd.
+- **Judge dossiers** (`878f261`): `_judge_stats` ran five joins from
+  panel votes into the 2.75GB table, two of them SELECT DISTINCT over
+  every column INCLUDING raw_text/html_content. Now one values_list pass
+  + Python counting, cached per judge 6h. Howe 21.5s -> 0.6s rendered.
+  Verified old==new for 7 judges in 4 states before deploying -- and the
+  first comparison "failed" because MY copy of the old query dropped its
+  `.order_by("-n")`, letting Meta ordering into the GROUP BY. When a
+  verification fails, check the verifier before the code.
+- **The opinion page itself is cheap**: 0.08s warm, 0.13-0.34s for a
+  never-fetched page, 6-8 queries totalling ~0.02-0.24s DB. Don't
+  "optimize" it on the strength of access-log medians (below).
+
+### Process-wide freezes: the log median is not the page cost
+
+After those fixes, live opinion p50 was still 0.8s while the same pages
+rendered in 0.2s in-process. `/home/tmp/gaps.py` (completions per
+second) showed why: **31 freezes of 3-5s in 15 min where NOTHING
+completed with all 8 threads in flight, then bursts** -- 12% of the
+window frozen. A fixed CPU loop + 0.5s `/healthz` probe
+(`stallprobe.py`) is the tool to tell host CPU/shared-DB stalls from
+in-process ones. The freezes stopped by themselves at 17:52 with no
+change on our side and no other job of ours running; cause NOT
+identified (suspect the shared `madmaster.db` or host CPU limits). If
+they recur, run both probes during the freeze and capture SHOW
+PROCESSLIST.
+
+Tools left in `/home/tmp/`: `traffic.py N` (who/what/how slow, last N
+min), `browsers.py` (do browser-UA clients load CSS?), `longest.py`,
+`gaps.py`, `stallprobe.py`, `prof_opinion.py`, `prof_judge.py`.
+
+### AZ roster, made right for the court
+
+Checked line by line against coa1.azcourts.gov and appeals2.az.gov:
+- `/current-judges/` sorted members on the role CODE string (Vice Chief
+  last, Chief Justice after associates) and groups APPEALS before
+  SUPREME; "7 JUDGES" on a supreme court. Fixed (`b3fb22b`).
+- Tenure labels used our earliest opinion year ("since 2013" for a judge
+  seated 2006). Now `Judge.appointment_date_precision` (day/month/year)
+  and `appointment_date_event` (appointed/seated), migration 0047, set
+  from the courts' own bios for all 31 dated AZ judges; 270 Jan-1
+  CourtListener placeholders across all states marked year-precision so
+  no page prints "Appointed January 1, 1965". Fallback label is
+  "Opinions on record since <year>".
+- `Judge.retirement_date` (0046): Gass 2026-06-30, Thumma 2026-08-28,
+  per Division One HR. A retiree inside the 6-month window is kept out
+  of "Also hearing cases" -- their late votes are opinions decided before
+  they left, not service by appointment.
+- 14 Division One "Official bio" links pointed at the court's list page;
+  Division Two bios had lost their "SURNAME, Given," lead-in. Fixed.
+- **Division Two moves to a new website Oct 16-19, 2026**: all nine Div 2
+  bio links will need repointing afterwards.
+
+### Portraits: court-supplied or a monogram, never a news photo
+
+Judge Fabian's page showed **Governor Hobbs**: the June portraits were
+hand-pulled from LinkedIn and appointment news articles, and an
+appointment article pictures the governor beside the judge. Rule now:
+**only a court-supplied official portrait, or the initials monogram**
+(`_judge_portrait.html`, `templatetags/judges.py`; "Official portrait
+not yet available"). Division One HR has now supplied 16 of 17 (Jacobs's
+digital file is lost; HR confirmed our image is him). Howe's and
+Cattani's arrived 240x359 and are deliberately not upscaled. Division
+Two: none court-supplied yet; O'Neil and Kelly are monograms.
+
+### Gotchas met today
+
+- `Opinion.get_absolute_url()` returns an ABSOLUTE `https://` URL --
+  take `.path` before prefixing the internal gunicorn address.
+- FreeBSD `sed -i` needs an explicit suffix (`sed -i ""`); `sed -i.bak`
+  works, a bare `sed -i "s/..."` eats the expression as the suffix.
+- I probed `filter(case_number=X)` without a court and got errno 1969 --
+  the documented table-scan trap, again. Go through the view or narrow
+  by `court_id__in`.
+- D. Steven Williams (AZ) holds 2 votes (2016-17) that belong to Rick A.
+  Williams, a superior court judge sitting by designation. Not moved
+  yet -- needs Onion's approval per the vote-move rule.
 
 ## Landing hero band (2026-08-25) — the graphic is the corpus
 
