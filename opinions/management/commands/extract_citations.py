@@ -164,8 +164,10 @@ class Command(BaseCommand):
         order, so walking a citing opinion's rows by id visits its cites in
         text order; the FIRST row reaching a target keeps it, a later row
         reaching the same target is dropped (the extractor writes one edge
-        per resolved target -- parallel-cite pairs), and a row resolving to
-        the citing opinion itself is dropped (never an edge to self).
+        per resolved target -- parallel-cite pairs), a row resolving to the
+        citing opinion itself is dropped (never an edge to self), and a row
+        whose reference IS the citing opinion's own reporter cite or docket
+        is dropped (the extractor's self_cite guard).
         Rows that still resolve to nothing are left as external authority.
         """
         scanned = resolved = dropped = 0
@@ -187,6 +189,19 @@ class Command(BaseCommand):
                             "id", "citing_opinion_id", "cited_opinion_id",
                             "cited_reference")
                     )
+                    # The extractor's self guard: a cite equal to the citing
+                    # opinion's OWN reporter cite or docket never becomes a
+                    # row. Rows written before the reporter cite was loaded
+                    # escaped it -- and where the corpus holds one case twice
+                    # (a CourtListener row and a lasc.org row sharing a
+                    # reporter cite), that row would now "resolve" to the
+                    # case's own twin. Measured: 14 such rows in 200 LA
+                    # opinions before this guard.
+                    own = {
+                        oid: {k.strip() for k in (rc or "", cn or "") if k.strip()}
+                        for oid, rc, cn in Opinion.objects.filter(id__in=chunk)
+                        .values_list("id", "reporter_cite", "case_number")
+                    }
                     seen: dict[int, set] = {}
                     for _id, citing, cited, _ref in edges:
                         if cited is not None:
@@ -195,6 +210,9 @@ class Command(BaseCommand):
                     drop: list[int] = []
                     for _id, citing, cited, ref in edges:
                         if cited is not None:
+                            continue
+                        if ref.strip() in own.get(citing, ()):
+                            drop.append(_id)
                             continue
                         target = cite_map.get(ref)
                         if target is None:
