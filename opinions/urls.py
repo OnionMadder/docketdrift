@@ -34,6 +34,7 @@ urlpatterns = [
     path("opinion/<path:case_number>/pdf/", views.opinion_pdf, name="opinion_pdf"),
     path("opinion/<path:case_number>/cited-by/", views.opinion_cited_by, name="opinion_cited_by"),
     path("opinion/<path:case_number>/", views.opinion_detail, name="detail"),
+    path("similar/<int:pk>/", views.opinion_similar, name="opinion_similar"),
     path("current-judges/", views.current_judges, name="current_judges"),
     path("judge/<slug:slug>/", views.judge_detail, name="judge_detail"),
     path("compare/judges/", views.judge_compare, name="judge_compare"),

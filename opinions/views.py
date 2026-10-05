@@ -1243,52 +1243,16 @@ def opinion_detail(request, case_number):
         if opinion.release_date:
             canonical_path += "&on=%s" % opinion.release_date.isoformat()
 
-    # Similar-opinions widget. One cosine-distance (VEC_DISTANCE_COSINE)
-    # query against the corpus using the opinion's own stored embedding.
-    # SKIP it for crawlers: they don't use the widget, and at crawl scale
-    # (ClaudeBot et al. hitting every opinion page) one vector scan per hit
-    # saturated the single DB worker and 500'd uncached pages site-wide.
-    # Returns empty on SQLite (no VECTOR column) or no embedding too.
+    # Similar-opinions panel: NOT computed here. The cosine scan costs up to
+    # 12s, and on 2026-10-05 a residential-proxy scraper (3,921 networks,
+    # browser UAs, no CSS) ran it on ~1 opinion/s and starved the site --
+    # every request over 5s was its. The page now ships an empty slot that
+    # fetches opinion_similar after a real reader interacts. Crawlers and
+    # unembedded opinions get no slot at all.
     from opinions.middleware import request_is_crawler
-    if request_is_crawler(request):
-        similar_pairs = []
-    else:
-        # Cache the cosine result keyed on the OPINION (not the URL). This
-        # page is CDN-cached, but ?q= search-result links carry a unique
-        # query string that busts that cache -- so without this, every ?q
-        # variant re-ran the O(N) VEC_DISTANCE_COSINE scan at origin. On a
-        # dense state (MN/AZ) a scan can exceed max_statement_time, get
-        # KILLed, and poison the connection pool (errno 188/1317 -> 500
-        # cascade). Caching collapses all variants to one scan per opinion
-        # per day; semantic._run_vector_query degrades to [] if it still
-        # times out, so the page renders without the widget rather than 500.
-        cache_key = "sim_pairs:v1:%s" % opinion.pk
-        similar_pairs = cache.get(cache_key)
-        if similar_pairs is None:
-            from opinions.semantic import similar_to_opinion
-            # with_scores=True -> [(opinion_id, cosine_distance), ...] for the
-            # subtle "% similar" cue on the NH card (proving-ground).
-            similar_pairs = similar_to_opinion(opinion, limit=5, with_scores=True)
-            cache.set(cache_key, similar_pairs, 60 * 60 * 24)
-    similar_opinions = []
-    if similar_pairs:
-        ordering = {pk: i for i, (pk, _dist) in enumerate(similar_pairs)}
-        dist_by_id = {pk: dist for pk, dist in similar_pairs}
-        similar_opinions = list(
-            Opinion.objects.filter(pk__in=ordering)
-            .select_related("court")
-            .defer("raw_text", "html_content")  # 50-100KB TEXT cols, unused here
-        )
-        for op in similar_opinions:
-            # Cosine distance lives in [0, 2]; similarity% = (1 - dist) * 100,
-            # clamped to [0, 100] and rounded. voyage-law-2 same-state legal
-            # opinions cluster high, so this reads ~75-97% -- a quality cue,
-            # not a precision claim. 0 hides the badge (effectively never).
-            d = dist_by_id.get(op.pk)
-            op.similarity_pct = (
-                max(0, min(100, round((1 - d) * 100))) if d is not None else 0
-            )
-        similar_opinions.sort(key=lambda op: ordering.get(op.pk, 999))
+    similar_src = ""
+    if not request_is_crawler(request) and not opinion.embedding_pending:
+        similar_src = reverse("opinions:opinion_similar", kwargs={"pk": opinion.pk})
 
     # Citation graph (Phase 14 + 16b): how this opinion has been cited, and
     # what it cites. FK-indexed lookups; opinion_detail is CDN-cached.
@@ -1379,7 +1343,7 @@ def opinion_detail(request, case_number):
 
     return render(request, "opinions/opinion_detail.html", {
         "opinion": opinion,
-        "similar_opinions": similar_opinions,
+        "similar_src": similar_src,
         # Other decisions filed under this same docket number (e.g. the Court
         # of Appeals opinion when we're showing the Supreme Court's).
         "siblings": siblings,
@@ -1399,6 +1363,68 @@ def opinion_detail(request, case_number):
         "canonical_path": canonical_path,
         "active_nav": "opinions",
     })
+
+
+def _similar_opinions_for(opinion):
+    """Up to 5 nearest opinions by embedding, each with .similarity_pct.
+
+    Cached on the OPINION (not the URL), 24h: one scan per opinion per day
+    however many ?q= variants or readers ask. On a dense state a cold scan
+    can exceed max_statement_time; semantic._run_vector_query degrades to []
+    rather than 500ing or poisoning the pooled connection.
+    """
+    cache_key = "sim_pairs:v1:%s" % opinion.pk
+    similar_pairs = cache.get(cache_key)
+    if similar_pairs is None:
+        from opinions.semantic import similar_to_opinion
+        similar_pairs = similar_to_opinion(opinion, limit=5, with_scores=True)
+        cache.set(cache_key, similar_pairs, 60 * 60 * 24)
+    if not similar_pairs:
+        return []
+    ordering = {pk: i for i, (pk, _dist) in enumerate(similar_pairs)}
+    dist_by_id = {pk: dist for pk, dist in similar_pairs}
+    similar = list(
+        Opinion.objects.filter(pk__in=ordering)
+        .select_related("court")
+        .defer("raw_text", "html_content")  # 50-100KB TEXT cols, unused here
+    )
+    for op in similar:
+        # Cosine distance lives in [0, 2]; similarity% = (1 - dist) * 100,
+        # clamped and rounded -- a quality cue, not a precision claim.
+        d = dist_by_id.get(op.pk)
+        op.similarity_pct = max(0, min(100, round((1 - d) * 100))) if d is not None else 0
+    similar.sort(key=lambda op: ordering.get(op.pk, 999))
+    return similar
+
+
+@cache_control(public=True, max_age=CACHE_SEC_DETAIL)
+def opinion_similar(request, pk):
+    """The similar-opinions panel for one opinion, as an HTML fragment.
+
+    Fetched by opinion_detail's lazy loader only. Scoped to the subdomain's
+    state so an id cannot reach another state's opinion. Empty 200 for
+    crawlers and for opinions with nothing to show; the loader removes the
+    slot on an empty body.
+    """
+    from opinions.middleware import request_is_crawler
+    state = getattr(request, "state", None)
+    if state is None:
+        raise Http404
+    court_ids = list(state.courts.values_list("id", flat=True))
+    opinion = (Opinion.objects.select_related("court__state")
+               .defer("raw_text", "html_content")
+               .filter(pk=pk, court_id__in=court_ids).first())
+    if opinion is None:
+        raise Http404("Opinion not found")
+    if request_is_crawler(request) or opinion.embedding_pending:
+        resp = HttpResponse("")
+    else:
+        resp = render(request, "opinions/_similar_opinions.html", {
+            "opinion": opinion,
+            "similar_opinions": _similar_opinions_for(opinion),
+        })
+    resp["X-Robots-Tag"] = "noindex"
+    return resp
 
 
 @cache_control(public=True, max_age=CACHE_SEC_DETAIL)
@@ -2829,6 +2855,7 @@ Disallow: /
 User-agent: *
 Crawl-delay: 5
 Disallow: /admin/
+Disallow: /similar/
 """
 
 
