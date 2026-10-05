@@ -1,6 +1,6 @@
 {% extends "opinions/base.html" %}
 {% block title %}{{ judge.full_name }} &middot; DocketDrift{% endblock %}
-{% block description %}Dossier: {{ judge.full_name }}{% if judge.court %}, {{ judge.court.name }}{% endif %}{% if judge.appointment_date %}, appointed {{ judge.appointment_date|date:"F Y" }}{% endif %}.{% endblock %}
+{% block description %}Dossier: {{ judge.full_name }}{% if judge.court %}, {{ judge.court.name }}{% endif %}{% if judge.appointment_date %}, {{ judge.get_appointment_date_event_display|lower }} {{ judge.appointment_display }}{% endif %}.{% endblock %}
 
 {% block og_type %}profile{% endblock %}
 {% block og_title %}{{ judge.full_name }} &middot; {{ judge.get_role_display|default:"Judge" }}{% endblock %}
@@ -78,7 +78,7 @@ stacked layout.
       <p class="opinion-meta">
         {% if judge.court %}<strong>{{ judge.court.name }}</strong>{% endif %}
         {% if judge.court and judge.appointment_date %} &middot; {% endif %}
-        {% if judge.appointment_date %}Appointed {{ judge.appointment_date|date:"F j, Y" }}{% endif %}
+        {% if judge.appointment_date %}{{ judge.appointment_label }}{% endif %}
         {% if judge.retirement_date %}{% if judge.court or judge.appointment_date %} &middot; {% endif %}Retired {{ judge.retirement_date|date:"F j, Y" }}{% endif %}
       </p>
     {% endif %}

@@ -207,6 +207,39 @@ class Judge(models.Model):
         blank=True,
         help_text="When this judge took the bench in their current role.",
     )
+    # How much of appointment_date the SOURCE actually states. Courts often
+    # publish only "appointed in 2019" or "in December 2017"; a DateField
+    # forces a day, and rendering that placeholder ("Appointed January 1,
+    # 2007") states a date no source gave us. Templates print only the
+    # parts the source supports.
+    class DatePrecision(models.TextChoices):
+        DAY = "day", "Day"
+        MONTH = "month", "Month"
+        YEAR = "year", "Year"
+
+    appointment_date_precision = models.CharField(
+        max_length=5,
+        choices=DatePrecision.choices,
+        default=DatePrecision.DAY,
+        help_text=(
+            "How much of appointment_date the source states. 'year' renders "
+            "as '2019', 'month' as 'December 2017'."
+        ),
+    )
+    # Which event appointment_date records. Court bios give one or the
+    # other ("appointed May 15, 2025" vs "taking his seat on January 18,
+    # 2023"), and they can fall in different years -- labeling a seat date
+    # "Appointed" misstates the source.
+    class DateEvent(models.TextChoices):
+        APPOINTED = "appointed", "Appointed"
+        SEATED = "seated", "Seated"
+
+    appointment_date_event = models.CharField(
+        max_length=9,
+        choices=DateEvent.choices,
+        default=DateEvent.APPOINTED,
+        help_text="Whether appointment_date is the appointment or the day the judge took the seat.",
+    )
     # Editorial, set from a SOURCED date (the court's own word, an order,
     # an obituary) -- never inferred from votes. Opinions a judge joined
     # keep being filed for months after they leave, so last_vote_date runs
@@ -316,6 +349,25 @@ class Judge(models.Model):
 
     def __str__(self):
         return f"{self.full_name} ({self.state_id})"
+
+    @property
+    def appointment_display(self) -> str:
+        """appointment_date at the precision its source supports, or ''."""
+        d = self.appointment_date
+        if not d:
+            return ""
+        if self.appointment_date_precision == self.DatePrecision.YEAR:
+            return str(d.year)
+        if self.appointment_date_precision == self.DatePrecision.MONTH:
+            return d.strftime("%B %Y")
+        return "%s %d, %d" % (d.strftime("%B"), d.day, d.year)
+
+    @property
+    def appointment_label(self) -> str:
+        """'Appointed November 2017' / 'Seated January 18, 2023', or ''."""
+        if not self.appointment_date:
+            return ""
+        return "%s %s" % (self.get_appointment_date_event_display(), self.appointment_display)
 
     def get_absolute_url(self) -> str:
         """Public URL for this judge's dossier.

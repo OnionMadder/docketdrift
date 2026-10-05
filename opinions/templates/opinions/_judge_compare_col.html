@@ -19,7 +19,7 @@ photo treatment that wouldn't survive a 2-col squeeze.
     <p class="opinion-meta">
       {% if judge.court %}<strong>{{ judge.court.name }}</strong>{% endif %}
       {% if judge.court and judge.appointment_date %} &middot; {% endif %}
-      {% if judge.appointment_date %}Appointed {{ judge.appointment_date|date:"F j, Y" }}{% endif %}
+      {% if judge.appointment_date %}{{ judge.appointment_label }}{% endif %}
       {% if judge.retirement_date %}{% if judge.court or judge.appointment_date %} &middot; {% endif %}Retired {{ judge.retirement_date|date:"F j, Y" }}{% endif %}
     </p>
   {% endif %}

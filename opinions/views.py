@@ -1625,9 +1625,14 @@ def current_judges(request):
         f, l = span(j)
         if j.is_currently_seated:
             if j.appointment_date:
-                j.tenure_label = "Seated %d" % j.appointment_date.year
+                j.tenure_label = "%s %d" % (
+                    j.get_appointment_date_event_display(), j.appointment_date.year)
             elif f:
-                j.tenure_label = "On the bench since %d" % f
+                # Our earliest opinion is a fact about our CORPUS, not the
+                # judge's tenure: coverage gaps and pre-appointment service
+                # on another court both move it (AZ: Vasquez read "since
+                # 2013", seated 2006). Say what it is.
+                j.tenure_label = "Opinions on record since %d" % f
             else:
                 j.tenure_label = "Currently seated"
         elif f and l:
@@ -1639,18 +1644,30 @@ def current_judges(request):
     grouped = {}
     for j in selected:
         grouped.setdefault(j.court.name if j.court else "Other / unassigned", []).append(j)
-    # Order groups by court level (a CharField: "APPEALS" < "SUPREME"),
-    # unassigned last. The default must be a str too, or the no-court group's
-    # int default mixes types and TypeErrors the sort.
-    groups = sorted(
-        grouped.items(),
-        key=lambda kv: min((jj.court.level for jj in kv[1] if jj.court), default="~~"),
-    )
-    for _label, members in groups:
+    # Supreme Court first, then intermediate courts by division (AZ's
+    # Division One before Two, LA's First Circuit before Fifth), unassigned
+    # last. Sorting on the raw level string put "APPEALS" before "SUPREME".
+    def _group_key(kv):
+        c = next((jj.court for jj in kv[1] if jj.court), None)
+        if c is None:
+            return (2, "")
+        return (0 if c.level == "SUPREME" else 1, c.division or "")
+
+    # Bench order, the way courts list themselves: chief, vice chief, then
+    # members alphabetically. Role declaration order IS rank order;
+    # sorting on the code string put Vice Chief Judge last and the Chief
+    # Justice after the associate justices.
+    role_rank = {code: i for i, code in enumerate(Judge.Role.values)}
+
+    groups = []
+    for label, members in sorted(grouped.items(), key=_group_key):
         if era == "current":
-            members.sort(key=lambda j: (j.role or "zz", j.full_name))
+            members.sort(key=lambda j: (role_rank.get(j.role or "UNKNOWN", 99), j.full_name))
         else:  # most-recently-active first
             members.sort(key=lambda j: (-(j.last_vote_date.year if j.last_vote_date else 0), j.full_name))
+        c = next((jj.court for jj in members if jj.court), None)
+        noun = "JUSTICE" if c is not None and c.level == "SUPREME" else "JUDGE"
+        groups.append((label, members, noun))
 
     # Judges who are NOT on the seated bench but sat on a panel recently:
     # retired judges serving by appointment (MN's Court of Appeals uses

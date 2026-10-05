@@ -68,10 +68,10 @@
   </nav>
 
   {% if judge_groups %}
-    {% for court_label, judges in judge_groups %}
+    {% for court_label, judges, noun in judge_groups %}
       <div class="section-header">
         <h2>{{ court_label }}</h2>
-        <span class="section-count">{{ judges|length }} JUDGE{{ judges|length|pluralize:",S" }}</span>
+        <span class="section-count">{{ judges|length }} {{ noun }}{{ judges|length|pluralize:",S" }}</span>
       </div>
       <hr class="section-divider">
 
