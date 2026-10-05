@@ -24,6 +24,8 @@ Usage::
 """
 from __future__ import annotations
 
+import json
+import os
 import re
 import time
 
@@ -65,11 +67,21 @@ class Command(BaseCommand):
                             help="Self-exit after N seconds and print a "
                                  "--min-id to resume from. NFSN's CPU cull is "
                                  "~40s, so use 35 for a full MN sweep.")
+        parser.add_argument(
+            "--map-cache", default=None,
+            help="Path to a JSON cache of the resolution map. Building the "
+                 "map walks the whole state corpus (~5.5 min on LA, measured "
+                 "2026-10-05), which is longer than NFSN's cull, so a chunked "
+                 "sweep could never get past it. With this flag the first "
+                 "chunk builds and saves the map; later chunks load it in "
+                 "about a second. Rebuilt when older than --map-cache-hours.")
+        parser.add_argument("--map-cache-hours", type=float, default=24.0)
         parser.add_argument("--min-id", type=int, default=0,
                             help="Resume from this opinion id (see "
                                  "--max-runtime).")
 
-    def handle(self, *args, state, limit, max_runtime, min_id, **options):
+    def handle(self, *args, state, limit, max_runtime, min_id, map_cache=None,
+               map_cache_hours=24.0, **options):
         started = time.time()
         # Batch work, not a web request: the 25s cap from settings would kill
         # the corpus-wide map builds below.
@@ -87,6 +99,61 @@ class Command(BaseCommand):
             )
             if not court_ids:
                 continue
+            cache_path = None
+            if map_cache:
+                cache_path = map_cache if len(codes) == 1 else "%s.%s" % (map_cache, code)
+            cite_map = self._load_map_cache(cache_path, map_cache_hours)
+            if cite_map is not None:
+                self.stdout.write("%s: loaded %d resolvable keys from %s"
+                                  % (code, len(cite_map), cache_path))
+            else:
+                cite_map = self._build_map(court_ids, code)
+                if cache_path:
+                    self._save_map_cache(cache_path, cite_map)
+
+            # Citing opinions: EVERY opinion with text. The old scoping
+            # required a reporter_cite, which is an NH neutral-cite-era
+            # assumption -- applied to MN it would skip every unpublished
+            # opinion and all 3,102 backfilled ones, i.e. exactly the opinions
+            # that can never get edges from CourtListener.
+            ids = list(
+                Opinion.objects.filter(court_id__in=court_ids)
+                .filter(id__gte=min_id)
+                .order_by("id")
+                .values_list("id", flat=True)
+            )
+            if limit:
+                ids = ids[:limit]
+            # Start the clock AFTER the maps are built. Building them walks the
+            # whole state corpus (~60s on MN), so counting it against
+            # --max-runtime made the command exit having scanned zero opinions
+            # while reporting success.
+            started = time.time()
+            self.stdout.write(
+                "%s: scanning %d citing opinions (%d resolvable targets)..."
+                % (code, len(ids), len(cite_map))
+            )
+            self._sweep(code, ids, cite_map, max_runtime, started)
+
+    @staticmethod
+    def _load_map_cache(path, max_hours):
+        if not path or not os.path.exists(path):
+            return None
+        if time.time() - os.path.getmtime(path) > max_hours * 3600:
+            return None
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh)
+
+    @staticmethod
+    def _save_map_cache(path, cite_map):
+        # Write-then-rename, so a chunk killed mid-write never leaves a
+        # truncated cache that the next chunk would trust.
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(cite_map, fh)
+        os.replace(tmp, path)
+
+    def _build_map(self, court_ids, code):
             # Resolution map: reporter_cite -> opinion_id for this state's corpus.
             cite_map = dict(
                 Opinion.objects.filter(court_id__in=court_ids)
@@ -127,34 +194,13 @@ class Command(BaseCommand):
                 docket_owner.pop(k, None)
             for k, v in docket_owner.items():
                 cite_map.setdefault(k, v)
-
-            # Citing opinions: EVERY opinion with text. The old scoping
-            # required a reporter_cite, which is an NH neutral-cite-era
-            # assumption -- applied to MN it would skip every unpublished
-            # opinion and all 3,102 backfilled ones, i.e. exactly the opinions
-            # that can never get edges from CourtListener.
-            ids = list(
-                Opinion.objects.filter(court_id__in=court_ids)
-                .filter(id__gte=min_id)
-                .order_by("id")
-                .values_list("id", flat=True)
-            )
-            if limit:
-                ids = ids[:limit]
             self.stdout.write(
                 "%s: %d resolvable dockets (%d ambiguous, dropped)"
                 % (code, len(docket_owner), len(ambiguous))
             )
-            # Start the clock AFTER the maps are built. Building them walks the
-            # whole state corpus (~60s on MN), so counting it against
-            # --max-runtime made the command exit having scanned zero opinions
-            # while reporting success.
-            started = time.time()
-            self.stdout.write(
-                "%s: scanning %d citing opinions (%d resolvable targets)..."
-                % (code, len(ids), len(cite_map))
-            )
+            return cite_map
 
+    def _sweep(self, code, ids, cite_map, max_runtime, started):
             scanned = edges = internal = 0
             stopped_at = 0
             for start in range(0, len(ids), BATCH):
