@@ -116,12 +116,22 @@ class Command(BaseCommand):
             # assumption -- applied to MN it would skip every unpublished
             # opinion and all 3,102 backfilled ones, i.e. exactly the opinions
             # that can never get edges from CourtListener.
-            ids = list(
-                Opinion.objects.filter(court_id__in=court_ids)
-                .filter(id__gte=min_id)
-                .order_by("id")
-                .values_list("id", flat=True)
-            )
+            # The id list is cached beside the map for the same reason: on LA
+            # this query takes 155s (id >= N + ORDER BY id beside a court_id
+            # filter flips to a PRIMARY walk of the 2.75GB table -- the
+            # documented "one non-covered column" trap), while extraction
+            # itself runs ~400 opinions/s.
+            ids_path = cache_path + ".ids" if cache_path else None
+            all_ids = self._load_map_cache(ids_path, map_cache_hours)
+            if all_ids is None:
+                all_ids = list(
+                    Opinion.objects.filter(court_id__in=court_ids)
+                    .order_by("id")
+                    .values_list("id", flat=True)
+                )
+                if ids_path:
+                    self._save_map_cache(ids_path, all_ids)
+            ids = [i for i in all_ids if i >= min_id]
             if limit:
                 ids = ids[:limit]
             # Start the clock AFTER the maps are built. Building them walks the
