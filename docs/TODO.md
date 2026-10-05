@@ -1401,6 +1401,17 @@ order:
   And because LA landmarks now get thousands of incoming cites: the
   opinion page's incoming-citation scan is one pass, bounded 12s, cached
   per opinion (Thiele v. Stich 24.7s -> 0.3s warm).
+  **Sweep DONE 2026-10-05: 346,990 LA opinions, 1,266,118 edges resolved,
+  186,741 duplicate/self rows dropped, 22 chunks, 0 retries.** Cost worth
+  knowing next time: MN landing spiked 8-60s on 4 of 22 chunks (plus 2
+  from restarts), worst on the heaviest chunks (~70K updates + ~20K
+  deletes), and a real-browser LA page took 180s mid-sweep while the same
+  page renders in 0.3s afterwards. Bulk writes on the shared DB stall
+  reads site-wide. **Pace the next big re-resolve** (sleep between chunks,
+  or a smaller --max-runtime) and watch the driver's latency column.
+  Side finding: some LA cases exist TWICE (a CourtListener row + a
+  lasc.org row sharing one reporter cite) -- resolve-only's self guard
+  handles the citation side; search/sitemap duplicates are unexamined.
   Original note: When an opinion cites
   `902 So. 2d 373` (or any reporter cite in our extracted graph), and that
   target opinion is in our corpus, render the cite as a link, not text.
