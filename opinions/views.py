@@ -12,6 +12,7 @@ All rendering goes through the ``opinions/*.html`` templates in
 ``opinions/templates/opinions/``; the look is the maddervramsey-derived
 dark/neon design system loaded via the base template.
 """
+import logging
 import re
 from collections import Counter
 from datetime import date, timedelta
@@ -38,6 +39,8 @@ from opinions.models import (Court, Judge, Opinion, OpinionCitation,
 # not at import, not at manage.py check. That trap 500'd every
 # citation search for four minutes on 2026-09-17.
 from opinions.parsing.rules import rule_set_label
+
+logger = logging.getLogger(__name__)
 
 
 # Cache-Control max-age budgets, in seconds. Set on views below via the
@@ -1165,6 +1168,51 @@ def opinion_pdf(request, case_number):
     )
 
 
+INCOMING_EDGES_TIMEOUT_S = 12
+INCOMING_EDGES_CACHE_S = 86400
+
+
+def _incoming_edges(opinion, received):
+    """Every incoming citation edge as small tuples, bounded and cached.
+
+    (id, citing_opinion_id, treatment, cluster_label, source,
+    citing_release_date). The citing date is a join into the 2.75GB opinions
+    table, so cost scales with the incoming count: 8-10s on Thiele v. Stich
+    (2,724 incoming). Landmark LA cases can exceed that once their graph
+    resolves, and a statement the 25s session cap KILLs poisons the pooled
+    connection. So: cache per OPINION (every URL spelling and ?q= variant
+    shares one scan per day), self-bound to 12s, and on failure drop the
+    connection and return [] -- the page renders without the citing panels
+    rather than 500ing. Same three defenses as semantic._run_vector_query.
+    """
+    key = "incoming_edges:v1:%s" % opinion.pk
+    rows = cache.get(key)
+    if rows is not None:
+        return rows
+    qs = received.order_by().values_list(
+        "id", "citing_opinion_id", "treatment", "cluster_label", "source",
+        "citing_opinion__release_date")
+    if connection.vendor != "mysql":
+        rows = list(qs)
+    else:
+        sql, params = qs.query.sql_with_params()
+        try:
+            with connection.cursor() as cur:
+                cur.execute("SET STATEMENT max_statement_time=%d FOR %s"
+                            % (INCOMING_EDGES_TIMEOUT_S, sql), params)
+                rows = list(cur.fetchall())
+        except Exception as exc:
+            logger.warning("incoming edges for opinion %s failed (%s); "
+                           "dropping connection", opinion.pk, exc)
+            try:
+                connection.close()
+            except Exception:
+                pass
+            return []
+    cache.set(key, rows, INCOMING_EDGES_CACHE_S)
+    return rows
+
+
 @cache_control(public=True, max_age=CACHE_SEC_DETAIL)
 def opinion_detail(request, case_number):
     """Single-opinion detail. Scoped to the current state subdomain when set."""
@@ -1264,11 +1312,7 @@ def opinion_detail(request, case_number):
     # Louisiana's graph resolving (2026-10-05) gives landmark LA cases
     # counts like that. Small columns only; the 2*CAP edges actually shown
     # are fetched afterwards by id. .order_by() strips Meta.ordering.
-    _incoming = list(
-        received.order_by().values_list(
-            "id", "citing_opinion_id", "treatment", "cluster_label", "source",
-            "citing_opinion__release_date")
-    )
+    _incoming = _incoming_edges(opinion, received)
     cluster_sizes = Counter(r[3] for r in _incoming)
     cited_how = list(
         received.filter(is_cluster_lead=True)
