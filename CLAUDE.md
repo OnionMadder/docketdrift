@@ -236,9 +236,16 @@ window frozen. A fixed CPU loop + 0.5s `/healthz` probe
 (`stallprobe.py`) is the tool to tell host CPU/shared-DB stalls from
 in-process ones. The freezes stopped by themselves at 17:52 with no
 change on our side and no other job of ours running; cause NOT
-identified (suspect the shared `madmaster.db` or host CPU limits). If
-they recur, run both probes during the freeze and capture SHOW
-PROCESSLIST.
+identified (suspect the shared `madmaster.db` or host CPU limits).
+
+**They RECUR in bursts** (again 22:48-22:49 local, 19 gaps in 10 min),
+and two probe runs (75s and 200s, `/healthz` every 0.5s + a CPU loop)
+have each landed in a quiet stretch: `/healthz` never over 0.5s, CPU
+flat. Caveat on the metric: a log gap cannot tell a frozen process from
+all 8 threads stuck on slow requests at once -- only a probe running
+DURING a gap can. Next step if anyone picks this up: run `stallprobe.py`
+(DUR is now 200) in a loop for ~20 min so it overlaps a burst, and
+capture SHOW PROCESSLIST from a second shell when `/healthz` exceeds 1s.
 
 Tools left in `/home/tmp/`: `traffic.py N` (who/what/how slow, last N
 min), `browsers.py` (do browser-UA clients load CSS?), `longest.py`,
@@ -287,9 +294,16 @@ Two: none court-supplied yet; O'Neil and Kelly are monograms.
 - I probed `filter(case_number=X)` without a court and got errno 1969 --
   the documented table-scan trap, again. Go through the view or narrow
   by `court_id__in`.
-- D. Steven Williams (AZ) holds 2 votes (2016-17) that belong to Rick A.
-  Williams, a superior court judge sitting by designation. Not moved
-  yet -- needs Onion's approval per the vote-move rule.
+- D. Steven Williams (AZ, pk 325) held 2 votes (2016-17) that belong to
+  **Rick A. Williams**, a superior court judge sitting by designation
+  ("The Honorable Rick A. Williams, Judge of the Arizona Superior Court,
+  has been authorized to sit in this matter"). With Onion's approval:
+  new row pk 2226 `rick-a-williams`, status DESIGNATED, no home court;
+  `reassign_judge_votes --from 325 --to 2226 --courts 5 --on-or-after
+  2016-01-01 --before 2019-01-01` (2/2 passed the text gate). D. Steven
+  Williams now spans 2020-2026, matching his 2019 appointment. After any
+  vote move, delete that judge's `judge_stats:v2:<pk>:*` cache keys or
+  the dossier serves the old numbers for up to 6h.
 
 ## Landing hero band (2026-08-25) — the graphic is the corpus
 
