@@ -4,7 +4,7 @@ Survival kit for any Claude session working on this repo. Read once,
 re-read whenever a recurring gotcha bites. The goal of this document is
 to make the next session productive within the first 5 minutes.
 
-## Working tree state 2026-09-20 — READ THIS FIRST
+## Working tree state 2026-10-07 — READ THIS FIRST
 
 The tree is **clean**; main == origin/main. Backlog lives in `docs/TODO.md`
 (the authoritative to-do; keep it current). **`docs/TODO.md` outranks the
@@ -24,8 +24,17 @@ is the individual path). `/takedown/` states the removal policy and
 requests are flagged internally (`RemovalRequest`, migration 0042 —
 admin-only, enforced by a test rather than a comment).
 
-**EIGHT consecutive sessions have each found a LIVE defect, and only one
-was found by a monitor.** Read these blocks before starting anything:
+**Since 2026-10-05:** migrations run through **0047** (retirement date,
+appointment-date precision/event). The similar-opinions panel is LAZY
+(`/similar/<pk>/`, loaded only after a reader interacts) and judge
+dossier stats are one-pass + cached 6h per judge; both were rebuilt to
+survive a residential-proxy scraper. The apex band counted **478,184**
+opinions that day (re-measure before quoting). Judge portraits follow
+one rule: court-supplied, or the initials monogram.
+
+**NINE consecutive sessions have each found a LIVE defect, and only one
+was found by a monitor** (2026-10-05's were found by a court's HR office
+and by Onion noticing the site was slow). Read these blocks before starting anything:
 
 - **2026-10-05** — **a residential-proxy scraper starved the site through
   the similar-opinions scan, and warming the cache after a restart made
@@ -96,8 +105,17 @@ A figure that cannot be right is the cheapest defect detector here.
    `196 La. 541` now resolves via `lookup_citation`. Whether LA's citation
    extractor needs a re-sweep to pick up official-cite edges (as AZ did)
    is unmeasured.
-4. **Finish the LA judge re-sweep and restore Guidry's date** (see the
-   2026-09-26 block), then re-run the roster probe on all four states.
+4. ~~**Finish the LA judge re-sweep and restore Guidry's date**~~ ✅ DONE
+   (see the 2026-09-26 block). Re-running the roster probe on all four
+   states is still worth doing.
+5. **AZ Division Two after its website move (Oct 16-19, 2026):** repoint
+   the nine Div 2 "Official bio" links, check the new site for judge
+   photos (O'Neil and Kelly show monograms), and if there are none, ask
+   Lisa Howell / Mac McCallum for the official set. Division One is done
+   except Jacobs (HR still looking) and larger Howe/Cattani files.
+6. **Whole-site freezes of 3-5s recur in bursts** (~11-13% of the bad
+   stretches), cause unidentified. Method and next step in the
+   2026-10-05 block.
 
 **MN 2020–2022 IS FIXED (2026-08-03): 0 → 3,102 opinions.** 2020=1,040,
 2021=1,092, 2022=970, read directly from the mn.gov State Law Library archive.
@@ -381,8 +399,10 @@ baseline; re-tune thresholds from it, not from reasoning.**
 **A deploy restart WILL show up as one SLOW/RECOVERED pair** if the
 cold-cache stampede lasts long enough to move a median: AZ landing was
 10.8s cold right after this deploy. That is real slowness readers see,
-not a false alarm — run `precompute_explore_tags` after every restart,
-which the cheat sheet already says.
+not a false alarm — run `precompute_explore_tags` after a restart,
+**but NOT while a scraper is loading the site**: on 2026-10-05 the
+warm-up and a residential scraper together took `/healthz` from 0.003s
+to 46s. Check load first (see that block).
 
 **The systemic answer to "why do we find defects by accident" is in
 `docs/MONITORING.md`**: an inventory of every invariant that IS watched,
@@ -521,7 +541,8 @@ pro tem 1995; obituary + lasc.org in memoriam), 967 votes, slug renamed
 with a 301; 34 stray votes on other courts (1996 First Circuit = Carl A.
 Guidry pro tem, etc.) sit on a surname-only "Guidry" row rather than on a
 named man's page. AZ
-Div One roster (Gass/McMurdie/Stevens) waits on the court's reply. The
+Div One roster: RESOLVED 2026-10-05 (Gass and Thumma retired per HR;
+McMurdie and Stevens are not on the court's list and are not seated). The
 IA item's loose PDFs are queued for deletion on IA's side (rerun the
 `ia delete` once the queue clears). `docs/CONTEXT_PRUNING_PLAN.md` is
 being produced in a separate session.
@@ -1084,7 +1105,9 @@ Result: three judges had NO portrait (Michael J. Brown, Daniel J. Kiley,
 James B. Morse Jr.), four had scrapes now replaced by the court's own
 (Paton, Furuya, Catlett, Gaona). Division TWO is two photos short
 (Christopher J. O'Neil, Michael F. Kelly) at `appeals2.az.gov`, a
-different office; the same approach should close it.
+different office; the same approach should close it. (Update
+2026-10-05: HR then sent seven more -- Division One is 16/17
+court-supplied. appeals2.az.gov carries no judge photos at all.)
 
 > **CORRECTION 2026-09-21. This block claimed "Division One is 19 of
 > 19 — and 19 is also the court's own count of its sitting bench, so
@@ -1107,11 +1130,13 @@ different office; the same approach should close it.
 > a judge's official biography — cleared, same overstatement class as
 > the eyecite claim and the photo credit.
 >
-> **STILL OPEN:** Gass / McMurdie / Henry S. Stevens are `UNKNOWN` with
-> 2026 votes, and McMurdie has no portrait. Left for the court to
-> confirm rather than inferred from press releases — the HR office
-> volunteered to review the roster, and an authoritative yes/no beats
-> our reconstruction. `audit_judges` does not currently flag
+> **RESOLVED 2026-10-05:** HR confirmed Gass retired 2026-06-30 and
+> Thumma 2026-08-28 (both now RETIRED with `retirement_date`).
+> McMurdie and Stevens are absent from the court's own Division One
+> list, so neither is seated. Division One seats **17**, matching the
+> court's 19-name list minus its two not-yet-removed retirees. Also
+> found by HR's review: the June "scraped" portrait on Fabian's page was
+> Governor Hobbs -- see the 2026-10-05 block. `audit_judges` does not currently flag
 > "seated but not voting lately"; that check is worth adding.
 
 **They sent print masters** — 2400-3363px, 3.8-7.0MB each, 36.6MB total.
@@ -2263,7 +2288,8 @@ extraction only understood NH's footer.** Fixed per-state, measured-first
   context-processor cache expired, crawler traffic re-runs ~20 corpus-scale
   MATCH COUNTs per templated render through the 8MB buffer pool — the site
   reads "down" for ~10 min while healthz (no template) stays instant. Run
-  `precompute_explore_tags` after restarts; diagnose with the in-process
+  `precompute_explore_tags` after restarts (unless a scraper is on the
+  site -- then it makes things worse; 2026-10-05); diagnose with the in-process
   Django test Client render (4.3s there vs 30s+ timeouts outside = queueing,
   not code).
 - A backgrounded command piping to `| tail` holds its output until process
@@ -3576,7 +3602,7 @@ problem the 2026-08-02 audit was cleaning up.)
 | State | Subdomain | Opinions | Newest | Cite | Notes |
 |---|---|---|---|---|---|
 | MN (flagship) | `mn.docketdrift.com` | 69,779 | 2026-09-14 | 80% | disp 97%; CONTINUOUS 2015–2026. **10,420 captions repaired 2026-09-14** — see that session block |
-| AZ (live) | `az.docketdrift.com` | 37,900 | 2026-09-17 | 75% | disp 64%; COA Div One/Two split. **Div One portraits 19/19** from the court itself (2026-09-18); Div Two is two short |
+| AZ (live) | `az.docketdrift.com` | 37,900 | 2026-09-17 | 75% | disp 64%; COA Div One/Two split. **Div One: 17 seated, 16/17 portraits court-supplied** (Jacobs's file lost at the court; HR confirmed ours is him). Div Two: 0 court-supplied, O'Neil/Kelly show the initials monogram; its site moves Oct 16-19 (repoint 9 bio links). Dates/precision sourced from the courts' bios 2026-10-05 |
 | NH (live) | `nh.docketdrift.com` | 20,686 | 2026-09-03 | 90% | disp 78%; roster FINISHED 2026-08-23 (5 seated, 30 RETIRED, slugs fixed w/ 301s). A quiet NH is usually the court, not a broken pipeline — check CL first |
 | LA (LIVE 2026-08-25) | `la.docketdrift.com` | 351,736 | 2026-09-18 | 90% | Largest corpus, 1809–present, Supreme + all 5 COA circuits. **lasc.org backfill DONE 2026-08-28** (~10.3K opinions; 2021/2022 went 0 → ~1,800 each). Embed 100% of in-scope (1980+); the ~111K "pending" are deliberate pre-1980 out-of-scope rows. Tags 81,222. Gaps DISCLOSED on /about/#coverage-gaps — do not remove |
 
