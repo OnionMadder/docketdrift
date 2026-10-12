@@ -4,7 +4,20 @@ Survival kit for any Claude session working on this repo. Read once,
 re-read whenever a recurring gotcha bites. The goal of this document is
 to make the next session productive within the first 5 minutes.
 
-## Working tree state 2026-10-07 — READ THIS FIRST
+## Working tree state 2026-10-11 — READ THIS FIRST
+
+**Status check 2026-10-11 (nothing deployed since 10-07):** all four
+state landings 200 in 0.6-0.8s; site p50 ~140ms, p95 1.8-3.2s (was 12.4s
+before the 10-05 fixes). The residential scraper is STILL running (~2.6
+browser-UA req/s) and now harmless. Process-wide freezes persist but
+smaller: 18 gaps / 30 min = **4%** of the window (11-13% on 10-05). No
+reply from either AZ court office since 10-05. **The next session is
+starting on the court-rule surfaces (Next #1)** -- read the 2026-09-20
+RuleCitation block and the 2026-09-17 routing block first; the statute
+page, statute routing, `get_statute` and `/sitemap-statutes.xml` are the
+templates to mirror, including their known traps (prefix-filtered
+sitemap, roll-up with the load-bearing trailing `.`, verified-candidate
+routing, MCP refusing unindexable queries).
 
 The tree is **clean**; main == origin/main. Backlog lives in `docs/TODO.md`
 (the authoritative to-do; keep it current). **`docs/TODO.md` outranks the
@@ -114,8 +127,10 @@ A figure that cannot be right is the cheapest defect detector here.
    Lisa Howell / Mac McCallum for the official set. Division One is done
    except Jacobs (HR still looking) and larger Howe/Cattani files.
 6. **Whole-site freezes of 3-5s recur in bursts** (~11-13% of the bad
-   stretches), cause unidentified. Method and next step in the
-   2026-10-05 block.
+   stretches on 10-05, ~4% on 10-11), cause unidentified. Method and
+   next step in the 2026-10-05 block.
+7. **`docs/TODO.md` is behind:** it does not yet carry #5 (AZ Division
+   Two after the site move) or #6 (freezes). Add them when next touched.
 
 **MN 2020–2022 IS FIXED (2026-08-03): 0 → 3,102 opinions.** 2020=1,040,
 2021=1,092, 2022=970, read directly from the mn.gov State Law Library archive.
