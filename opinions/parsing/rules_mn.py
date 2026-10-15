@@ -214,6 +214,65 @@ def extract(text):
             (found[k] for k in sorted(found))]
 
 
+# A search query that is NOTHING BUT a rule number: "109.02",
+# "Rule 109.02", "136.01, subd. 1", "3310.2921, subp. 2".
+#
+# The dot is REQUIRED, exactly as for bare statute numbers: a bare "404"
+# is also a page number and a dollar figure, and a wrong redirect is
+# worse than a search. The two number shapes are the court-rule NN.NN
+# and the administrative NNNN.NNNN; they do not overlap.
+#
+# A number alone does NOT name a rule -- 52.01 exists in more than one
+# rule set, and in Minnesota Statutes too -- so this only parses the
+# notation. Which body of law it means is decided against the corpus by
+# the caller, and a collision is shown to the reader, never guessed.
+BARE_RULE_RE = re.compile(
+    r"^\s*(?:(?:rule|r\.)\s*)?"
+    r"(?P<number>\d{1,3}\.\d{1,3}|\d{4}\.\d{4})"
+    r"(?P<tail>\s*,?\s*(?:subd\.|subdivision|subp\.|subpart)\s*\d+[a-zA-Z]?)?"
+    r"\s*$",
+    re.IGNORECASE,
+)
+
+
+def bare_rule_number(query):
+    """``(rule_number, body)`` if the whole query is a bare rule number."""
+    if not query:
+        return None
+    m = BARE_RULE_RE.match(query)
+    if m is None:
+        return None
+    body = m.group("number") + (m.group("tail") or "")
+    return m.group("number"), body.strip()
+
+
+def bare_slug_candidates(rule_set, body):
+    """Slugs ``body`` would have within ``rule_set``, most specific first.
+
+    Built by re-running ``extract`` over a synthesized canonical cite, so
+    the routing grammar cannot drift from the extraction grammar -- the
+    same construction the statute routing uses. The caller VERIFIES each
+    candidate before redirecting.
+    """
+    label = RULE_SET_DISPLAY.get(rule_set)
+    parsed = bare_rule_number(body)
+    if not label or parsed is None:
+        return []
+    found = [r for r in extract(label + " " + body) if r.rule_set == rule_set]
+    # The WHOLE number must survive. An administrative number under a
+    # court-rule label partially matches ("Civ. P. 3310.2921" reads as
+    # 331) -- a cite to a rule nobody wrote.
+    if not found or found[0].rule_number != parsed[0]:
+        return []
+    ref = found[0]
+    candidates = [ref.reference_slug]
+    if ref.subdivision:
+        # Named a subdivision nobody cited? The rule page rolls its
+        # subdivisions up, so fall back to it rather than to nothing.
+        candidates.append((SLUG_ROOT + rule_set + "." + ref.rule_number).lower())
+    return candidates
+
+
 def rule_set_label(rule_set, long_form=False):
     """Display label for a rule set. NEVER reconstruct a cite by hand.
 

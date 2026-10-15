@@ -52,6 +52,7 @@ from opinions.models import (
     Opinion,
     OpinionCitation,
     ParallelCite,
+    RuleCitation,
     State,
     StatuteCitation,
 )
@@ -126,8 +127,9 @@ def _opinion_brief(op: Opinion) -> dict:
 
 def tool_search_opinions(args: dict) -> dict:
     """Keyword search over one state's corpus (FULLTEXT, bounded)."""
-    from opinions.parsing.statutes import bare_cite_slugs
-    from opinions.views import _fulltext_candidate_ids, _unindexable_cite_terms
+    from opinions.parsing.rules import SLUG_PREFIXES as RULE_SLUG_PREFIXES
+    from opinions.views import (_cite_destinations, _fulltext_candidate_ids,
+                                _unindexable_cite_terms)
 
     query = (args.get("query") or "").strip()
     if not query:
@@ -148,33 +150,39 @@ def tool_search_opinions(args: dict) -> dict:
     # results, an LLM has no way to tell they are false, and it will cite
     # them. Refuse instead, and name the tool that CAN answer -- for a
     # statute, get_statute is exact.
+    #
+    # A number can be a statute AND a court rule (52.01 is both in MN).
+    # Name EVERY verified destination rather than the bigger one: the
+    # caller knows which body of law it meant, and we do not.
     bad_cites = _unindexable_cite_terms(query)
     if bad_cites:
-        hint = ""
+        pointers = []
         for term in bad_cites:
-            for cand in bare_cite_slugs(state.code, term):
-                if StatuteCitation.objects.filter(
-                    Q(reference_slug=cand)
-                    | Q(reference_slug__startswith=cand + ".")
-                ).exists():
-                    hint = (
-                        f" {term} is a cited statute in {state.code}: call "
-                        f"get_statute with reference='{cand}' for the exact,"
-                        " complete list."
-                    )
-                    break
-            if hint:
-                break
+            for dest in _cite_destinations(state, term):
+                tool = "get_statute" if dest["kind"] == "statute" else "get_rule"
+                pointers.append(
+                    f"{term} as {dest['display']}: call {tool} with "
+                    f"reference='{dest['slug']}'"
+                )
+        if pointers:
+            hint = (" Cited provisions in " + state.code + " carrying that "
+                    "number -- " + "; ".join(pointers)
+                    + ". Each returns the exact, complete list.")
+        elif state.code.upper() in RULE_SLUG_PREFIXES:
+            hint = (" No cited statute or court rule in " + state.code
+                    + " matches it; search distinctive words instead.")
+        else:
+            hint = (" If it is a court RULE, DocketDrift indexes rule "
+                    "citations only for " + ", ".join(sorted(RULE_SLUG_PREFIXES))
+                    + " so far -- search distinctive words from the rule's "
+                    "text instead.")
         raise ValueError(
             "keyword search cannot match the citation(s) "
             + ", ".join(bad_cites)
             + ": the full-text index splits a citation at the period and "
             "discards fragments shorter than 3 characters, so this query "
             "would silently match only the digits before the dot. Any "
-            "results would be false." + (hint or
-            " If it is a court RULE, DocketDrift does not index rule "
-            "citations yet -- search distinctive words from the rule's "
-            "text instead.")
+            "results would be false." + hint
         )
 
     ids, capped = _fulltext_candidate_ids(query, _court_ids(state))
@@ -523,6 +531,116 @@ def tool_get_statute(args: dict) -> dict:
     return result
 
 
+def tool_get_rule(args: dict) -> dict:
+    """Opinions citing a COURT RULE (or administrative rule) within a state.
+
+    A separate tool from get_statute, never a mode of it: a rule is a
+    different kind of record, and returning Minn. R. Civ. App. P. 109.02
+    from a tool described as returning statutes would mislabel the
+    source of law. Same shape and the same two hardenings, so the tool
+    and the public /rule/ page cannot disagree about one rule: the
+    subdivision roll-up, and the nonprecedential-notice exclusion --
+    Minn. R. Civ. App. P. 136.01, subd. 1(c) opens every unpublished MN
+    opinion, and counting it would hand an agent thousands of cases
+    that never discuss the rule.
+    """
+    from opinions.parsing.rules import SLUG_PREFIXES as RULE_SLUG_PREFIXES
+    from opinions.parsing.rules import rule_set_label
+
+    reference = (args.get("reference") or "").strip().lower()
+    if not reference:
+        raise ValueError(
+            "reference is required (normalized slug, e.g. "
+            "'minn.r.civ.app.p.109.02' or 'minn.r.admin.3310.2921')"
+        )
+    state = _resolve_state(args.get("state") or "")
+    if state is None:
+        raise ValueError(
+            f"unknown or missing state; use one of {_live_state_codes()}"
+        )
+    prefix = RULE_SLUG_PREFIXES.get(state.code.upper())
+    if prefix is None:
+        raise ValueError(
+            f"DocketDrift does not index court-rule citations for {state.code} "
+            f"yet; rules are indexed for {', '.join(sorted(RULE_SLUG_PREFIXES))}"
+        )
+    if not reference.startswith(prefix):
+        raise ValueError(
+            f"{reference!r} is not a {state.code} rule reference; "
+            f"{state.code} rule slugs start with '{prefix}'"
+        )
+    limit = min(int(args.get("limit") or 15), MAX_LIST_LIMIT)
+
+    meta = (
+        RuleCitation.objects.filter(reference_slug=reference)
+        .order_by("subsection", "subdivision")
+        .values("reference_display", "rule_set", "subdivision").first()
+    )
+    if meta:
+        rolls_up = not meta["subdivision"]
+    else:
+        # Cited only through its subdivisions (the web page redirects to
+        # the most-cited one). Roll up so the answer is not a false zero.
+        if not RuleCitation.objects.filter(
+                reference_slug__startswith=reference + ".").exists():
+            raise ValueError(f"no citations found for rule {reference!r}")
+        rolls_up = True
+    if rolls_up:
+        scope = Q(reference_slug=reference) | Q(
+            reference_slug__startswith=reference + ".")
+    else:
+        scope = Q(reference_slug=reference)
+
+    ID_CAP = 500
+    opinion_ids = list(
+        RuleCitation.objects.filter(scope, is_boilerplate=False)
+        .order_by().values_list("opinion_id", flat=True).distinct()[:ID_CAP]
+    )
+    if len(opinion_ids) < ID_CAP:
+        citing_opinion_count = len(opinion_ids)
+    else:
+        # A count shown as exact must BE exact; see get_statute.
+        citing_opinion_count = (
+            RuleCitation.objects.filter(scope, is_boilerplate=False)
+            .order_by().values_list("opinion_id", flat=True)
+            .distinct().count()
+        )
+
+    court_ids = set(_court_ids(state))
+    rows = list(
+        Opinion.objects.filter(id__in=opinion_ids, court_id__in=court_ids)
+        .defer("raw_text", "html_content")
+        .select_related("court", "court__state")
+        .order_by("-release_date")[:limit]
+    )
+    if meta:
+        display = meta["reference_display"]
+        rule_set = meta["rule_set"]
+    else:
+        child = (RuleCitation.objects.filter(scope).order_by()
+                 .values("reference_display", "rule_set").first())
+        display = child["reference_display"].split(", sub")[0]
+        rule_set = child["rule_set"]
+    result = {
+        "rule": display,
+        "rule_set": rule_set_label(state.code, rule_set, long_form=True) or None,
+        "kind": "administrative rule" if rule_set == "admin" else "court rule",
+        "citing_opinion_count": citing_opinion_count,
+        "url": f"https://{state.code.lower()}.docketdrift.com/rule/{reference}/",
+        "opinions": [_opinion_brief(o) for o in rows],
+    }
+    boilerplate = RuleCitation.objects.filter(
+        scope, is_boilerplate=True).count()
+    if boilerplate:
+        result["excluded_boilerplate_mentions"] = boilerplate
+        result["excluded_boilerplate_note"] = (
+            "Excludes appearances of this rule in the standard notice that "
+            "an opinion is nonprecedential, which are not a court relying "
+            "on the rule."
+        )
+    return result
+
+
 # --------------------------------------------------------------------------
 # Tool registry + JSON Schemas
 # --------------------------------------------------------------------------
@@ -641,6 +759,27 @@ TOOLS = [
         },
         "fn": tool_get_statute,
     },
+    {
+        "name": "get_rule",
+        "description": (
+            "Opinions citing a court rule or administrative rule (not a "
+            "statute -- use get_statute for those). Reference is the "
+            "normalized slug: 'minn.r.civ.app.p.109.02', 'minn.r.civ.p.60.02', "
+            "'minn.r.evid.404', 'minn.r.crim.p.27.03.subd.9', "
+            "'minn.r.admin.3310.2921'. Minnesota only so far. Returns the "
+            "citing-opinion count and the most recent citing opinions."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "reference": {"type": "string"},
+                "state": _STATE_SCHEMA,
+                "limit": {"type": "integer"},
+            },
+            "required": ["reference", "state"],
+        },
+        "fn": tool_get_rule,
+    },
 ]
 
 # Connector-directory requirement: every tool must carry a `title` and the
@@ -665,6 +804,7 @@ _TOOL_TITLES = {
     "get_judge": "Get judge",
     "citing_opinions": "Get citing opinions",
     "get_statute": "Get statute",
+    "get_rule": "Get court rule",
 }
 for _tool in TOOLS:
     if _tool["name"] not in _TOOL_TITLES:

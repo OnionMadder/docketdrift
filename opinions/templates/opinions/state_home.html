@@ -68,9 +68,10 @@
       {% for term in unindexable_cites %}<strong>{{ term }}</strong>{% if not forloop.last %}, {% endif %}{% endfor %}
       exactly &mdash; the index splits a citation at the period and drops the short
       half, so these results are matching only the number before the dot.
-      If it&rsquo;s a statute, searching the citation on its own jumps straight to that
+      {% if rules_indexed %}If it&rsquo;s a statute or a court rule, searching the citation
+      on its own jumps straight to its page, where the citations <em>are</em> indexed.{% else %}If it&rsquo;s a statute, searching the citation on its own jumps straight to that
       statute&rsquo;s page, where the citations <em>are</em> indexed. Court <em>rules</em>
-      aren&rsquo;t indexed as citations yet.
+      aren&rsquo;t indexed as citations for {{ request.state.name }} yet.{% endif %}
     </p>
   {% elif search_degraded %}
     <p class="search-notice search-notice--warn">
@@ -233,8 +234,9 @@
         at the period and discards the short half, so searching it would have
         returned matches on the digits before the dot and nothing to tell you
         they were wrong. This is <em>not</em> a finding that no opinion cites it.
-        Statute citations have their own pages; court <em>rules</em> aren&rsquo;t
-        indexed as citations yet.
+        {% if rules_indexed %}A single citation searched on its own goes straight to its page
+        when a statute or court rule in our {{ request.state.name }} corpus carries that number.{% else %}Statute citations have their own pages; court <em>rules</em> aren&rsquo;t
+        indexed as citations for {{ request.state.name }} yet.{% endif %}
       </p>
     {% elif disp_filter and search_q %}
       <p class="glitch-line">No opinions matched &ldquo;{{ search_q }}&rdquo; with outcome {{ disp_label }}.</p>

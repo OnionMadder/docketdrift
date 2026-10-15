@@ -39,6 +39,7 @@ from opinions.models import (Court, Judge, Opinion, OpinionCitation,
 # not at import, not at manage.py check. That trap 500'd every
 # citation search for four minutes on 2026-09-17.
 from opinions.parsing.rules import rule_set_label
+from opinions.parsing.rules import SLUG_PREFIXES as RULE_SLUG_PREFIXES
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +157,99 @@ def _unindexable_cite_terms(search_q):
         if any(len(p) < FULLTEXT_MIN_TOKEN_LEN for p in parts):
             flagged.append(token)
     return flagged
+
+
+def _cite_scope(model, slug):
+    """Q for one citation page's rows: a section/rule rolls its
+    subdivisions up, a subdivision page is exact. The trailing "." is
+    load-bearing -- without it 563.01 would swallow 563.011."""
+    if ".subd." in slug:
+        return Q(reference_slug=slug)
+    return Q(reference_slug=slug) | Q(reference_slug__startswith=slug + ".")
+
+
+def _cite_destinations(state, query, with_counts=False):
+    """Every page a bare citation NUMBER could mean, verified in the corpus.
+
+    ``52.01`` is Minn. R. Civ. P. 52.01 in 1,358 opinions and Minn. Stat.
+    52.01 in 2. Picking the bigger number would usually be right and
+    would hand the other reader the wrong body of law -- which is the
+    bug report that started the rule layer, restated. So this returns
+    ALL verified destinations and the caller redirects only when there
+    is exactly one; otherwise the reader chooses. 83 of 1,782 MN rule
+    numbers collide with a statute section, so the choice is rare.
+
+    Each item: ``{"kind": "statute"|"rule", "slug", "display",
+    "url_name"}``, plus ``"opinions"`` (distinct substantive citing
+    opinions) when ``with_counts``. Only candidates that actually exist
+    are returned, so a number-shaped query that is not a real cite
+    falls through to ordinary search instead of a 404.
+    """
+    from opinions.parsing.rules import (SLUG_PREFIXES as RULE_PREFIXES,
+                                        bare_rule_number, bare_rule_slugs)
+    from opinions.parsing.statutes import bare_cite_slugs
+
+    if state is None or not query:
+        return []
+    found = []
+
+    # Statutes: most specific verified candidate wins (a subdivision
+    # nobody cited falls back to its section page).
+    for cand in bare_cite_slugs(state.code, query):
+        if StatuteCitation.objects.filter(_cite_scope(StatuteCitation, cand)).exists():
+            found.append({"kind": "statute", "slug": cand,
+                          "url_name": "opinions:statute_detail"})
+            break
+
+    # Rules: the number alone does not name a rule SET, so ask the
+    # corpus which sets actually cite it -- substantively. A set seen
+    # only in the nonprecedential notice is not somewhere to send anyone.
+    parsed = bare_rule_number(state.code, query)
+    prefix = RULE_PREFIXES.get(state.code.upper())
+    if parsed and prefix:
+        number, body = parsed
+        rule_sets = sorted(set(
+            RuleCitation.objects
+            .filter(rule_number=number, reference_slug__startswith=prefix,
+                    is_boilerplate=False)
+            .order_by().values_list("rule_set", flat=True).distinct()
+        ))
+        for rule_set in rule_sets:
+            for cand in bare_rule_slugs(state.code, rule_set, body):
+                if RuleCitation.objects.filter(
+                        _cite_scope(RuleCitation, cand),
+                        is_boilerplate=False).exists():
+                    found.append({"kind": "rule", "slug": cand,
+                                  "is_admin": rule_set == "admin",
+                                  "url_name": "opinions:rule_detail"})
+                    break
+
+    for dest in found:
+        model = StatuteCitation if dest["kind"] == "statute" else RuleCitation
+        scope = _cite_scope(model, dest["slug"])
+        # Cleanest stored display form first: "" sorts before "(c)".
+        order = (("subdivision",) if model is StatuteCitation
+                 else ("subsection", "subdivision"))
+        display = (model.objects.filter(reference_slug=dest["slug"])
+                   .order_by(*order)
+                   .values_list("reference_display", flat=True).first())
+        if display is None:
+            # Cited only through its subdivisions: take a stored child's
+            # display and cut it at the subdivision, which yields the
+            # court's own text for the section rather than a rebuilt one.
+            child = (model.objects.filter(scope).order_by()
+                     .values_list("reference_display", flat=True).first())
+            display = (child or "").split(", sub")[0]
+        dest["display"] = display
+        if with_counts:
+            dest["opinions"] = (
+                model.objects.filter(scope, is_boilerplate=False)
+                .order_by().values_list("opinion_id", flat=True)
+                .distinct().count()
+            )
+    if with_counts:
+        found.sort(key=lambda d: -d["opinions"])
+    return found
 
 
 # Page size when the user has filtered or searched (power-user mode).
@@ -774,7 +868,6 @@ def opinion_list(request):
         #   AZ:  "A.R.S. § 13-1103"
         # The statute parser itself decides what counts -- same code that
         # populated the statute pages now also routes the search box.
-        from opinions.parsing.statutes import bare_cite_slugs
         from opinions.parsing.statutes import extract_statutes as _parse_statutes
         cites = _parse_statutes(state.code, search_q) if state else []
         if cites:
@@ -803,15 +896,41 @@ def opinion_list(request):
         # Each candidate is VERIFIED against the corpus before we
         # redirect, so a number-shaped query that isn't a real cite
         # falls through to ordinary search instead of hitting a 404.
+        #
+        # A bare number can also be a COURT RULE (109.02 is Minn. R. Civ.
+        # App. P. 109.02, with zero statute cites), and 83 MN numbers are
+        # both. One verified destination -> go there. Several -> the
+        # reader picks; we never resolve a collision by volume.
+        #
+        # A FULL rule cite ("Minn. R. Civ. App. P. 109.02") is routed
+        # first, exactly like a full statute cite above -- but only when
+        # the rule is actually cited, since the rule page 404s otherwise.
         if state is not None:
-            for _cand in bare_cite_slugs(state.code, search_q):
-                if StatuteCitation.objects.filter(
-                    Q(reference_slug=_cand)
-                    | Q(reference_slug__startswith=_cand + ".")
-                ).exists():
-                    return redirect(reverse(
-                        "opinions:statute_detail", kwargs={"reference": _cand},
-                    ))
+            from opinions.parsing.rules import extract_rules as _parse_rules
+            for _rule in _parse_rules(state.code, search_q)[:1]:
+                for _cand in ([_rule.reference_slug]
+                              + ([_rule.reference_slug.split(".subd.")[0]]
+                                 if ".subd." in _rule.reference_slug else [])):
+                    if RuleCitation.objects.filter(
+                            _cite_scope(RuleCitation, _cand),
+                            is_boilerplate=False).exists():
+                        return redirect(reverse(
+                            "opinions:rule_detail", kwargs={"reference": _cand}))
+
+            _dests = _cite_destinations(state, search_q)
+            if len(_dests) == 1:
+                return redirect(reverse(
+                    _dests[0]["url_name"],
+                    kwargs={"reference": _dests[0]["slug"]}))
+            if len(_dests) > 1:
+                _dests = _cite_destinations(state, search_q, with_counts=True)
+                for _d in _dests:
+                    _d["url"] = reverse(_d["url_name"],
+                                        kwargs={"reference": _d["slug"]})
+                return render(request, "opinions/cite_choices.html", {
+                    "search_q": search_q,
+                    "destinations": _dests,
+                })
 
         use_fulltext = (
             connection.vendor == "mysql"
@@ -1030,6 +1149,9 @@ def opinion_list(request):
         "fulltext_capped": fulltext_capped,
         "unindexable_cites": unindexable_cites,
         "cites_only": cites_only,
+        # Which copy the citation notices may truthfully show: rules are
+        # indexed only where a rule extractor is registered (MN so far).
+        "rules_indexed": state.code.upper() in RULE_SLUG_PREFIXES,
         # FULLTEXT query was killed; we degraded instead of 500ing.
         "search_degraded": search_degraded,
     })
@@ -3042,15 +3164,15 @@ assistant can look up real opinions instead of recalling them:
     https://docketdrift.com/mcp
 
 Streamable HTTP, stateless, no authentication, no account, no API key.
-Six read-only tools: search_opinions, get_opinion, lookup_citation,
-get_judge, citing_opinions, get_statute. Every one returns verbatim
+Seven read-only tools: search_opinions, get_opinion, lookup_citation,
+get_judge, citing_opinions, get_statute, get_rule. Every one returns verbatim
 court text or a fact extracted from it -- there is no generation step.
 Tool arguments ride in the request body, which is never logged.
 
 Setup instructions: https://docketdrift.com/connect/
 
 Keyword search is capped for concurrency; if a search is refused as
-busy, narrow the query and retry. The other five tools are unaffected.
+busy, narrow the query and retry. The other six tools are unaffected.
 
 ## URL grammar (same on every state subdomain)
 
@@ -3069,6 +3191,9 @@ busy, narrow the query and retry. The other five tools are unaffected.
   roster
 - `https://<state>.docketdrift.com/statute/<slug>/` -- every opinion
   citing a given statute (e.g. `/statute/minn.stat.609.185/`)
+- `https://<state>.docketdrift.com/rule/<slug>/` -- every opinion
+  citing a given court rule (e.g. `/rule/minn.r.civ.app.p.109.02/`;
+  Minnesota only so far). Rules are not statutes and live apart.
 - `https://<state>.docketdrift.com/tag/<slug>/` -- every opinion bearing
   an editorial doctrine tag
 - `https://<state>.docketdrift.com/?q=<query>` -- search results
@@ -3230,6 +3355,13 @@ def sitemap_index(request):
         # wastes a crawl budget round-trip.
         if StatuteCitation.objects.filter(opinion__court_id__in=court_ids).exists():
             lines.append(f"  <sitemap><loc>{host}/sitemap-statutes.xml</loc></sitemap>")
+        # Rules: advertise only where an extractor exists AND has produced
+        # a substantive cite. Prefix + indexed flag, no opinions join.
+        _rule_prefix = RULE_SLUG_PREFIXES.get(state.code.upper())
+        if _rule_prefix and RuleCitation.objects.filter(
+                reference_slug__startswith=_rule_prefix,
+                is_boilerplate=False).exists():
+            lines.append(f"  <sitemap><loc>{host}/sitemap-rules.xml</loc></sitemap>")
         opinion_count = Opinion.objects.filter(court_id__in=court_ids).values("pk").count()
         num_chunks = max(1, (opinion_count + SITEMAP_CHUNK_SIZE - 1) // SITEMAP_CHUNK_SIZE)
         for i in range(1, num_chunks + 1):
@@ -3369,6 +3501,53 @@ def sitemap_statutes(request):
             slugs = []
         for slug in slugs:
             lines.append(f"  <url><loc>{host}/statute/{slug}/</loc></url>")
+    lines.extend(_sitemap_xml_footer())
+    return HttpResponse("\n".join(lines), content_type="application/xml; charset=utf-8")
+
+
+@cache_control(public=True, max_age=CACHE_SEC_SITEMAP)
+@cache_page(60 * 60)
+@vary_on_headers("Host")
+def sitemap_rules(request):
+    """Every court-rule page with at least one SUBSTANTIVE citation.
+
+    Built the way sitemap_statutes was fixed, never the way it broke:
+    filter on the slug PREFIX, so no join to the 2.75GB opinions table
+    (that join was a 56.4s hard 500 on the statutes sitemap for weeks).
+    ``(reference_slug, is_boilerplate)`` is indexed, so this is
+    index-only.
+
+    ``is_boilerplate=False`` keeps out a slug cited ONLY in the
+    nonprecedential notice: its page lists no opinions and would hand a
+    crawler a thin page about a footer. A state with no rule extractor
+    has no prefix and gets an empty urlset -- correct, since it has no
+    rule pages -- and the apex is empty like every per-state sitemap.
+    """
+    state = getattr(request, "state", None)
+    host = f"https://{request.get_host()}"
+
+    lines = _sitemap_xml_header()
+    prefix = RULE_SLUG_PREFIXES.get(state.code.upper()) if state is not None else None
+    if prefix:
+        try:
+            slugs = list(
+                RuleCitation.objects
+                .filter(reference_slug__startswith=prefix, is_boilerplate=False)
+                .order_by()
+                .values_list("reference_slug", flat=True)
+                .distinct()
+                .order_by("reference_slug")
+            )
+        except BaseException:
+            # Same as statutes: drop a possibly-interrupted connection and
+            # serve an empty urlset rather than a 500.
+            try:
+                connection.close()
+            except BaseException:
+                pass
+            slugs = []
+        for slug in slugs:
+            lines.append(f"  <url><loc>{host}/rule/{slug}/</loc></url>")
     lines.extend(_sitemap_xml_footer())
     return HttpResponse("\n".join(lines), content_type="application/xml; charset=utf-8")
 

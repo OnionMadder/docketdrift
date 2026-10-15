@@ -89,4 +89,32 @@ def rule_set_label(state_code: str, rule_set: str, long_form: bool = False) -> s
     return hook(rule_set, long_form=long_form)
 
 
-__all__ = ["extract_rules", "rule_set_label", "SLUG_PREFIXES"]
+def bare_rule_number(state_code: str, query: str):
+    """``(rule_number, body)`` when ``query`` is nothing but a rule number.
+
+    Optional per-state hook, like ``statutes.bare_cite_slugs``: a state
+    without one returns None and keeps ordinary search behavior. This
+    only parses notation -- a number alone does not say which rule SET it
+    belongs to, so the caller resolves that against the corpus.
+    """
+    module = _load(state_code)
+    hook = getattr(module, "bare_rule_number", None)
+    if hook is None or not query:
+        return None
+    return hook(query)
+
+
+def bare_rule_slugs(state_code: str, rule_set: str, body: str) -> list[str]:
+    """Slugs ``body`` could mean within one rule set, best first.
+
+    Callers MUST verify each against the corpus before redirecting.
+    """
+    module = _load(state_code)
+    hook = getattr(module, "bare_slug_candidates", None)
+    if hook is None:
+        return []
+    return hook(rule_set, body)
+
+
+__all__ = ["extract_rules", "rule_set_label", "bare_rule_number",
+           "bare_rule_slugs", "SLUG_PREFIXES"]

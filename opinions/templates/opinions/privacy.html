@@ -42,7 +42,7 @@
   <ul>
     <li><strong>Nothing is logged.</strong> A tool call's arguments &mdash; the question being researched &mdash; travel in the request body, which our access log does not record. We do not write them down anywhere else either.</li>
     <li><strong>There are no accounts and no sessions.</strong> The server is stateless: every request is answered on its own and nothing is remembered between them. There is no identifier tying one lookup to the next.</li>
-    <li><strong>It can only read.</strong> The six tools search opinions, fetch an opinion, resolve a citation, pull a judge's record, list the cases citing an opinion, and look up a statute. None of them write anything.</li>
+    <li><strong>It can only read.</strong> The seven tools search opinions, fetch an opinion, resolve a citation, pull a judge's record, list the cases citing an opinion, look up a statute, and look up a court rule. None of them write anything.</li>
     <li><strong>Nothing leaves our server.</strong> These tools use keyword search, not semantic search, so the Voyage hop described above does not apply. An MCP query is answered entirely from our own database.</li>
   </ul>
 

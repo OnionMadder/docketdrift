@@ -126,6 +126,60 @@ class BareCiteRoutingTests(SimpleTestCase):
         self.assertEqual(bare_cite_slugs(None, "563.01"), [])
 
 
+class BareRuleRoutingTests(SimpleTestCase):
+    """A bare number can be a court rule; the parser only reads notation.
+
+    Which rule SET (and whether it is a statute instead) is decided
+    against the corpus by views._cite_destinations, and a collision is
+    shown to the reader -- these tests hold the notation half.
+    """
+
+    def test_parses_court_and_admin_numbers(self):
+        from opinions.parsing.rules import bare_rule_number
+        self.assertEqual(bare_rule_number("MN", "109.02"), ("109.02", "109.02"))
+        self.assertEqual(bare_rule_number("MN", "Rule 109.02"), ("109.02", "109.02"))
+        self.assertEqual(bare_rule_number("MN", "136.01, subd. 1"),
+                         ("136.01", "136.01, subd. 1"))
+        self.assertEqual(bare_rule_number("MN", "3310.2921"), ("3310.2921", "3310.2921"))
+
+    def test_undotted_and_mixed_queries_do_not_route(self):
+        from opinions.parsing.rules import bare_rule_number
+        # "404" is also a page number; same rule as bare statute chapters.
+        self.assertIsNone(bare_rule_number("MN", "404"))
+        self.assertIsNone(bare_rule_number("MN", "negligence 109.02"))
+        self.assertIsNone(bare_rule_number("MN", "§ 52.01"))   # a statute marker
+        self.assertIsNone(bare_rule_number("ZZ", "109.02"))    # no extractor
+
+    def test_slug_candidates_per_set(self):
+        from opinions.parsing.rules import bare_rule_slugs
+        self.assertEqual(bare_rule_slugs("MN", "civ.app.p", "109.02"),
+                         ["minn.r.civ.app.p.109.02"])
+        self.assertEqual(bare_rule_slugs("MN", "civ.app.p", "136.01, subd. 1"),
+                         ["minn.r.civ.app.p.136.01.subd.1", "minn.r.civ.app.p.136.01"])
+        self.assertEqual(bare_rule_slugs("MN", "admin", "3310.2921"),
+                         ["minn.r.admin.3310.2921"])
+
+    def test_admin_number_never_truncates_into_a_court_rule(self):
+        # "Civ. P. 3310.2921" partially matches as 331 -- a rule nobody cited.
+        from opinions.parsing.rules import bare_rule_slugs
+        self.assertEqual(bare_rule_slugs("MN", "civ.p", "3310.2921"), [])
+        self.assertEqual(bare_rule_slugs("MN", "admin", "52.01"), [])
+
+
+class RuleSurfaceWiringTests(SimpleTestCase):
+    """The rule surfaces exist and are labeled as rules, not statutes."""
+
+    def test_get_rule_is_registered_and_annotated(self):
+        from opinions.mcp import _TOOL_BY_NAME
+        tool = _TOOL_BY_NAME["get_rule"]
+        self.assertTrue(tool["annotations"]["readOnlyHint"])
+        self.assertNotIn("statute", tool["title"].lower())
+
+    def test_rules_sitemap_route(self):
+        from django.urls import reverse
+        self.assertEqual(reverse("opinions:sitemap_rules"), "/sitemap-rules.xml")
+
+
 class RemovalRequestIsAdminOnlyTests(SimpleTestCase):
     """RemovalRequest must never reach a public surface.
 

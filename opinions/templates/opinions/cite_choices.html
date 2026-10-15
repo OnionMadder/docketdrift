@@ -1,0 +1,36 @@
+{% extends "opinions/base.html" %}
+{% load humanize %}
+{% block title %}Which {{ search_q }}? &middot; DocketDrift{% endblock %}
+{% block jsonld %}<meta name="robots" content="noindex">{% endblock %}
+
+{% block content %}
+{% comment %}
+  A bare number that is BOTH a cited statute and a cited court rule (or
+  a rule in more than one rule set). Picking the destination with more
+  citing opinions would usually be right and would hand the other
+  reader the wrong body of law -- the bug report that started the rule
+  layer. So the reader picks. Ordered by citing-opinion count, every
+  option shown with its count, nothing preselected.
+{% endcomment %}
+<div class="glossy-frame">
+  <p class="glitch-line">&ldquo;{{ search_q }}&rdquo; could mean more than one thing.</p>
+  <p class="subtle-lead">
+    That number is cited in {{ request.state.name }} opinions as more than one
+    provision. A number alone doesn&rsquo;t say which body of law it belongs to,
+    so pick the one you meant.
+  </p>
+  <ul class="cite-choices">
+    {% for d in destinations %}
+      <li>
+        <span class="role-chip institution">{% if d.kind == "statute" %}Statute{% elif d.is_admin %}Administrative rule{% else %}Court rule{% endif %}</span>
+        <a href="{{ d.url }}"><strong>{{ d.display }}</strong></a>
+        &mdash; cited in {{ d.opinions|intcomma }} opinion{{ d.opinions|pluralize }}
+      </li>
+    {% endfor %}
+  </ul>
+  <p class="subtle-lead">
+    Searching the full citation (for example &ldquo;{{ destinations.0.display }}&rdquo;)
+    goes straight to its page.
+  </p>
+</div>
+{% endblock %}

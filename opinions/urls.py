@@ -60,5 +60,6 @@ urlpatterns = [
     path("sitemap-judges.xml", views.sitemap_judges, name="sitemap_judges"),
     path("sitemap-tags.xml", views.sitemap_tags, name="sitemap_tags"),
     path("sitemap-statutes.xml", views.sitemap_statutes, name="sitemap_statutes"),
+    path("sitemap-rules.xml", views.sitemap_rules, name="sitemap_rules"),
     path("sitemap-opinions-<int:chunk>.xml", views.sitemap_opinions, name="sitemap_opinions"),
 ]
