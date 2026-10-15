@@ -729,15 +729,15 @@ Remaining, in order:
       and a lead that never reconstructs a citation. MUST exclude
       `is_boilerplate` rows from counts, or 136.01 reads as the
       most-cited rule in Minnesota at 4.5x the real #1.
-- [ ] **Bare-number search routing.** `109.02` to the rule page (4 rule
+- [x] **Bare-number search routing — DONE 2026-10-15 (`ada7c20`).** Collisions get a choices page (52.01 = Civ. P. 1,178 / Civ. App. P. 5 / Juv. Prot. P. 2 / Stat. 1), never a pick by volume. Note: 109.02 also lives in Gen. Prac., so it shows a choice too. `109.02` to the rule page (4 rule
       cites, 0 statute). Only 83 of 1,782 rule numbers collide with a
       statute section; for those DISAMBIGUATE rather than pick the
       bigger number — the wrong body of law is the original bug report
       restated.
-- [ ] **MCP `get_rule` tool**, and have `search_opinions` point at it
+- [x] **MCP `get_rule` tool — DONE 2026-10-15**, and have `search_opinions` point at it
       the way it already points at `get_statute`. A false match is
       worse for an agent than for a human.
-- [ ] **`/sitemap-rules.xml`**, filtering on the `minn.r.` slug prefix
+- [x] **`/sitemap-rules.xml` — DONE 2026-10-15 (3,225 URLs on MN)**, filtering on the `minn.r.` slug prefix
       (`parsing/rules.py:SLUG_PREFIXES`) — never a join to the 2.75GB
       opinions table, which is what made the statutes sitemap 500.
 - [ ] **NH / AZ / LA rule vocabularies are UNMEASURED.** Measure before
