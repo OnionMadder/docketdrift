@@ -241,15 +241,27 @@ def _cite_destinations(state, query, with_counts=False):
                      .values_list("reference_display", flat=True).first())
             display = (child or "").split(", sub")[0]
         dest["display"] = display
-        if with_counts:
-            dest["opinions"] = (
-                model.objects.filter(scope, is_boilerplate=False)
-                .order_by().values_list("opinion_id", flat=True)
-                .distinct().count()
-            )
     if with_counts:
-        found.sort(key=lambda d: -d["opinions"])
+        _add_cite_counts(found)
     return found
+
+
+def _add_cite_counts(dests):
+    """Attach distinct substantive citing-opinion counts, most-cited first.
+
+    Kept separate from ``_cite_destinations`` so the search box pays for
+    counts only when it has to show a choice (measured ~1.5s for the
+    1,178-opinion side of 52.01), never on a single-destination redirect.
+    """
+    for dest in dests:
+        model = StatuteCitation if dest["kind"] == "statute" else RuleCitation
+        dest["opinions"] = (
+            model.objects.filter(_cite_scope(model, dest["slug"]),
+                                 is_boilerplate=False)
+            .order_by().values_list("opinion_id", flat=True)
+            .distinct().count()
+        )
+    dests.sort(key=lambda d: -d["opinions"])
 
 
 # Page size when the user has filtered or searched (power-user mode).
@@ -923,7 +935,7 @@ def opinion_list(request):
                     _dests[0]["url_name"],
                     kwargs={"reference": _dests[0]["slug"]}))
             if len(_dests) > 1:
-                _dests = _cite_destinations(state, search_q, with_counts=True)
+                _add_cite_counts(_dests)
                 for _d in _dests:
                     _d["url"] = reverse(_d["url_name"],
                                         kwargs={"reference": _d["slug"]})
