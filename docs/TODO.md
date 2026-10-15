@@ -740,8 +740,62 @@ Remaining, in order:
 - [x] **`/sitemap-rules.xml` — DONE 2026-10-15 (3,225 URLs on MN)**, filtering on the `minn.r.` slug prefix
       (`parsing/rules.py:SLUG_PREFIXES`) — never a join to the 2.75GB
       opinions table, which is what made the statutes sitemap 500.
-- [ ] **NH / AZ / LA rule vocabularies are UNMEASURED.** Measure before
-      writing a regex; the MN plan was missing a top-4 rule set.
+- [x] **NH / AZ / LA rule vocabularies — MEASURED 2026-10-15.** Loose
+      capture (anchor, rank what follows) on ~1,200 random post-1990
+      opinions per state, then a ~2,500-opinion shape test. Probes are
+      `/home/tmp/rule_probe.py`, `rule_shape.py`, `rule_admin.py`.
+
+      **Size — opinions citing any court rule (loose):** AZ **75%**,
+      NH **56%** (incl. the Rule 22 notice, ~15%), LA **7%**. Build
+      order follows: **AZ, then NH; LA is small** and mostly notices,
+      discipline and writ procedure.
+
+      **AZ vocabulary** (opinions per 1,214): Ariz. R. Crim. P. ~250
+      across `Ariz. R. Crim. P.` / `Ariz. R.Crim. P.` / `Ariz.R.Crim.P.`
+      / "Arizona Rule of Criminal Procedure"; **`ARCAP` 147 — an
+      acronym, no "Ariz. R." anchor at all** (plus `Ariz. R. Civ. App.
+      P.` 22 and its long form 38: one body, two names); Civ. P. ~180;
+      Evid. ~110; `Ariz. R.P. Juv. Ct.` 29; `Ariz. R. Sup. Ct.` 24;
+      `Ariz. R.P. Spec. Act.` 24; `Ariz. R. Fam. Law P.` 15. Admin
+      code `A.A.C. R9-10-...` 2%. Also cites as `Ariz. R. Civ. P., 16
+      A.R.S.` -- the `16 A.R.S.` is the volume, NOT a statute. **Bare
+      `Rule 32` / `Rule 60(b)` is in 462 opinions** -- the bare tier
+      matters more here than in MN.
+      **AZ notices: none found.** `ARCAP 21` (82% in the last 800
+      chars) is the court awarding costs conditional on compliance --
+      the court APPLYING the rule, a recurrence like `12-2101(A)`,
+      keep counted. The memorandum-decision notice names no rule.
+
+      **NH vocabulary:** `Sup. Ct. R.` 300 / 1,219 (also `SUP. CT. R.`,
+      "Supreme Court Rule"); `N.H. R. Ev.` 91 + "Rule of Evidence" 81
+      + `N.H. R. EV.`; `Super. Ct. R.` / "Superior Court Rule" ~100
+      (also `Super. Ct. Civ. R.`); `Fam. Div. R.` 30; `Dist. Div. R.`
+      19; `N.H. R. Prof. Conduct`. Admin rules `N.H. Admin. R(ules).,
+      Env-Ws 386.58` in 4% -- an agency PREFIX before the number, keep
+      them a separate set as MN does. **Trap: `N.H.H.R. Jour.` is the
+      House Journal, not a rule.**
+      **NH notice: "NOTICE: This opinion is subject to motions for
+      rehearing under Rule 22 ..." -- 100% in the first 400 chars, 15%
+      of opinions.** Flag it per occurrence, exactly as 136.01.
+      **Onion's call:** `Sup. Ct. R. 20(2)` ("has determined to resolve
+      the case by way of this order. See Sup. Ct. R. 20(2)", 68% head,
+      ~6%) -- a recital of HOW the case was decided. Flag or count?
+
+      **LA vocabulary:** Uniform Rules--Courts of Appeal `Rule 2-12.4`
+      etc. (dash/em-dash/`\x97`/`` separators all seen); Supreme
+      Court `Rule XIX` (discipline), `Rule X § 5` (writ timeliness),
+      `La. Dist. Ct. R. 9.14`; Rules of Professional Conduct. `La. R.S.`
+      is the statute layer -- the dominant "R." here and NOT a rule.
+      **LA notice: "This opinion is NOT DESIGNATED FOR PUBLICATION.
+      Uniform Rules--Courts of Appeal, Rule 2-16.3." -- 100% in the
+      last 800 chars.** Flag it (cue on the tail, not the head -- the
+      MN cue window looks BEFORE the cite; here the cue precedes it too).
+      **Onion's call:** `Rule IV, Part 2, § 3` -- the "J., not on panel"
+      footnote. A note about panel composition, not the court relying
+      on a rule. Flag or count?
+- [ ] **Build `rules_az.py`** (largest, no editorial questions open).
+- [ ] **Build `rules_nh.py`** after the 20(2) decision.
+- [ ] **LA rules** -- small; after the Rule IV decision, or skip.
 
 ---
 
