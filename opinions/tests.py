@@ -166,6 +166,66 @@ class BareRuleRoutingTests(SimpleTestCase):
         self.assertEqual(bare_rule_slugs("MN", "admin", "52.01"), [])
 
 
+class ArizonaRuleExtractionTests(SimpleTestCase):
+    """Shapes measured in real AZ text 2026-10-15, not written from memory."""
+
+    def slugs(self, text):
+        return [(r.reference_slug, r.reference_display)
+                for r in extract_rules("AZ", text)]
+
+    def test_spacing_variants_are_one_rule_set(self):
+        for t in ("Ariz. R. Crim. P. 27.4.", "Ariz. R.Crim. P. 27.4.",
+                  "Ariz.R.Crim.P. 27.4.",
+                  "Arizona Rule of Criminal Procedure 27.4, which"):
+            self.assertEqual(self.slugs(t)[0][0], "ariz.r.crim.p.27.4", t)
+
+    def test_arcap_acronym_is_the_civil_appellate_rules(self):
+        # 147 of 1,214 opinions cite ARCAP with no "Ariz. R." anchor at
+        # all. One body of law, three spellings, one slug.
+        for t in ("upon compliance with ARCAP 21(b), we award",
+                  "See Ariz. R. Civ. App. P. 21(b).",
+                  "Arizona Rules of Civil Appellate Procedure 21, but"):
+            self.assertEqual(self.slugs(t)[0][0], "ariz.r.civ.app.p.21", t)
+        self.assertEqual(self.slugs("Arcap 5 words"), [])
+
+    def test_volume_number_is_never_a_rule(self):
+        # "16 A.R.S." is the statute VOLUME the rules are printed in.
+        self.assertEqual(self.slugs("Rule 50, Ariz. R. Civ. P., 16 A.R.S., Pt. 1"), [])
+
+    def test_whole_parenthetical_chain_kept_year_refused(self):
+        self.assertEqual(self.slugs("See Ariz. R. Crim. P. 31.10(a)(7)(A) (x)"),
+                         [("ariz.r.crim.p.31.10", "Ariz. R. Crim. P. 31.10(a)(7)(A)")])
+        self.assertEqual(self.slugs("Ariz. R. Civ. P. 26.1 (2019) requires"),
+                         [("ariz.r.civ.p.26.1", "Ariz. R. Civ. P. 26.1")])
+        self.assertEqual(self.slugs("Arizona Rule of Evidence 404 (b) to"),
+                         [("ariz.r.evid.404", "Ariz. R. Evid. 404(b)")])
+
+    def test_procedure_rule_sets_with_extra_p(self):
+        self.assertEqual(self.slugs("See Ariz. R.P. Juv. Ct. 64(D)(2).")[0][0],
+                         "ariz.r.juv.ct.64")
+        self.assertEqual(self.slugs("Ariz. R.P. Spec. Act. 1(a).")[0][0],
+                         "ariz.r.spec.act.1")
+
+    def test_admin_code_is_its_own_set(self):
+        self.assertEqual(self.slugs("A.A.C. R9-10-101(B)")[0][0], "ariz.r.admin.r9-10-101")
+        self.assertEqual(self.slugs("Ariz. Admin. Code R2-19-119")[0][0],
+                         "ariz.r.admin.r2-19-119")
+
+    def test_no_boilerplate_flag_in_arizona(self):
+        # ARCAP 21 at the tail is the court applying the rule (costs on
+        # compliance) -- a recurrence, counted. Measured, not assumed.
+        refs = extract_rules("AZ", "we award costs upon compliance with ARCAP 21.")
+        self.assertFalse(refs[0].is_boilerplate)
+
+    def test_bare_queries(self):
+        from opinions.parsing.rules import bare_rule_number, bare_rule_slugs
+        self.assertEqual(bare_rule_number("AZ", "32.1"), ("32.1", "32.1"))
+        self.assertEqual(bare_rule_number("AZ", "Rule 60(b)"), ("60", "60(b)"))
+        self.assertIsNone(bare_rule_number("AZ", "60"))   # a page number
+        self.assertEqual(bare_rule_slugs("AZ", "evid", "404(b)"), ["ariz.r.evid.404"])
+        self.assertEqual(bare_rule_slugs("AZ", "admin", "32.1"), [])
+
+
 class RuleSurfaceWiringTests(SimpleTestCase):
     """The rule surfaces exist and are labeled as rules, not statutes."""
 

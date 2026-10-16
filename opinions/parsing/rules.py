@@ -28,6 +28,7 @@ import importlib
 
 _REGISTRY: dict[str, str] = {
     "MN": "opinions.parsing.rules_mn",
+    "AZ": "opinions.parsing.rules_az",
 }
 
 # Same mechanism as statutes.SLUG_PREFIXES, and for the same measured
@@ -39,6 +40,7 @@ _REGISTRY: dict[str, str] = {
 # rather than silently serving an empty result.
 SLUG_PREFIXES: dict[str, str] = {
     "MN": "minn.r.",
+    "AZ": "ariz.r.",
 }
 
 _cache: dict[str, object] = {}
