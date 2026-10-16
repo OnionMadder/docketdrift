@@ -800,7 +800,22 @@ Remaining, in order:
       **DECIDED 2026-10-16 (Onion): FLAG it.** `Rule IV, Part 2, § 3` -- the "J., not on panel"
       footnote. A note about panel composition, not the court relying
       on a rule. Flag or count?
-- [ ] **Build `rules_az.py`** (largest, no editorial questions open).
+- [x] **`rules_az.py` — BUILT + SWEPT + LIVE 2026-10-16.** 49,848 cites
+      / 16,504 AZ opinions; 8,920 flagged as the 111(c) notice. 600-
+      opinion re-extraction check: 0 mismatches, 0 duplicate rows. The
+      first version missed three shapes, all found by listing anchors it
+      did NOT extract: number-first ("Rule 18.4(b) of the Arizona Rules
+      of Criminal Procedure"), a ("Rule") alias, and a whole set
+      (Protective Order P.). Known limits, disclosed here: the 1956
+      Rules of Criminal Procedure (numbered into the 400s, 174 cites,
+      mostly 1960s-70s) share slugs with the modern rules, so a 1956
+      Rule 20 and a modern Rule 20 land on one page -- the statute
+      layer has the same edition blind spot; and a court's own misnamed
+      set ("Arizona Rule of Criminal Procedure 404(B)") is transcribed,
+      not corrected.
+- [ ] **AZ bare STATUTE numbers don't route** (`13-1105` text-searches,
+      8.4s). `statutes_az.py` has no `bare_slug_candidates` hook; MN's is
+      the template. Pre-existing, found while verifying the rule routing.
 - [ ] **Build `rules_nh.py`** after the 20(2) decision.
 - [ ] **LA rules** -- small; after the Rule IV decision, or skip.
 

@@ -107,11 +107,20 @@ BIG to be plausible (480A.08 out-citing the construction canons 3.2x).
 A figure that cannot be right is the cheapest defect detector here.
 
 **Next, in order** (`docs/TODO.md` is authoritative):
-1. **Finish the rule surfaces** — bare-number routing (83 measured
-   collisions, disambiguate rather than guess), MCP `get_rule`,
-   `/sitemap-rules.xml`.
-2. **NH/AZ/LA rule vocabularies are UNMEASURED.** Measure before writing a
-   regex; the MN plan was missing a top-4 rule set.
+1. ~~**Finish the rule surfaces**~~ ✅ DONE 2026-10-15: bare-number
+   routing (a collision renders a CHOICES page, `cite_choices.html`,
+   never a pick by volume), MCP `get_rule`, `/sitemap-rules.xml`.
+   Shared helper `views._cite_destinations` feeds search AND MCP.
+2. ~~**Rule vocabularies**~~ measured 2026-10-15 (TODO.md has the
+   tables). **AZ BUILT + LIVE 2026-10-16: 49,848 cites.** Next: **NH**
+   (flag the Rule 22 rehearing NOTICE; COUNT Sup. Ct. R. 20(2) --
+   Onion's call), then LA (small; flag Rule 2-16.3 and Rule IV, Part 2).
+   **The AZ lesson:** the shape test reported "no AZ notice" because its
+   pattern was case-sensitive and the notice is in CAPITALS; it surfaced
+   only when Sup. Ct. cites came out 10x the probe's figure. Run the
+   shape test case-insensitively, and treat a too-big set count as a
+   notice until proven otherwise. AZ's gate is cue AND first 600 chars
+   (the cue alone fires on genuine cites), unlike MN's cue-only gate.
 3. ~~**Check whether CL carries PARALLEL cites for Louisiana.**~~ ✅ DONE
    2026-09-26 — CL had 723,784 citations for our LA clusters all along;
    **367,468 loaded** (LEXIS/WL identifiers skipped), and an official
