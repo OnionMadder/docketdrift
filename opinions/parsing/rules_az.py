@@ -60,8 +60,16 @@ RULE_SETS = [
     ("spec.act", "Ariz. R.P. Spec. Act.", "Arizona Rules of Procedure for Special Actions", [
         r"P\.?\s*Spec\.?\s*Act(?:ions?)?\.?", r"of\s+Procedure\s+for\s+Special\s+Actions",
     ]),
+    ("spec.act", "Ariz. R.P. Spec. Act.", "Arizona Rules of Procedure for Special Actions", [
+        r"for\s+Special\s+Actions?",
+    ]),
+    # Missing from the first vocabulary pass; found only by reading the
+    # anchors the extractor did NOT turn into cites (~35 per 3,000).
+    ("prot.order.p", "Ariz. R. Protective Order P.", "Arizona Rules of Protective Order Procedure", [
+        r"Protective\s+Ord(?:er|\.)\s*P(?:roc)?\.?", r"of\s+Protective\s+Order\s+Procedure",
+    ]),
     ("sup.ct", "Ariz. R. Sup. Ct.", "Rules of the Supreme Court of Arizona", [
-        r"Sup\.?\s*Ct\.?",
+        r"Sup\.?\s*Ct\.?", r"of\s+the\s+Supreme\s+Court(?:\s+of\s+Arizona)?",
     ]),
     ("crim.p", "Ariz. R. Crim. P.", "Arizona Rules of Criminal Procedure", [
         r"Crim\.?\s*P(?:roc)?\.?", r"of\s+Criminal\s+Procedure",
@@ -97,11 +105,26 @@ _NUM = r"(\d{1,3}(?:\.\d{1,3})?)"
 _PAREN = r"\((?!(?:19|20)\d{2}\))[A-Za-z0-9.]{1,5}\)"
 _TAIL = r"(?P<subsection>\s?" + _PAREN + r"(?:" + _PAREN + r"){0,3})?"
 
+# A defined-term alias between the set and the number: Arizona Rule of
+# Criminal Procedure (“Rule”) 33.1, ... (“ARCAP”) 21, ... (“ARFLP”) 83.
+_ALIAS = r"(?:\s*\(\s*[“\"”']?\s*[A-Za-z]{2,6}\s*[“\"”']?\s*\))?"
+
 _SET_PATTERNS = []
+_REVERSE_PATTERNS = []
 for _key, _s, _l, _variants in RULE_SETS:
     for _v in _variants:
         _SET_PATTERNS.append((_key, re.compile(
-            _ANCHOR + r"\s*" + _v + r"\s*" + _NUM + _TAIL, re.I)))
+            _ANCHOR + r"\s*" + _v + _ALIAS + r"\s*" + _NUM + _TAIL, re.I)))
+        # Number FIRST, set named right after: "Rule 18.4(b) of the
+        # Arizona Rules of Criminal Procedure", "Rule 24, Ariz. R. Civ.
+        # P., 16 A.R.S." -- the commonest miss in real output. Still a
+        # full citation (the set is named), just in the other order.
+        _REVERSE_PATTERNS.append((_key, re.compile(
+            r"\bRule\s+" + _NUM + _TAIL
+            + r"(?:\s*,\s*|\s+of\s+(?:the\s+)?)" + _ANCHOR + r"\s*" + _v,
+            re.I)))
+_REVERSE_PATTERNS.append(("civ.app.p", re.compile(
+    r"\bRule\s+" + _NUM + _TAIL + r"\s*,\s*ARCAP\b")))
 
 # ARCAP: the acronym IS the whole cite. Case-sensitive on purpose -- it
 # is always written in capitals, and "Arcap" as a word is not a rule.
@@ -139,6 +162,12 @@ def extract(text):
         return []
     found = {}  # offset -> (match length, RuleRef); longest wins per start
     for rule_set, pattern in _SET_PATTERNS:
+        for m in pattern.finditer(text):
+            prev = found.get(m.start())
+            if prev is None or len(m.group(0)) > prev[0]:
+                found[m.start()] = (len(m.group(0)),
+                                    _build(rule_set, m.group(1), m, m.start()))
+    for rule_set, pattern in _REVERSE_PATTERNS:
         for m in pattern.finditer(text):
             prev = found.get(m.start())
             if prev is None or len(m.group(0)) > prev[0]:

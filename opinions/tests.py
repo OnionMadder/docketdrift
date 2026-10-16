@@ -190,7 +190,10 @@ class ArizonaRuleExtractionTests(SimpleTestCase):
 
     def test_volume_number_is_never_a_rule(self):
         # "16 A.R.S." is the statute VOLUME the rules are printed in.
-        self.assertEqual(self.slugs("Rule 50, Ariz. R. Civ. P., 16 A.R.S., Pt. 1"), [])
+        # The cite is to Rule 50 (number-first form); never to "16".
+        self.assertEqual(self.slugs("Rule 50, Ariz. R. Civ. P., 16 A.R.S., Pt. 1"),
+                         [("ariz.r.civ.p.50", "Ariz. R. Civ. P. 50")])
+        self.assertEqual(self.slugs("Ariz. R. Civ. P., 16 A.R.S., Pt. 1"), [])
 
     def test_whole_parenthetical_chain_kept_year_refused(self):
         self.assertEqual(self.slugs("See Ariz. R. Crim. P. 31.10(a)(7)(A) (x)"),
@@ -205,6 +208,38 @@ class ArizonaRuleExtractionTests(SimpleTestCase):
                          "ariz.r.juv.ct.64")
         self.assertEqual(self.slugs("Ariz. R.P. Spec. Act. 1(a).")[0][0],
                          "ariz.r.spec.act.1")
+
+    def test_number_before_the_named_set(self):
+        # The commonest miss in real output, found by listing anchors the
+        # first version did NOT extract.
+        cases = {
+            "under Rule 18.4(b) of the Arizona Rules of Criminal Procedure, a":
+                ("ariz.r.crim.p.18.4", "Ariz. R. Crim. P. 18.4(b)"),
+            "pursuant to Rule 24, Ariz. R. Civ. P., 16 A.R.S., Pt. 1":
+                ("ariz.r.civ.p.24", "Ariz. R. Civ. P. 24"),
+            "Rule 609, Arizona Rules of Evidence, 17A A.R.S.":
+                ("ariz.r.evid.609", "Ariz. R. Evid. 609"),
+            "with Rule 5(f), Arizona Rules of the Supreme Court, 17 A.R.S.":
+                ("ariz.r.sup.ct.5", "Ariz. R. Sup. Ct. 5(f)"),
+            "her compliance with Rule 21, ARCAP. CONCLUSION":
+                ("ariz.r.civ.app.p.21", "Ariz. R. Civ. App. P. 21"),
+        }
+        for text, want in cases.items():
+            self.assertEqual(self.slugs(text), [want], text)
+
+    def test_defined_term_alias_before_the_number(self):
+        self.assertEqual(
+            self.slugs("filed pursuant to Arizona Rule of Criminal Procedure (“Rule”) 33.1."),
+            [("ariz.r.crim.p.33.1", "Ariz. R. Crim. P. 33.1")])
+        self.assertEqual(
+            self.slugs("Arizona Rule of Civil Appellate Procedure (“ARCAP”) 21."),
+            [("ariz.r.civ.app.p.21", "Ariz. R. Civ. App. P. 21")])
+
+    def test_protective_order_rules(self):
+        self.assertEqual(self.slugs("see also Ariz. R. Protective Order P. 23(e)(1).")[0][0],
+                         "ariz.r.prot.order.p.23")
+        self.assertEqual(self.slugs("See Ariz. R. Protective Ord. P. 25(b) (x)")[0][0],
+                         "ariz.r.prot.order.p.25")
 
     def test_admin_code_is_its_own_set(self):
         self.assertEqual(self.slugs("A.A.C. R9-10-101(B)")[0][0], "ariz.r.admin.r9-10-101")
