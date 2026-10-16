@@ -766,7 +766,8 @@ TOOLS = [
             "statute -- use get_statute for those). Reference is the "
             "normalized slug: 'minn.r.civ.app.p.109.02', 'minn.r.civ.p.60.02', "
             "'minn.r.evid.404', 'minn.r.crim.p.27.03.subd.9', "
-            "'minn.r.admin.3310.2921'. Minnesota only so far. Returns the "
+            "'minn.r.admin.3310.2921', 'ariz.r.crim.p.32.1', 'ariz.r.civ.app.p.21' (ARCAP). "
+            "Minnesota and Arizona so far. Returns the "
             "citing-opinion count and the most recent citing opinions."
         ),
         "inputSchema": {

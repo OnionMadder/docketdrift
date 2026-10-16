@@ -3205,7 +3205,7 @@ busy, narrow the query and retry. The other six tools are unaffected.
   citing a given statute (e.g. `/statute/minn.stat.609.185/`)
 - `https://<state>.docketdrift.com/rule/<slug>/` -- every opinion
   citing a given court rule (e.g. `/rule/minn.r.civ.app.p.109.02/`;
-  Minnesota only so far). Rules are not statutes and live apart.
+  `/rule/ariz.r.crim.p.32.1/`; Minnesota and Arizona so far). Rules are not statutes and live apart.
 - `https://<state>.docketdrift.com/tag/<slug>/` -- every opinion bearing
   an editorial doctrine tag
 - `https://<state>.docketdrift.com/?q=<query>` -- search results

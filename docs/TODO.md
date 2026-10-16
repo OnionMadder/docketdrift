@@ -761,10 +761,17 @@ Remaining, in order:
       A.R.S.` -- the `16 A.R.S.` is the volume, NOT a statute. **Bare
       `Rule 32` / `Rule 60(b)` is in 462 opinions** -- the bare tier
       matters more here than in MN.
-      **AZ notices: none found.** `ARCAP 21` (82% in the last 800
-      chars) is the court awarding costs conditional on compliance --
-      the court APPLYING the rule, a recurrence like `12-2101(A)`,
-      keep counted. The memorandum-decision notice names no rule.
+      **CORRECTION 2026-10-16 -- AZ DOES have a notice, and this entry
+      first said "none found."** "NOTICE: NOT FOR OFFICIAL PUBLICATION.
+      UNDER ARIZONA RULE OF THE SUPREME COURT 111(c), THIS DECISION IS
+      NOT PRECEDENTIAL" heads every memorandum decision. The shape test
+      missed it because its pattern was case-sensitive and the notice is
+      in capitals; it surfaced only when the built extractor put Sup.
+      Ct. at 742 cites against 72 in the probe -- a number too big to be
+      plausible. Gate is cue AND first 600 chars (1,453/1,487 sit there;
+      the cue alone also fires on 9 genuine cites). `ARCAP 21` (82% in
+      the last 800 chars) is the court awarding costs conditional on
+      compliance -- a recurrence like `12-2101(A)`, counted.
 
       **NH vocabulary:** `Sup. Ct. R.` 300 / 1,219 (also `SUP. CT. R.`,
       "Supreme Court Rule"); `N.H. R. Ev.` 91 + "Rule of Evidence" 81
@@ -777,7 +784,7 @@ Remaining, in order:
       **NH notice: "NOTICE: This opinion is subject to motions for
       rehearing under Rule 22 ..." -- 100% in the first 400 chars, 15%
       of opinions.** Flag it per occurrence, exactly as 136.01.
-      **Onion's call:** `Sup. Ct. R. 20(2)` ("has determined to resolve
+      **DECIDED 2026-10-16 (Onion): COUNT it.** `Sup. Ct. R. 20(2)` ("has determined to resolve
       the case by way of this order. See Sup. Ct. R. 20(2)", 68% head,
       ~6%) -- a recital of HOW the case was decided. Flag or count?
 
@@ -790,7 +797,7 @@ Remaining, in order:
       Uniform Rules--Courts of Appeal, Rule 2-16.3." -- 100% in the
       last 800 chars.** Flag it (cue on the tail, not the head -- the
       MN cue window looks BEFORE the cite; here the cue precedes it too).
-      **Onion's call:** `Rule IV, Part 2, § 3` -- the "J., not on panel"
+      **DECIDED 2026-10-16 (Onion): FLAG it.** `Rule IV, Part 2, § 3` -- the "J., not on panel"
       footnote. A note about panel composition, not the court relying
       on a rule. Flag or count?
 - [ ] **Build `rules_az.py`** (largest, no editorial questions open).
