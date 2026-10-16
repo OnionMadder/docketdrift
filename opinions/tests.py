@@ -246,10 +246,36 @@ class ArizonaRuleExtractionTests(SimpleTestCase):
         self.assertEqual(self.slugs("Ariz. Admin. Code R2-19-119")[0][0],
                          "ariz.r.admin.r2-19-119")
 
-    def test_no_boilerplate_flag_in_arizona(self):
+    def test_arcap_21_recurrence_is_counted(self):
         # ARCAP 21 at the tail is the court applying the rule (costs on
         # compliance) -- a recurrence, counted. Measured, not assumed.
         refs = extract_rules("AZ", "we award costs upon compliance with ARCAP 21.")
+        self.assertFalse(refs[0].is_boilerplate)
+
+    def test_memorandum_decision_notice_is_flagged(self):
+        for head in (
+            "NOTICE: NOT FOR OFFICIAL PUBLICATION. UNDER ARIZONA RULE OF THE "
+            "SUPREME COURT 111(c), THIS DECISION IS NOT PRECEDENTIAL AND MAY "
+            "BE CITED ONLY AS AUTHORIZED BY RULE.",
+            "NOTICE: NOT FOR PUBLICATION. UNDER ARIZ. R. SUP. CT. 111(c), THIS "
+            "DECISION DOES NOT CREATE LEGAL PRECEDENT",
+        ):
+            refs = extract_rules("AZ", head)
+            self.assertEqual(refs[0].reference_slug, "ariz.r.sup.ct.111", head)
+            self.assertTrue(refs[0].is_boilerplate, head)
+
+    def test_genuine_111_cites_are_not_flagged(self):
+        # The cue fires on these too; they are courts DISCUSSING the rule,
+        # outside the head -- why the gate is cue AND position here.
+        body = "x" * 5000 + (" Grabinski is a memorandum decision; it may not be "
+                             "cited for persuasive value. See Ariz. R. Sup. Ct. "
+                             "111(c)(1)(C).")
+        self.assertFalse(extract_rules("AZ", body)[0].is_boilerplate)
+        # Head 111(g) without the cue: the court ordering depublication.
+        refs = extract_rules("AZ", "the Court of Appeals' opinion shall not be "
+                             "published, pursuant to Rule 111(g), Arizona Rules "
+                             "of the Supreme Court.")
+        self.assertEqual(refs[0].reference_slug, "ariz.r.sup.ct.111")
         self.assertFalse(refs[0].is_boilerplate)
 
     def test_bare_queries(self):

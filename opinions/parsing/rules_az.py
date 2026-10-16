@@ -27,8 +27,11 @@ Arizona subdivides with parentheses -- ``31.10(a)(7)(A)`` -- not
 parenthetical chain is kept for display. Truncating ``(a)(7)(A)`` to
 ``(a)(7)`` would point at a broader provision than the court cited.
 
-NO boilerplate flag is set here, and that is measured, not assumed: the
-memorandum-decision notice names no rule, and ``ARCAP 21`` (82% of its
+ONE notice is flagged -- the memorandum-decision header citing Sup. Ct.
+R. 111(c); see _is_boilerplate. Measured, not assumed, and it was
+MISSED by the first shape test (case-sensitive; the notice is in
+capitals) and caught only because Sup. Ct. cites came out 10x too big.
+Nothing else is a notice: ``ARCAP 21`` (82% of its
 occurrences in the last 800 characters) is the court awarding costs
 conditional on compliance -- the court applying the rule, a recurrence
 like ``A.R.S. 12-2101(A)``, which stays counted.
@@ -139,7 +142,37 @@ _ADMIN_RE = re.compile(
     r"\s*(?:§\s*)?(R\s?\d{1,2}-\d{1,2}-\d{1,4}(?:\.\d{1,2})?)" + _TAIL)
 
 
-def _build(rule_set, number, m, start):
+# THE MEMORANDUM-DECISION NOTICE. Every AZ memorandum decision opens:
+#   NOTICE: NOT FOR OFFICIAL PUBLICATION. UNDER ARIZONA RULE OF THE
+#   SUPREME COURT 111(c), THIS DECISION IS NOT PRECEDENTIAL ...
+# A publication-status notice, not a court relying on the rule -- the
+# Arizona twin of Minnesota's 136.01. Counted plainly it was ~89% of all
+# Sup. Ct. rule cites in a 3,000-opinion sample.
+#
+# Measured 2026-10-16 on 6,000 opinions: 1,453 of 1,487 Rule 111 cites
+# sit in the first 600 characters and the cue fires on 1,442 of them.
+# The cue ALSO fires on 9 cites outside the head, and every one read by
+# hand is genuine ("memorandum decisions 'are not precedential' and may
+# not be cited ... See Ariz. R. Sup. Ct. 111(c)(1)(C)"). So unlike MN,
+# where the cue alone was enough, the gate here is cue AND head. Rows are
+# KEPT and flagged per occurrence, never excluded by number.
+#
+# A head 111(g) without the cue ("the Court of Appeals' opinion shall
+# not be published, pursuant to Rule 111(g)") is the Supreme Court
+# ordering depublication -- a real act, and it stays counted.
+_NOTICE_CUE = re.compile(
+    r"not\s+for\s+(?:official\s+)?publication|not\s+precedential"
+    r"|does\s+not\s+create\s+legal\s+precedent|may\s+not\s+be\s+cited", re.I)
+_NOTICE_HEAD = 600
+
+
+def _is_boilerplate(text, start, rule_set, number):
+    if rule_set != "sup.ct" or number != "111" or start >= _NOTICE_HEAD:
+        return False
+    return bool(_NOTICE_CUE.search(text[max(0, start - 200):start + 160]))
+
+
+def _build(rule_set, number, m, start, text=""):
     sec = re.sub(r"\s+", "", m.groupdict().get("subsection") or "")
     number = re.sub(r"\s+", "", number)
     slug = (SLUG_ROOT + rule_set + "." + number).lower()
@@ -151,7 +184,7 @@ def _build(rule_set, number, m, start):
         rule_number=number,
         subdivision="",
         subsection=sec,
-        is_boilerplate=False,
+        is_boilerplate=_is_boilerplate(text, start, rule_set, number),
         text_offset=start,
     )
 
@@ -166,21 +199,21 @@ def extract(text):
             prev = found.get(m.start())
             if prev is None or len(m.group(0)) > prev[0]:
                 found[m.start()] = (len(m.group(0)),
-                                    _build(rule_set, m.group(1), m, m.start()))
+                                    _build(rule_set, m.group(1), m, m.start(), text))
     for rule_set, pattern in _REVERSE_PATTERNS:
         for m in pattern.finditer(text):
             prev = found.get(m.start())
             if prev is None or len(m.group(0)) > prev[0]:
                 found[m.start()] = (len(m.group(0)),
-                                    _build(rule_set, m.group(1), m, m.start()))
+                                    _build(rule_set, m.group(1), m, m.start(), text))
     for m in _ARCAP_RE.finditer(text):
         if m.start() not in found:
             found[m.start()] = (len(m.group(0)),
-                                _build("civ.app.p", m.group(1), m, m.start()))
+                                _build("civ.app.p", m.group(1), m, m.start(), text))
     for m in _ADMIN_RE.finditer(text):
         if m.start() not in found:
             found[m.start()] = (len(m.group(0)),
-                                _build("admin", m.group(1), m, m.start()))
+                                _build("admin", m.group(1), m, m.start(), text))
     return [ref for _n, ref in (found[k] for k in sorted(found))]
 
 
