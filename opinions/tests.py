@@ -469,6 +469,14 @@ class ArizonaStatuteV2GrammarTests(SimpleTestCase):
                   "docket 1 CA-CV 25-0606 filed"):
             self.assertEqual(self.slugs(t), [], t)
 
+    def test_dotted_tails_never_truncate_the_section(self):
+        # "(?![\d.]\d)" let backtracking stop at "40" in "25-408.1.4" --
+        # a cite to a statute nobody named. The guard is (?!\d|\.\d).
+        self.assertEqual(self.slugs("See A.R.S. § 25-408.1.4. ¶ 24"), [])
+        self.assertNotIn("ars.25-40", self.slugs("A.R.S. § 25-408.1.4"))
+        self.assertEqual(extract_rules("LA", "Uniform Rules—Courts of Appeal, Rule 1-345 x"), [])
+        self.assertEqual(extract_rules("LA", "La. Dist. Ct. R. 9.14.2 then"), [])
+
     def test_v1_shapes_unchanged(self):
         self.assertEqual(self.slugs("A.R.S. § 13-1105(A)(2)"), ["ars.13-1105.a"])
         self.assertEqual(self.slugs("A.R.S. § 12-341.01(A)."), ["ars.12-341.01.a"])

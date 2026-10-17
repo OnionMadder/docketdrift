@@ -65,7 +65,7 @@ _TAIL = r"(?P<subsection>\s?" + _PAREN + r"(?:" + _PAREN + r"){0,3})?"
 _URCA_SET = (r"(?:\bUniform\s+Rules?\s*,?\s*(?:of\s+(?:the\s+)?(?:Louisiana\s+)?)?"
              r"(?:" + _DASH + r"|\s)*\s*Courts?\s+of\s+Appeals?|\bURCA)")
 _URCA_NUM = (r"(?P<num>\d{1,2}\s?" + _DASH + r"\s?\d{1,2}(?:\.\d{1,2})?)"
-             r"(?![\d.]\d|\s?" + _DASH + r"\s?\d)")
+             r"(?!\d|\.\d|\s?" + _DASH + r"\s?\d)")
 _URCA_RE = re.compile(
     _URCA_SET + r"\s*[,.]?\s*(?:Rules?\s+)?" + _URCA_NUM + _TAIL, re.I)
 _URCA_FIRST_RE = re.compile(
@@ -88,12 +88,12 @@ _RULE_IV_RE = re.compile(
 # La. Dist. Ct. R. 9.14
 _DISTCT_RE = re.compile(
     r"\bLa\.?\s*Dist(?:rict)?\.?\s*C(?:our)?t\.?\s*(?:Rules?|R\.)\s*"
-    r"(?P<num>\d{1,2}\.\d{1,2})(?![\d.]\d)" + _TAIL, re.I)
+    r"(?P<num>\d{1,2}\.\d{1,2})(?!\d|\.\d)" + _TAIL, re.I)
 
 # Rules of Professional Conduct. Two orders: "Rule 8.4(a) of the Rules
 # of Professional Conduct", and "Rules of Professional Conduct: Rules
 # 1.3, ..." (only the FIRST number of a list is a bound cite here).
-_PC_NUM = r"(?P<num>\d\.\d{1,2})(?![\d.]\d)"
+_PC_NUM = r"(?P<num>\d\.\d{1,2})(?!\d|\.\d)"
 _PC_AFTER = re.compile(
     r"\bRules?\s+of\s+Professional\s+Conduct\s*[:,]?\s*(?:Rules?\s+)?" + _PC_NUM + _TAIL, re.I)
 _PC_BEFORE = re.compile(

@@ -92,7 +92,7 @@ _DASH = r'\s?[-–—]\s?'
 # -- caught on real text ("-2101 (2016)" stored subsection 2016).
 _SUB = r'(?:\s?\((?!(?:19|20)\d{2}\))(?P<subdivision>[A-Z0-9]+)\)(?:\([A-Za-z0-9]+\))*)?'
 _NUMBER = (r'(?P<title>\d{1,3})' + _DASH +
-           r'(?P<section>[1-9]\d{0,4}(?:\.\d{1,4})?)(?![\d.]\d)' + _SUB)
+           r'(?P<section>[1-9]\d{0,4}(?:\.\d{1,4})?)(?!\d|\.\d)' + _SUB)
 # Marker is REQUIRED unless the number follows the anchor directly
 # ("A.R.S. 17-309(A)(1)"); the volume form "16 A.R.S., Pt. 1" has
 # neither and never matches.
@@ -108,7 +108,7 @@ _YEAR = r'(?:\s?\((?:Supp\.?\s*)?\d{4}(?:\s*Supp\.?)?\))?'
 _CONTINUATION = re.compile(
     _YEAR + r'\s*(?:,\s*(?:and\s+|or\s+)?|\s+(?:and|or)\s+)'
     r'(?:(?P<title>\d{1,3})' + _DASH + r'|[-–—]\s?)'
-    r'(?P<section>[1-9]\d{0,4}(?:\.\d{1,4})?)(?![\d.]\d)' + _SUB
+    r'(?P<section>[1-9]\d{0,4}(?:\.\d{1,4})?)(?!\d|\.\d)' + _SUB
 )
 
 
