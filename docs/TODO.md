@@ -813,7 +813,36 @@ Remaining, in order:
       layer has the same edition blind spot; and a court's own misnamed
       set ("Arizona Rule of Criminal Procedure 404(B)") is transcribed,
       not corrected.
-- [ ] **AZ bare STATUTE numbers don't route** (`13-1105` text-searches,
+- [ ] **ROSTER PROBE 2026-10-16 (report only, nothing moved)** --
+      `/home/tmp/roster_probe_now.py` (run with PYTHONPATH set), output in
+      `/home/tmp/roster_now.txt`:
+      1. **LA 3rd/4th/5th Circuits: entire seated benches silent since
+         ~March 2026 (5th since Oct 2025); 3rd Cir 22 opinions in 12
+         months.** Coverage, not attribution: the LA COA CL catch-up
+         (top of this file) never finished. Fix = AWAY_PLAN task 6, then
+         re-run the probe. Until then /current-judges/ reads those benches
+         as inactive.
+      2. **MN: Kirk, Reilly, Halbrooks, Cleary, Chutich voting in 2026 at
+         status UNKNOWN** -- retired judges serving by appointment. Set
+         RETIRED (Onion: roster edit).
+      3. **AZ: John Pelander ACTIVE but not seated** (designated retired
+         justice). Status inconsistent (Onion).
+      4. **LA 2nd Cir: surname-only rows Thompson / Stephens / Cox /
+         Robinson hold 2026 votes**; Thompson's likely belong to Jefferson
+         R. Thompson (who reads silent). Vote move -> Onion's approval.
+- [x] **AZ bare STATUTE numbers route — DONE 2026-10-16** (`86c40da`).
+- [ ] **AZ statute v2 grammar re-sweep** (`da67b85`, `1e4e268`): v1 missed a
+      cite in 46% of AZ opinions. Before: 115,435 rows / 20,494 opinions /
+      15,568 slugs. Verify after the `--force` sweep: 0 duplicate rows and
+      a re-extraction sample with 0 mismatches.
+- [x] **Weekly cron derived NOTHING but judges — FIXED 2026-10-16**
+      (`1af94ca`): newest 200 AZ/LA opinions had 0 statute/citation/
+      holding rows. Cron now derives from `.derive_cursor` (seeded 489842);
+      one-time catch-up from pk 460000 queued. After the next weekly run,
+      CHECK the cursor advanced and the log says "derive cursor advanced".
+- [x] **5xx check on heartbeat — DONE 2026-10-16** (`error_rate_tick.sh`,
+      transition-alerting, all four paths tested).
+- [ ] ~~**AZ bare STATUTE numbers don't route**~~ (`13-1105` text-searches,
       8.4s). `statutes_az.py` has no `bare_slug_candidates` hook; MN's is
       the template. Pre-existing, found while verifying the rule routing.
 - [ ] **Build `rules_nh.py`** after the 20(2) decision.

@@ -93,6 +93,24 @@ about 20 minutes so it overlaps a burst, and capture SHOW PROCESSLIST when
 Reply with five lines and act on nothing.
 - **Prompt:** "Daily DocketDrift status check per AWAY_PLAN task 9."
 
+## In flight at hand-off (2026-10-16 evening)
+
+These run from Onion's PC via chunk drivers. If the PC slept, they
+stopped partway, which is safe: every driver resumes from a cursor. A
+session that finds them unfinished re-runs from the last cursor in the
+logs or TODO.md.
+
+- **LA rule sweep** (`extract_rules --state LA`). Last cursor about 230173
+  when this was written. Verify: re-extract a 600-opinion sample (0
+  mismatches), 0 duplicate rows. Then restart gunicorn.
+- **AZ statute `--force` re-sweep** with the v2 grammar
+  (`extract_statutes --state AZ --force --min-id N --max-runtime 30`).
+  Before: 115,435 rows. Same verification.
+- **Derived-layer catch-up from pk 460000**: statutes for MN/NH/LA,
+  citations and holdings for all four.
+- **After the next weekly cron:** confirm `.derive_cursor` moved past 489842
+  and the log says "derive cursor advanced".
+
 ## B. Waiting for Onion
 
 - **Deploy authority while away:** may unattended sessions push and restart
