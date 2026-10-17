@@ -170,7 +170,12 @@ print(Opinion.objects.order_by('-pk').values_list('pk', flat=True).first() or 0)
         for st in $STATES; do
             echo "--- deriving citation layers ($st, pk > $DERIVE_FROM) ---"
             step .venv/bin/python manage.py extract_statutes --state "$st" --min-id "$DERIVE_FROM"
-            step .venv/bin/python manage.py extract_citations --state "$st" --min-id "$DERIVE_FROM"
+            # --map-cache: building LA's resolution map takes ~5.5 min
+            # before a single opinion is scanned; without the cache a
+            # culled or retried run starts that over every time (the
+            # 2026-10-16 catch-up gave up after five such restarts).
+            step .venv/bin/python manage.py extract_citations --state "$st" --min-id "$DERIVE_FROM" \
+                --map-cache "/home/private/docketdrift/.citemap.$st.json" --map-cache-hours 168
             step .venv/bin/python manage.py extract_holdings_text --state "$st" --min-id "$DERIVE_FROM"
             step .venv/bin/python manage.py extract_rules --state "$st" --min-id "$DERIVE_FROM"
         done
