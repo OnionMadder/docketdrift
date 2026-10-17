@@ -138,6 +138,51 @@ for st in $STATES; do
     step .venv/bin/python manage.py resolve_judges --state "$st" --since "$SINCE" --max-runtime 240
 done
 
+# Derive the citation layers for everything ingested since the last run.
+# NOTHING in the weekly path did this either (found 2026-10-16): the newest
+# 200 AZ and LA opinions carried ZERO statute cites, ZERO citation edges and
+# ZERO holdings, against a 2025 control of ~160/~180/~45. MN was only partly
+# covered because its scraper extracts statutes at ingest. Same failure as
+# the resolve_judges gap above -- the cron ingested and never derived.
+#
+# Window by PRIMARY KEY, not by date: a cursor file records the highest pk
+# derived, so the MN/NH scraper ingests (which never pass through this
+# script) are covered too. The cursor advances ONLY if every derive step
+# succeeded -- a failed step means next week re-derives the same window
+# rather than skipping it. Every command is idempotent on re-run.
+# A missing cursor is LOUD, never a silent skip.
+DERIVE_CURSOR_FILE=.derive_cursor
+DERIVE_FROM=$(cat "$DERIVE_CURSOR_FILE" 2>/dev/null)
+case "$DERIVE_FROM" in
+    ''|*[!0-9]*)
+        echo "ERROR: $DERIVE_CURSOR_FILE missing or not a number -- derived layers NOT built this run"
+        FAILED="$FAILED derive-cursor"
+        ;;
+    *)
+        DERIVE_TOP=$(.venv/bin/python -c "
+import django, os
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'docketdrift_site.settings')
+django.setup()
+from opinions.models import Opinion
+print(Opinion.objects.order_by('-pk').values_list('pk', flat=True).first() or 0)
+")
+        FAILED_BEFORE_DERIVE="$FAILED"
+        for st in $STATES; do
+            echo "--- deriving citation layers ($st, pk > $DERIVE_FROM) ---"
+            step .venv/bin/python manage.py extract_statutes --state "$st" --min-id "$DERIVE_FROM"
+            step .venv/bin/python manage.py extract_citations --state "$st" --min-id "$DERIVE_FROM"
+            step .venv/bin/python manage.py extract_holdings_text --state "$st" --min-id "$DERIVE_FROM"
+            step .venv/bin/python manage.py extract_rules --state "$st" --min-id "$DERIVE_FROM"
+        done
+        if [ "$FAILED" = "$FAILED_BEFORE_DERIVE" ] && [ -n "$DERIVE_TOP" ]; then
+            echo "$DERIVE_TOP" > "$DERIVE_CURSOR_FILE"
+            echo "--- derive cursor advanced to $DERIVE_TOP ---"
+        else
+            echo "--- derive cursor HELD at $DERIVE_FROM (a derive step failed) ---"
+        fi
+        ;;
+esac
+
 # Refresh the denormalized judge active-spans. These back /current-judges/
 # and its era filters; they are derived from panel votes, so any ingest can
 # move them. Cheap (seconds per state) and idempotent -- and NOT optional:

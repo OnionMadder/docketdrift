@@ -105,4 +105,10 @@ fi
 # every tick does not spam. See the header of that script.
 /bin/sh /home/private/docketdrift/scripts/latency_check.sh || fail=1
 
+# --- (4) A broken page TYPE (5xx) -------------------------------------------
+# The weekly error_rate_check found breakage up to a week late (cited-by
+# 500'd for twelve days). error_rate_tick.sh runs the same check over the
+# last ~hour and, like latency_check, alerts on transitions only.
+/bin/sh /home/private/docketdrift/scripts/error_rate_tick.sh || fail=1
+
 exit $fail

@@ -120,6 +120,8 @@ tail -n "$LINES" "$LOG" | awk -F'"' \
     else if (path ~ /^\/opinion\/./)             shape = "/opinion/<X>/"
     else if (path ~ /^\/judge\/./)               shape = "/judge/<X>/"
     else if (path ~ /^\/statute\/./)             shape = "/statute/<X>/"
+    else if (path ~ /^\/rule\/./)                shape = "/rule/<X>/"
+    else if (path ~ /^\/similar\/./)             shape = "/similar/<X>/"
     else if (path ~ /^\/tag\/./)                 shape = "/tag/<X>/"
     else if (path ~ /^\/sitemap/)                shape = "/sitemap*.xml"
     else                                          shape = path
