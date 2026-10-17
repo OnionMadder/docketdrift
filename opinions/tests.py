@@ -287,6 +287,61 @@ class ArizonaRuleExtractionTests(SimpleTestCase):
         self.assertEqual(bare_rule_slugs("AZ", "admin", "32.1"), [])
 
 
+class NewHampshireRuleExtractionTests(SimpleTestCase):
+    """Shapes measured in real NH text 2026-10-15."""
+
+    def slugs(self, text):
+        return [(r.reference_slug, r.reference_display)
+                for r in extract_rules("NH", text)]
+
+    def test_court_rules_carry_no_state_anchor(self):
+        self.assertEqual(self.slugs("See Sup. Ct. R. 20(2). The"),
+                         [("nh.r.sup.ct.20", "Sup. Ct. R. 20(2)")])
+        self.assertEqual(self.slugs("argument. Supreme Court Rule 16(3)(b). That")[0][0],
+                         "nh.r.sup.ct.16")
+        self.assertEqual(self.slugs("see SUP. CT. R. 13(2)")[0][0], "nh.r.sup.ct.13")
+
+    def test_lettered_numbers_are_distinct_rules(self):
+        self.assertEqual(self.slugs("See Sup.Ct. R. 16-A (plain error rule)")[0][0],
+                         "nh.r.sup.ct.16-a")
+        self.assertEqual(self.slugs("Family Division Rule 1.25-A")[0][0],
+                         "nh.r.fam.div.1.25-a")
+
+    def test_superior_court_old_and_civil_rules_are_separate_sets(self):
+        self.assertEqual(self.slugs("See Super. Ct. R. 59-A. One")[0][0], "nh.r.super.ct.59-a")
+        self.assertEqual(self.slugs("Super. Ct. Civ. R. 51(c)")[0][0], "nh.r.super.ct.civ.51")
+
+    def test_ranges_never_bind_their_first_member(self):
+        self.assertEqual(self.slugs("Because Superior Court Rule 27-28 apply"), [])
+        self.assertEqual(extract_rules("AZ", "Ariz. R. Crim. P. 26.1-26.3 govern"), [])
+
+    def test_evidence_and_conduct_forms(self):
+        for t in ("N.H. R. Ev. 613(c). If", "New Hampshire Rule of Evidence 613(c) x",
+                  "N.H. R. EV. 613(c)."):
+            self.assertEqual(self.slugs(t)[0][0], "nh.r.evid.613", t)
+        self.assertEqual(self.slugs("New Hampshire Rule of Evidence (Rule) 702. *725")[0][0],
+                         "nh.r.evid.702")
+        self.assertEqual(self.slugs("N.H. R. PROF. CONDUCT 1.15. The")[0][0],
+                         "nh.r.prof.conduct.1.15")
+
+    def test_admin_rules_keep_the_agency_prefix(self):
+        self.assertEqual(self.slugs("N.H. Admin. Rules, Env-Ws 386.58(g) (regs"),
+                         [("nh.r.admin.env-ws.386.58", "N.H. Admin. R., Env-Ws 386.58(g)")])
+        self.assertEqual(self.slugs("N.H. CODE ADMIN. R., Rab 202.06 (2007).")[0][0],
+                         "nh.r.admin.rab.202.06")
+
+    def test_false_friends(self):
+        for t in ("See N.H.H.R. JOUR. 649 (1999).", "U.S. Sup. Ct. R. 10",
+                  "United States Supreme Court Rule 10", "See UNIF. R. Crim. P. 473",
+                  "Fed. R. CRIM. P. 8(a)"):
+            self.assertEqual(self.slugs(t), [], t)
+
+    def test_rehearing_notice_yields_no_row(self):
+        self.assertEqual(self.slugs(
+            "NOTICE: This opinion is subject to motions for rehearing under "
+            "Rule 22 as well as formal revision before publication"), [])
+
+
 class RuleSurfaceWiringTests(SimpleTestCase):
     """The rule surfaces exist and are labeled as rules, not statutes."""
 

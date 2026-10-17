@@ -95,7 +95,9 @@ RULE_SET_LONG["admin"] = "Arizona Administrative Code"
 # match the start of any capitalized word after "Arizona".
 _ANCHOR = r"\bAriz(?:ona)?\s*\.?\s*(?:R\.|Rules?\b)"
 
-_NUM = r"(\d{1,3}(?:\.\d{1,3})?)"
+# A range ("Ariz. R. Crim. P. 26.1-26.3") is refused: never invent a
+# cite to a range's first member.
+_NUM = r"(\d{1,3}(?:\.\d{1,3})?)(?!\d|\.\d|\s?[-–]\s?\d)"
 
 # Up to four parenthetical levels -- (a)(7)(A) is common -- and never an
 # edition year: `Ariz. R. Civ. P. 26.1 (2019)` is the rule's year, not a
