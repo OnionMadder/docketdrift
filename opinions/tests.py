@@ -357,6 +357,51 @@ class NewHampshireRuleExtractionTests(SimpleTestCase):
             "Rule 22 as well as formal revision before publication"), [])
 
 
+class LouisianaRuleExtractionTests(SimpleTestCase):
+    """Shapes measured in real LA text 2026-10-15."""
+
+    def refs(self, text):
+        return [(r.reference_slug, r.is_boilerplate) for r in extract_rules("LA", text)]
+
+    def test_uniform_rules_every_separator(self):
+        for sep in ("—", "-", " – ", "\x97", ""):
+            t = "See Uniform Rules" + sep + "Courts of Appeal, Rule 2-12.4. FACTS"
+            self.assertEqual(self.refs(t), [("la.r.urca.2-12.4", False)], repr(sep))
+        self.assertEqual(self.refs("in violation of URCA, Rule 2-12.4(B)(1)."),
+                         [("la.r.urca.2-12.4", False)])
+
+    def test_not_designated_notice_is_flagged(self):
+        self.assertEqual(self.refs(
+            "This opinion is NOT DESIGNATED FOR PUBLICATION. Uniform Rules "
+            "—Courts of Appeal, Rule 2-16.3. "),
+            [("la.r.urca.2-16.3", True)])
+
+    def test_rule_iv_panel_footnote_is_flagged(self):
+        self.assertEqual(self.refs(
+            "NOTES [*] Pursuant to Rule IV, Part 2, § 3, Watson, J. was not on panel."),
+            [("la.r.sup.ct.iv.part2.3", True)])
+        self.assertEqual(self.refs("J., not on panel. Rule IV, Part II, § 3. CALOGERO"),
+                         [("la.r.sup.ct.iv.part2.3", True)])
+
+    def test_supreme_court_roman_rules_keep_their_section(self):
+        self.assertEqual(self.refs("pursuant to Supreme Court Rule XIX, § 19, pending"),
+                         [("la.r.sup.ct.xix.19", False)])
+        self.assertEqual(self.refs("Untimely filed pursuant to La.S.Ct. Rule X § 5. R"),
+                         [("la.r.sup.ct.x.5", False)])
+
+    def test_professional_conduct_both_orders(self):
+        self.assertEqual(self.refs("respondent violated Rule 8.4(a) of the Rules of "
+                                   "Professional Conduct."),
+                         [("la.r.prof.conduct.8.4", False)])
+        self.assertEqual(self.refs("the following Rules of Professional Conduct: Rules 1.3 (n)"),
+                         [("la.r.prof.conduct.1.3", False)])
+
+    def test_statutes_and_bare_rules_are_not_rules(self):
+        for t in ("a violation of La. R.S. 14:43. The", "Rule X of the Civil Code",
+                  "Rule 2-12.4 bare"):
+            self.assertEqual(self.refs(t), [], t)
+
+
 class RuleSurfaceWiringTests(SimpleTestCase):
     """The rule surfaces exist and are labeled as rules, not statutes."""
 
