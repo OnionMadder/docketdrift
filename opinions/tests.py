@@ -426,6 +426,20 @@ class LouisianaRuleExtractionTests(SimpleTestCase):
             self.assertEqual(self.refs(t), [], t)
 
 
+class ArizonaBareStatuteRoutingTests(SimpleTestCase):
+    def test_routes_plain_and_marked_numbers(self):
+        self.assertEqual(bare_cite_slugs("AZ", "13-1105"), ["ars.13-1105"])
+        self.assertEqual(bare_cite_slugs("AZ", "§ 13-1105(A)"),
+                         ["ars.13-1105.a", "ars.13-1105"])
+        self.assertEqual(bare_cite_slugs("AZ", "A.R.S. 28-1381"), ["ars.28-1381"])
+
+    def test_docket_fragments_and_rules_do_not_route(self):
+        self.assertEqual(bare_cite_slugs("AZ", "25-0606"), [])   # leading zero
+        self.assertEqual(bare_cite_slugs("AZ", "1 CA-CV 25-0606"), [])
+        self.assertEqual(bare_cite_slugs("AZ", "32.1"), [])
+        self.assertEqual(bare_cite_slugs("AZ", "negligence 13-1105"), [])
+
+
 class RuleSurfaceWiringTests(SimpleTestCase):
     """The rule surfaces exist and are labeled as rules, not statutes."""
 

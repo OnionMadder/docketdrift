@@ -81,6 +81,41 @@ def _build_slug_and_display(
     return slug.lower(), display
 
 
+# A search query that is NOTHING BUT an A.R.S. number: "13-1105",
+# "§ 13-1105(A)", "section 28-1381". A section never starts with 0,
+# while docket fragments do ("25-0606"), so a leading zero is refused --
+# a pasted docket must never be read as a statute. Callers VERIFY each
+# candidate against the corpus before redirecting.
+BARE_CITE_RE = re.compile(
+    r'^\s*(?:A\.\s*R\.\s*S\.\s*)?(?:§\s*|sec(?:tion)?\.?\s*)?'
+    r'(?P<body>\d{1,3}-[1-9]\d{0,4}(?:\.\d{1,4})?(?:\s?\([A-Z0-9]+\))?)\s*$',
+    re.IGNORECASE,
+)
+
+
+def bare_slug_candidates(query: str) -> list[str]:
+    """Slugs a bare A.R.S. query could mean, most specific first.
+
+    Built by re-running ``extract`` over a synthesized canonical cite, so
+    routing cannot drift from extraction (the MN construction).
+    """
+    if not query:
+        return []
+    shape = BARE_CITE_RE.match(query)
+    if shape is None:
+        return []
+    body = shape.group("body").replace(" ", "")
+    body = re.sub(r"\(([a-z0-9]+)\)", lambda m: "(" + m.group(1).upper() + ")", body)
+    found = extract("A.R.S. § " + body)
+    if not found:
+        return []
+    cite = found[0]
+    candidates = [cite.reference_slug]
+    if cite.subdivision:
+        candidates.append(_build_slug_and_display(cite.chapter, cite.section, "")[0])
+    return candidates
+
+
 def extract(text: str) -> list[ExtractedStatute]:
     """Find every AZ ARS citation in ``text``.
 
