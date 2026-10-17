@@ -85,7 +85,7 @@ RULE_SET_LONG["admin"] = "New Hampshire Code of Administrative Rules"
 #
 # A RANGE ("Rule 27-28", "Rules 7-9") is refused outright: we cannot
 # store a range and must never invent a cite to its first member.
-_NUM = r"(\d{1,3}(?:\.\d{1,3})?(?:-[A-Z]\b)?)(?!\d|\.\d|\s?[-–]\s?\d)"
+_NUM = r"(\d{1,4}(?:\.\d{1,3})?(?:-[A-Z]\b)?)(?!\d|\.\d|\s?[-–]\s?\.?\d)"
 
 # Same subsection grammar as Arizona: only the first level may follow a
 # space, deeper levels must be adjacent, and an edition year is refused.
@@ -98,6 +98,14 @@ _ALIAS = r"(?:\s*\(\s*[“\"”']?\s*[A-Za-z]{2,6}\s*[“\"”']?\s*\))?"
 
 _SET_PATTERNS = [
     (key, re.compile(prefix + _ALIAS + r"\s*" + _NUM + _TAIL, re.I))
+    for key, _d, _l, prefix in RULE_SETS
+]
+# Number FIRST, set named right after: "Rule 1.5 of the New Hampshire
+# Rules of Professional Conduct". Found in the real-output miss list, as
+# in Arizona. The set is still named, so this is a full citation.
+_SET_PATTERNS += [
+    (key, re.compile(r"\bRule\s+" + _NUM + _TAIL
+                     + r"(?:\s*,\s*|\s+of\s+(?:the\s+)?)" + prefix, re.I))
     for key, _d, _l, prefix in RULE_SETS
 ]
 

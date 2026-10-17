@@ -97,7 +97,7 @@ _ANCHOR = r"\bAriz(?:ona)?\s*\.?\s*(?:R\.|Rules?\b)"
 
 # A range ("Ariz. R. Crim. P. 26.1-26.3") is refused: never invent a
 # cite to a range's first member.
-_NUM = r"(\d{1,3}(?:\.\d{1,3})?)(?!\d|\.\d|\s?[-–]\s?\d)"
+_NUM = r"(\d{1,4}(?:\.\d{1,3})?)(?!\d|\.\d|\s?[-–]\s?\.?\d)"
 
 # Up to four parenthetical levels -- (a)(7)(A) is common -- and never an
 # edition year: `Ariz. R. Civ. P. 26.1 (2019)` is the rule's year, not a

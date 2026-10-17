@@ -92,7 +92,14 @@ _ANCHOR = r"\bMinn(?:esota)?\s*\.?\s*(?:R\.|Rules?\b)"
 # Court-rule number: 136.01, 60.02, 404, 8.4, 1.15. Administrative rule:
 # 3310.2921 -- four digits, a dot, four digits. The shapes do not
 # overlap, which is what makes the two bodies separable at all.
-_COURT_NUM = r"(\d{1,3}(?:\.\d{1,3})?)"
+#
+# FOUR digits, with a guard against stopping short. Until 2026-10-16
+# this was \d{1,3} with no guard, so "Minn. R. Evid. 1101" was stored as
+# Rule 110 and "1002" as Rule 100 -- a cite to a rule the court never
+# named, on a public page (found while building NH's grammar). The
+# lookahead also refuses a RANGE ("60.02-.03"): we cannot store a range
+# and must never invent a cite to its first member.
+_COURT_NUM = r"(\d{1,4}(?:\.\d{1,3})?)(?!\d|\.\d|\s?[-–]\s?\.?\d)"
 _ADMIN_NUM = r"(\d{4}\.\d{4})"
 
 # subd. 1 / subdivision 1 / subp. 2 (administrative), then an optional

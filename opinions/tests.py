@@ -336,6 +336,21 @@ class NewHampshireRuleExtractionTests(SimpleTestCase):
                   "Fed. R. CRIM. P. 8(a)"):
             self.assertEqual(self.slugs(t), [], t)
 
+    def test_four_digit_rules_and_number_first(self):
+        self.assertEqual(self.slugs("standards of New Hampshire Rules of Evidence 1002 and"),
+                         [("nh.r.evid.1002", "N.H. R. Ev. 1002")])
+        self.assertEqual(self.slugs("violation of Rule 1.5 of the New Hampshire Rules of "
+                                    "Professional Conduct. Rule 1.5 states")[0][0],
+                         "nh.r.prof.conduct.1.5")
+
+    def test_minnesota_four_digit_evidence_rules_not_truncated(self):
+        # Live bug until 2026-10-16: 1101 was stored as Rule 110.
+        refs = extract_rules("MN", "Minn. R. Evid. 1101(a). It provides")
+        self.assertEqual(refs[0].reference_slug, "minn.r.evid.1101")
+        refs = extract_rules("MN", "Minnesota Rule of Evidence 1002. Monson")
+        self.assertEqual(refs[0].reference_slug, "minn.r.evid.1002")
+        self.assertEqual(extract_rules("MN", "Minn. R. Civ. P. 60.02-.03 apply"), [])
+
     def test_rehearing_notice_yields_no_row(self):
         self.assertEqual(self.slugs(
             "NOTICE: This opinion is subject to motions for rehearing under "
