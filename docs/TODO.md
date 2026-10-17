@@ -839,7 +839,12 @@ Remaining, in order:
 - [x] **Weekly cron derived NOTHING but judges — FIXED 2026-10-16**
       (`1af94ca`): newest 200 AZ/LA opinions had 0 statute/citation/
       holding rows. Cron now derives from `.derive_cursor` (seeded 489842);
-      one-time catch-up from pk 460000 queued. After the next weekly run,
+      one-time catch-up from pk 460000 DONE 2026-10-16: newest-200 now MN
+      176/200/162, AZ 173/191/19, LA 50/84/5 (statutes/citations/holdings;
+      LA's newest are ~all First Circuit, which runs low in 2025 too).
+      LA citations needed `--map-cache` (the ~5.5-min map build ate every
+      run's budget); now in the cron too. 51 LA opinions re-homed to their
+      circuits by the routine assign_la_circuits step. After the next weekly run,
       CHECK the cursor advanced and the log says "derive cursor advanced".
 - [x] **5xx check on heartbeat — DONE 2026-10-16** (`error_rate_tick.sh`,
       transition-alerting, all four paths tested).

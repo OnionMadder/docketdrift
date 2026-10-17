@@ -102,8 +102,7 @@ logs or TODO.md.
 
 - ~~LA rule sweep~~ DONE + verified + live (22,411 cites).
 - ~~AZ statute `--force` re-sweep~~ DONE + verified + live (171,653 rows).
-- **Derived-layer catch-up from pk 460000**: statutes for MN/NH/LA,
-  citations and holdings for all four.
+- ~~Derived-layer catch-up from pk 460000~~ DONE (LA citations: 58,262 edges).
 - **After the next weekly cron:** confirm `.derive_cursor` moved past 489842
   and the log says "derive cursor advanced".
 
