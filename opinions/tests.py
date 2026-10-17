@@ -376,6 +376,30 @@ class LouisianaRuleExtractionTests(SimpleTestCase):
             "—Courts of Appeal, Rule 2-16.3. "),
             [("la.r.urca.2-16.3", True)])
 
+    def test_more_uniform_rule_spellings_and_number_first(self):
+        for t, want in (
+            ("NOT DESIGNATED FOR PUBLICATION. Rule 2-16.3, Uniform Rules, Courts of Appeal. ",
+             [("la.r.urca.2-16.3", True)]),
+            ("See Rule 2-12.4, Uniform Rules — Courts of Appeal. . These",
+             [("la.r.urca.2-12.4", False)]),
+            ("Uniform Rules of Louisiana Courts of Appeal, Rule 1-3 bars",
+             [("la.r.urca.1-3", False)]),
+            ("pursuant to Uniform Rules\x97Courts of Appeal 2-12.4, no further",
+             [("la.r.urca.2-12.4", False)]),
+            ("NOT DESIGNATED FOR PUBLICATION. Uniform Rules―Courts of Appeal, Rule 2-16.3. ",
+             [("la.r.urca.2-16.3", True)]),
+        ):
+            self.assertEqual(self.refs(t), want, repr(t))
+
+    def test_clerk_delivery_certificate_is_flagged(self):
+        t = ("HAS BEEN DELIVERED IN ACCORDANCE WITH UNIFORM RULES - COURT OF "
+             "APPEAL, RULE 2-16.4 AND 2-16.5 THIS DAY FEBRUARY 2, 2020")
+        self.assertEqual(self.refs(t)[0], ("la.r.urca.2-16.4", True))
+        # The same rule cited by a court in an argument is counted.
+        self.assertEqual(self.refs("the timing rules of Uniform Rules—Courts of "
+                                   "Appeal, Rule 4-6 govern the transmission of"),
+                         [("la.r.urca.4-6", False)])
+
     def test_rule_iv_panel_footnote_is_flagged(self):
         self.assertEqual(self.refs(
             "NOTES [*] Pursuant to Rule IV, Part 2, § 3, Watson, J. was not on panel."),

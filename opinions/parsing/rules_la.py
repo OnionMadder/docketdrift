@@ -54,16 +54,22 @@ RULE_SET_LONG = {
     "prof.conduct": "Louisiana Rules of Professional Conduct",
 }
 
-_DASH = "[-–—\x97]"
+_DASH = "[-–—―\x97]"
 _PAREN = r"\((?!(?:19|20)\d{2}\))[A-Za-z0-9.]{1,5}\)"
 _TAIL = r"(?P<subsection>\s?" + _PAREN + r"(?:" + _PAREN + r"){0,3})?"
 
 # Uniform Rules -- Courts of Appeal, Rule 2-16.3 / URCA, Rule 2-12.4(B)(1)
+# / Uniform Rules of (the) (Louisiana) Courts of Appeal, Rule 1-3 /
+# Uniform Rules--Courts of Appeal 2-12.4 (no "Rule"). Also number-first:
+# "Rule 2-16.3, Uniform Rules, Courts of Appeal." All from real text.
+_URCA_SET = (r"(?:\bUniform\s+Rules?\s*,?\s*(?:of\s+(?:the\s+)?(?:Louisiana\s+)?)?"
+             r"(?:" + _DASH + r"|\s)*\s*Courts?\s+of\s+Appeals?|\bURCA)")
+_URCA_NUM = (r"(?P<num>\d{1,2}\s?" + _DASH + r"\s?\d{1,2}(?:\.\d{1,2})?)"
+             r"(?![\d.]\d|\s?" + _DASH + r"\s?\d)")
 _URCA_RE = re.compile(
-    r"(?:\bUniform\s+Rules?\s*,?\s*(?:" + _DASH + r"|\s)*\s*Courts?\s+of\s+Appeals?"
-    r"|\bURCA)\s*[,.]?\s*Rules?\s+"
-    r"(?P<num>\d{1,2}\s?" + _DASH + r"\s?\d{1,2}(?:\.\d{1,2})?)(?![\d.]\d)" + _TAIL,
-    re.I)
+    _URCA_SET + r"\s*[,.]?\s*(?:Rules?\s+)?" + _URCA_NUM + _TAIL, re.I)
+_URCA_FIRST_RE = re.compile(
+    r"\bRule\s+" + _URCA_NUM + _TAIL + r"\s*,?\s*(?:of\s+the\s+)?" + _URCA_SET, re.I)
 
 # Supreme Court Rule XIX, § 19 / Rule X § 5 / La.S.Ct.R. X § 5 /
 # Rule IV, Part 2, § 3. Requires a Supreme-Court anchor OR the "Part N,
@@ -95,6 +101,16 @@ _PC_BEFORE = re.compile(
     + r"\s+of\s+the\s+(?:Louisiana\s+)?Rules\s+of\s+Professional\s+Conduct", re.I)
 
 _NOTICE_2163 = re.compile(r"not\s+designated\s+for\s+publication", re.I)
+# The clerk's certificate: "NOTICE OF JUDGMENT AND CERTIFICATE OF
+# DELIVERY ... HAS BEEN DELIVERED IN ACCORDANCE WITH UNIFORM RULES -
+# COURT OF APPEAL, RULE 2-16.4 AND 2-16.5 THIS DAY ..." / "... HAS BEEN
+# TRANSMITTED IN ACCORDANCE WITH ... RULE 4-6 THIS DAY". A statement
+# about delivering the document, not the court relying on a rule -- the
+# same class as the 2-16.3 notice. Found in real output 2026-10-16.
+_DELIVERY_RULES = {"2-16.4", "2-16.5", "4-6"}
+_NOTICE_DELIVERY = re.compile(
+    r"(?:delivered|transmitted|mailed)\s+in\s+accordance\s+with|this\s+day\s+\d|"
+    r"certificate\s+of\s+(?:delivery|mailing)|notice\s+of\s+judgment", re.I)
 _NOTICE_IV = re.compile(
     r"not\s+on\s+(?:the\s+)?panel|did\s+not\s+(?:participate|sit)|recus|"
     r"(?:pro\s+tempore|ad\s+hoc)|sitting\s+(?:for|in\s+place)|assigned", re.I)
@@ -128,12 +144,14 @@ def extract(text):
         if prev is None or length > prev[0]:
             found[start] = (length, ref)
 
-    for m in _URCA_RE.finditer(text):
-        num = _norm_dash(m.group("num"))
-        sec = re.sub(r"\s+", "", m.group("subsection") or "")
-        boiler = (num == "2-16.3"
-                  and bool(_NOTICE_2163.search(text[max(0, m.start() - 200):m.end() + 40])))
-        put(m.start(), len(m.group(0)), _ref("urca", num, num, sec, m.start(), boiler))
+    for pattern in (_URCA_RE, _URCA_FIRST_RE):
+        for m in pattern.finditer(text):
+            num = _norm_dash(m.group("num"))
+            sec = re.sub(r"\s+", "", m.group("subsection") or "")
+            win = text[max(0, m.start() - 200):m.end() + 60]
+            boiler = ((num == "2-16.3" and bool(_NOTICE_2163.search(win)))
+                      or (num in _DELIVERY_RULES and bool(_NOTICE_DELIVERY.search(win))))
+            put(m.start(), len(m.group(0)), _ref("urca", num, num, sec, m.start(), boiler))
 
     for pattern in (_SUPCT_RE, _RULE_IV_RE):
         for m in pattern.finditer(text):
