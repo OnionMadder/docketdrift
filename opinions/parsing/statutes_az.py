@@ -59,6 +59,58 @@ FULL_CITATION = re.compile(
     r'(?:\((?P<subdivision>[A-Z0-9]+)\))?',
 )
 
+# ---------------------------------------------------------------------------
+# v2 grammar, 2026-10-16. MEASURED on 2,998 random AZ opinions: the v1
+# pattern above (kept for reference and tests) missed a statute anchor in
+# 1,386 of them -- ~3,500 cites against 9,131 found. The misses, by form:
+#   A.R.S. §§ 12-341 and 42-18206          1,008   (lists)
+#   A.R.S. section 12-2101(B)                645
+#   A.R.S. § 42- 18206 / 44 — 1401           591   (pypdf space / dash)
+#   AR.S. § 12-1801                          224   (OCR)
+#   (“A.R.S.”) section / § / §§             ~300   (defined-term alias)
+#   A.R.S. Sec. / Section / A.R.S 13- /
+#   Arizona Revised Statutes section ...    ~350
+# A second instance of the "rare in appellate prose" trap: the v1
+# docstring called the no-section-sign forms rare without measuring.
+_ANCHOR = (
+    r'(?:\bA\.?\s?R\.?\s?S\b\.?|\[A\.R\.S\.\]|\bArizona\s+Revised\s+Statutes?)'
+    r'(?:\s*\(\s*[“"]?A\.R\.S\.[”"]?\s*\))?(?:\s*[”"]?\))?'
+)
+# A RANGE after the first member ("§§ 13-1401 to -1410", "through
+# 13-1410") drops the whole match: storing 13-1401 would invent a cite
+# to the range's first member, the rule the MN extractor also keeps.
+#
+# The endpoint must be STATUTE-SHAPED ("-1410" or "13-1410"): a bare
+# "to 5" is prose ("sentenced under A.R.S. § 13-702 to 5 years") and the
+# cite before it is real.
+_RANGE_AHEAD = re.compile(
+    r'\s*(?:(?:to|through)\s+(?:[-–—]\s?|\d{1,3}\s?[-–—]\s?)\d|[-–—]\s?\d)', re.I)
+_SINGULAR = r'(?:§|[Ss]ec(?:tion|\.))'
+_PLURAL = r'(?:§§|[Ss]ections)'
+_DASH = r'\s?[-–—]\s?'
+# "(2016)" after a cite is the statute's EDITION YEAR, never a subsection
+# -- caught on real text ("-2101 (2016)" stored subsection 2016).
+_SUB = r'(?:\s?\((?!(?:19|20)\d{2}\))(?P<subdivision>[A-Z0-9]+)\)(?:\([A-Za-z0-9]+\))*)?'
+_NUMBER = (r'(?P<title>\d{1,3})' + _DASH +
+           r'(?P<section>[1-9]\d{0,4}(?:\.\d{1,4})?)(?![\d.]\d)' + _SUB)
+# Marker is REQUIRED unless the number follows the anchor directly
+# ("A.R.S. 17-309(A)(1)"); the volume form "16 A.R.S., Pt. 1" has
+# neither and never matches.
+V2_CITATION = re.compile(
+    _ANCHOR + r'\s*,?\s*(?:(?P<plural>' + _PLURAL + r')|' + _SINGULAR + r')?\s*'
+    + _NUMBER
+)
+# Continuation of a PLURAL cite: ", 13-4033", "and -4033(A)(1)",
+# ", 12-120.21(A)(1) (2016) and -2101". A dash-only member inherits the
+# previous title. "to" / "through" / a bare dash between members is a
+# RANGE and stops the list: a range is never stored as its endpoints.
+_YEAR = r'(?:\s?\((?:Supp\.?\s*)?\d{4}(?:\s*Supp\.?)?\))?'
+_CONTINUATION = re.compile(
+    _YEAR + r'\s*(?:,\s*(?:and\s+|or\s+)?|\s+(?:and|or)\s+)'
+    r'(?:(?P<title>\d{1,3})' + _DASH + r'|[-–—]\s?)'
+    r'(?P<section>[1-9]\d{0,4}(?:\.\d{1,4})?)(?![\d.]\d)' + _SUB
+)
+
 
 def _build_slug_and_display(
     title: str,
@@ -134,12 +186,7 @@ def extract(text: str) -> list[ExtractedStatute]:
         return []
     results: list[ExtractedStatute] = []
 
-    for match in FULL_CITATION.finditer(text):
-        title = match.group("title") or ""
-        section = match.group("section") or ""
-        if not title or not section:
-            continue
-        subdivision = match.group("subdivision") or ""
+    def add(title, section, subdivision, offset):
         slug, display = _build_slug_and_display(title, section, subdivision)
         results.append(ExtractedStatute(
             # Map A.R.S. title onto the shared "chapter" column so the
@@ -149,8 +196,29 @@ def extract(text: str) -> list[ExtractedStatute]:
             subdivision=subdivision,
             reference_slug=slug,
             reference_display=display,
-            text_offset=match.start(),
+            text_offset=offset,
         ))
+
+    for match in V2_CITATION.finditer(text):
+        if _RANGE_AHEAD.match(text, match.end()):
+            continue
+        title = match.group("title")
+        add(title, match.group("section"), match.group("subdivision") or "",
+            match.start())
+        if not match.group("plural"):
+            continue
+        # Walk the list. Each member gets its own offset so the statute
+        # page can show its own context, and the 'same opinion, slug,
+        # offset' key stays unique.
+        pos = match.end()
+        while True:
+            cont = _CONTINUATION.match(text, pos)
+            if cont is None or _RANGE_AHEAD.match(text, cont.end()):
+                break
+            title = cont.group("title") or title
+            add(title, cont.group("section"), cont.group("subdivision") or "",
+                cont.start("section"))
+            pos = cont.end()
 
     results.sort(key=lambda s: s.text_offset)
     return results

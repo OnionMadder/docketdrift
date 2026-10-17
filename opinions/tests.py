@@ -426,6 +426,54 @@ class LouisianaRuleExtractionTests(SimpleTestCase):
             self.assertEqual(self.refs(t), [], t)
 
 
+class ArizonaStatuteV2GrammarTests(SimpleTestCase):
+    """Forms measured 2026-10-16: v1 missed a cite in 46% of AZ opinions."""
+
+    def slugs(self, text):
+        return [s.reference_slug for s in extract_statutes("AZ", text)]
+
+    def test_measured_forms(self):
+        cases = {
+            "attorney fees. A.R.S. § 42- 18206; see": ["ars.42-18206"],
+            "pursuant to A.R.S. section 12-2101(B) (1994). We": ["ars.12-2101.b"],
+            "See AR.S. § 12-1801; Burton": ["ars.12-1801"],
+            "Arizona Revised Statutes (“A.R.S.”) section 12- 2101(A)(1) x": ["ars.12-2101.a"],
+            "application of A.R.S. 17-309(A)(1) and": ["ars.17-309.a"],
+            "within the purview of A.R.S. Sec. 38-1004(A); F": ["ars.38-1004.a"],
+            "A. R.S. § 44 — 1401 prior to": ["ars.44-1401"],
+            "see A.R.S § 12-1501. A": ["ars.12-1501"],
+            "[A.R.S.] § 13-404(A) is": ["ars.13-404.a"],
+        }
+        for text, want in cases.items():
+            self.assertEqual(self.slugs(text), want, text)
+
+    def test_lists_inherit_the_title(self):
+        self.assertEqual(self.slugs("fees under A.R.S. §§ 12-341 and 42-18206. ¶6"),
+                         ["ars.12-341", "ars.42-18206"])
+        self.assertEqual(self.slugs("Arizona Revised Statutes (“A.R.S.”) sections "
+                                    "13-4031 and -4033(A)(1). "),
+                         ["ars.13-4031", "ars.13-4033.a"])
+        self.assertEqual(self.slugs("Arizona Revised Statutes (A.R.S.) §§ 12-120.21(A)(1) "
+                                    "(2016) and -2101 (2016). 5"),
+                         ["ars.12-120.21.a", "ars.12-2101"])
+
+    def test_ranges_and_prose_numbers(self):
+        self.assertEqual(self.slugs("A.R.S. §§ 13-1401 to -1410 define"), [])
+        self.assertEqual(self.slugs("A.R.S. §§ 13-1401 through 13-1410"), [])
+        self.assertEqual(self.slugs("sentenced under A.R.S. § 13-702 to 5 years"),
+                         ["ars.13-702"])
+
+    def test_volume_and_dockets_are_not_statutes(self):
+        for t in ("pursuant to 16 A.R.S., Rules of Civil Procedure, Rule 60(c)4.",
+                  "Procedure, 17A A.R.S. (1985 Supp.), and",
+                  "docket 1 CA-CV 25-0606 filed"):
+            self.assertEqual(self.slugs(t), [], t)
+
+    def test_v1_shapes_unchanged(self):
+        self.assertEqual(self.slugs("A.R.S. § 13-1105(A)(2)"), ["ars.13-1105.a"])
+        self.assertEqual(self.slugs("A.R.S. § 12-341.01(A)."), ["ars.12-341.01.a"])
+
+
 class ArizonaBareStatuteRoutingTests(SimpleTestCase):
     def test_routes_plain_and_marked_numbers(self):
         self.assertEqual(bare_cite_slugs("AZ", "13-1105"), ["ars.13-1105"])
