@@ -100,12 +100,8 @@ stopped partway, which is safe: every driver resumes from a cursor. A
 session that finds them unfinished re-runs from the last cursor in the
 logs or TODO.md.
 
-- **LA rule sweep** (`extract_rules --state LA`). Last cursor about 230173
-  when this was written. Verify: re-extract a 600-opinion sample (0
-  mismatches), 0 duplicate rows. Then restart gunicorn.
-- **AZ statute `--force` re-sweep** with the v2 grammar
-  (`extract_statutes --state AZ --force --min-id N --max-runtime 30`).
-  Before: 115,435 rows. Same verification.
+- ~~LA rule sweep~~ DONE + verified + live (22,411 cites).
+- ~~AZ statute `--force` re-sweep~~ DONE + verified + live (171,653 rows).
 - **Derived-layer catch-up from pk 460000**: statutes for MN/NH/LA,
   citations and holdings for all four.
 - **After the next weekly cron:** confirm `.derive_cursor` moved past 489842
@@ -138,3 +134,7 @@ logs or TODO.md.
   built; found and fixed MN Evid. 1101→110 / 1002→100 truncation (242 wrong
   rows on two public pages) and range-to-first-member in AZ/NH; NH sweep plus
   AZ/MN re-sweeps run this session.
+- 2026-10-16 late: LA rules (22,411) and AZ statute v2 (115,435 -> 171,653)
+  verified and live after restart. One 500 on /rule/la.r.urca.2-12.4/ 21s
+  after boot was errno 2013 (shared-DB drop under catch-up load); 200 on
+  every retry.

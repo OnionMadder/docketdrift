@@ -831,10 +831,11 @@ Remaining, in order:
          Robinson hold 2026 votes**; Thompson's likely belong to Jefferson
          R. Thompson (who reads silent). Vote move -> Onion's approval.
 - [x] **AZ bare STATUTE numbers route — DONE 2026-10-16** (`86c40da`).
-- [ ] **AZ statute v2 grammar re-sweep** (`da67b85`, `1e4e268`): v1 missed a
-      cite in 46% of AZ opinions. Before: 115,435 rows / 20,494 opinions /
-      15,568 slugs. Verify after the `--force` sweep: 0 duplicate rows and
-      a re-extraction sample with 0 mismatches.
+- [x] **AZ statute v2 grammar — SWEPT + LIVE 2026-10-16.** 115,435 ->
+      **171,653 rows (+49%)**; opinions with a statute cite 20,494 ->
+      **24,036** (3,542 opinions were invisible to the statute graph).
+      A.R.S. 12-341 467 -> 919, 13-4033 55 -> 429. 0 mismatches / 600, 0
+      duplicates; the truncation phantom `ars.25-40` is gone.
 - [x] **Weekly cron derived NOTHING but judges — FIXED 2026-10-16**
       (`1af94ca`): newest 200 AZ/LA opinions had 0 statute/citation/
       holding rows. Cron now derives from `.derive_cursor` (seeded 489842);
@@ -845,8 +846,16 @@ Remaining, in order:
 - [ ] ~~**AZ bare STATUTE numbers don't route**~~ (`13-1105` text-searches,
       8.4s). `statutes_az.py` has no `bare_slug_candidates` hook; MN's is
       the template. Pre-existing, found while verifying the rule routing.
-- [ ] **Build `rules_nh.py`** after the 20(2) decision.
-- [ ] **LA rules** -- small; after the Rule IV decision, or skip.
+- [x] **LA rules — BUILT + SWEPT + LIVE 2026-10-16.** 22,411 cites / 15,366
+      opinions; 4,550 notices flagged (2-16.3 1,573; Rule IV Part 2 1,322;
+      clerk delivery certificate 2-16.4 + 4-6 1,653 -- that third one is
+      NOT one of Onion's calls, see AWAY_PLAN "Waiting for Onion"). 0
+      mismatches / 600, 0 duplicates. Top: S. Ct. Rule X § 5 (writ
+      timeliness) 1,961; URCA 2-12.4 (abandoned assignments) 1,767.
+- [x] **NH rules — BUILT + SWEPT + LIVE 2026-10-16.** 8,488 cites / 3,578
+      opinions; Rule 22 rehearing notice never extracted (bare "Rule 22").
+- [x] **MN Evid. 1101/1002 truncation FIXED + re-swept** (242 wrong rows on
+      `minn.r.evid.110` / `.100` -> 0). MN 54,361 -> 54,436.
 
 ---
 
