@@ -160,7 +160,9 @@ def _strip_caption_tail(s: str) -> str:
 # appeals repeat it), which is OUR boundary artifact, not part of the case
 # name. Strip a LEADING docket token only -- parenthesized dockets inside the
 # caption are the court's own text and stay.
-_LEADING_DOCKET_RE = re.compile(r"^[,\s]*A\d{2}-\d{3,4}\b[,\s]*", re.IGNORECASE)
+# Consolidated appeals list SEVERAL companion dockets ("A16-1900 A16-1901
+# A16-1903 ... City of Fairmont v. ..."), so strip the whole leading run.
+_LEADING_DOCKET_RE = re.compile(r"^[,\s]*(?:A\d{2}-\d{3,4}\b[,\s]*)+", re.IGNORECASE)
 
 # "Smith, vs" -- the split found a "vs" but the opposing party never made it
 # into the caption region. That is a FRAGMENT, not a name. Returning it would

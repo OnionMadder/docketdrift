@@ -1291,3 +1291,14 @@ class MinnesotaSupremeCaptionTests(SimpleTestCase):
                 " Respondent.\n________\n")
         # "Unknownname, JJ." is not a justice on the roster -> residue -> "".
         self.assertEqual(_supreme_caption(text, "A20-0001"), "")
+
+    def test_consolidated_docket_run_is_not_the_title(self):
+        from opinions.parsing.mn import _order_caption_name
+        self.assertEqual(
+            _order_caption_name("A16-1900 A16-1901\nA16-1903, A16-1904\nCity of Fairmont, "
+                                "Respondent,\nvs.\nThomas D. Unruh, Appellant."),
+            "City of Fairmont v. Thomas D. Unruh")
+        # a parenthesized docket INSIDE the caption is the court's text and stays
+        self.assertEqual(
+            _order_caption_name("Sarah N. Lewis (A14-0106), Appellant, vs. State, Respondent."),
+            "Sarah N. Lewis (A14-0106) v. State")
