@@ -319,6 +319,41 @@ def detect_circuit(text: str) -> tuple[str | None, str]:
     return div, src
 
 
+# ---------------------------------------------------------------------------
+# Docket-shape fallback (2026-10-25). Reporter-era rows that CourtListener
+# delivers with NO court header (the opinion opens "CLARENCE E. McMANUS,
+# Judge.") defeat every text signal above, so ~1,000 Fourth and Fifth
+# Circuit opinions from 2009-2011 sat on the First Circuit (First Cir 2009:
+# 1,477 rows vs 721 in 2008). The docket NUMBER encodes the circuit in that
+# era: the Fifth writes ``09-CA-123`` (2-digit year), the Fourth writes
+# ``2009-CA-0123`` (4-digit year), the First writes ``2009 CA 0123`` with no
+# hyphens, so a hyphenated docket on the landing court is not a First
+# Circuit docket. Verified 2026-10-25 against the judges named in the text
+# (McManus/Chehardy/Wicker/Dufresne = Fifth; Belsome/Murray = Fourth).
+#
+# Deliberately NOT unconditional:
+#   * Only 2005+: before that the First, Fourth and Fifth all used
+#     ``84-CA-1008``-style numbers and the First Circuit rows there are real.
+#   * Only for rows with NO header/parish/JDC signal -- a text signal wins.
+#   * Only for rows currently on the landing court (the caller checks).
+# ---------------------------------------------------------------------------
+_DOCKET_FIFTH_RE = re.compile(r"^\d{2}-[A-Z]{1,3}-\d+")
+_DOCKET_FOURTH_RE = re.compile(r"^20\d{2}-[A-Z]{1,3}-\d+")
+_DOCKET_SHAPE_FROM_YEAR = 2005
+
+
+def detect_by_docket(case_number: str, release_date) -> str | None:
+    """Return "4" or "5" from a hyphenated docket shape, else None."""
+    if release_date is None or release_date.year < _DOCKET_SHAPE_FROM_YEAR:
+        return None
+    cn = (case_number or "").strip()
+    if _DOCKET_FOURTH_RE.match(cn):
+        return "4"
+    if _DOCKET_FIFTH_RE.match(cn):
+        return "5"
+    return None
+
+
 class Command(BaseCommand):
     help = ("Re-home LA COA opinions from the landing court (First Circuit) "
             "to their real circuit. Dry-run unless --apply.")
@@ -397,13 +432,17 @@ class Command(BaseCommand):
         qs = (
             base_qs
             .annotate(head=Substr("raw_text", 1, 2500))
-            .values("id", "case_number", "court_id", "head")
+            .values("id", "case_number", "court_id", "release_date", "head")
             .iterator(chunk_size=chunk_size)
         )
         cull = False
         for op in qs:
             scanned += 1
             div, src = detect_circuit(op["head"] or "")
+            if div is None and src == "none" and op["court_id"] == landing_id:
+                div = detect_by_docket(op["case_number"], op["release_date"])
+                if div:
+                    src = "docket"
             counts_by_source[src] += 1
 
             if div is None:

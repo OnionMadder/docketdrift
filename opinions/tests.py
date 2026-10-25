@@ -1302,3 +1302,28 @@ class MinnesotaSupremeCaptionTests(SimpleTestCase):
         self.assertEqual(
             _order_caption_name("Sarah N. Lewis (A14-0106), Appellant, vs. State, Respondent."),
             "Sarah N. Lewis (A14-0106) v. State")
+
+
+class LaCircuitDocketShapeTests(SimpleTestCase):
+    """assign_la_circuits docket-shape fallback (2026-10-25)."""
+
+    def test_shapes(self):
+        import datetime
+        from opinions.management.commands.assign_la_circuits import detect_by_docket
+        d = datetime.date
+        self.assertEqual(detect_by_docket("09-CA-1105", d(2010, 6, 29)), "5")
+        self.assertEqual(detect_by_docket("2010-KA-0341", d(2010, 12, 1)), "4")
+        self.assertEqual(detect_by_docket("2001-CA-1586, 2001-CA-1587", d(2009, 1, 1)), "4")
+
+    def test_not_first_second_third_shapes(self):
+        import datetime
+        from opinions.management.commands.assign_la_circuits import detect_by_docket
+        d = datetime.date(2010, 1, 1)
+        for cn in ("2009 CA 1234", "2009CA1234", "44,798-CA", "09-123", "", None):
+            self.assertIsNone(detect_by_docket(cn, d), cn)
+
+    def test_pre_2005_untouched(self):
+        import datetime
+        from opinions.management.commands.assign_la_circuits import detect_by_docket
+        self.assertIsNone(detect_by_docket("84-CA-1008", datetime.date(1984, 11, 20)))
+        self.assertIsNone(detect_by_docket("09-CA-1105", None))
