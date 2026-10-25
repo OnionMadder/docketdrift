@@ -81,9 +81,16 @@ LA_CIRCUIT_RE = re.compile(
     r"\b(FIRST|SECOND|THIRD|FOURTH|FIFTH)\s+CIRCUIT\b", re.IGNORECASE)
 _CIRCUIT_TO_DIV = {"first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5}
 
-# COA nonprecedential marker.
+# COA nonprecedential marker: the court's CAPITALS notice, or the reporter-era
+# header line that follows the court/date ("Third Circuit. March 5, 2008. Not
+# Designated for Publication"). Case-insensitive anywhere, it also matched
+# prose -- "(La.App. 5 Cir. 1999) (not designated for publication)", "in an
+# opinion not designated for publication", "an appendix not designated for
+# publication" -- 23 of 86 mixed-case head matches on PUBLISHED rows
+# (2026-10-24).
 NONPRECEDENTIAL_RE = re.compile(
-    r"NOT\s+DESIGNATED\s+FOR\s+PUBLICATION", re.IGNORECASE)
+    r"NOT\s+DESIGNATED\s+FOR\s+PUBLICATION"
+    r"|(?:Circuit|Appeals?|\d{4})[.,]?\s+Not\s+Designated\s+for\s+Publication")
 
 
 # ---------- Docket numbers ----------------------------------------------

@@ -1228,3 +1228,20 @@ class TextSaysNonprecedentialTests(SimpleTestCase):
             "AZ", self.AZ_COA + "OPINION\n\nJudge Smith delivered the opinion.\n"
                   "A separate memorandum decision filed simultaneously with this "
                   "opinion addresses his other claims.\n"))
+
+    def test_la_header_forms_and_prose(self):
+        from opinions.parsing.la import NONPRECEDENTIAL_RE as rx
+        self.assertTrue(rx.search("NOT DESIGNATED FOR PUBLICATION"))
+        self.assertTrue(rx.search(
+            "Court of Appeal of Louisiana, Third Circuit. March 5, 2008. "
+            "Not Designated for Publication JOHN L. OLIVIER"))
+        self.assertTrue(rx.search(
+            "No. 2007 KA 1447. Court of Appeal of Louisiana, First Circuit.\n"
+            "Not Designated for Publication."))
+        for prose in (
+            "State v. Alo, 05-1001 (La.App. 5 Cir. 01/13/06) (not designated for publication)",
+            "This court, in an opinion not designated for publication, affirmed",
+            "Other issues are discussed in an appendix not designated for publication.",
+            "The facts are attached as Appendix A and are Not Designated for Publication.",
+        ):
+            self.assertIsNone(rx.search(prose), prose)
