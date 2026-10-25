@@ -54,8 +54,14 @@ AZ_COA_RE = re.compile(
 
 # Nonprecedential markers -- a COA memorandum decision (or any "not for
 # publication" notice) is not precedential; a published OPINION is.
+#
+# CASE-SENSITIVE on purpose: the court prints the notice in CAPITALS, while a
+# PUBLISHED opinion routinely says "we address the remaining issues in a
+# separate memorandum decision" or cites "(memorandum decision filed ...)".
+# Case-insensitive, that prose marked published opinions nonprecedential: 38 of
+# 44 head matches on stored AZ rows were such false positives (2026-10-24).
 NONPRECEDENTIAL_RE = re.compile(
-    r"MEMORANDUM\s+DECISION|NOT\s+FOR\s+PUBLICATION", re.IGNORECASE)
+    r"MEMORANDUM\s+DECISION|NOT\s+FOR\s+PUBLICATION")
 
 
 # ---------- Docket numbers ----------------------------------------------

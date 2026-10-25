@@ -1213,3 +1213,18 @@ class TextSaysNonprecedentialTests(SimpleTestCase):
     def test_empty_and_unknown_state(self):
         self.assertFalse(self.says("MN", ""))
         self.assertFalse(self.says("ZZ", "This opinion is nonprecedential."))
+
+    AZ_COA = ("IN THE\nARIZONA COURT OF APPEALS\nDIVISION ONE\n\nSTATE OF ARIZONA, "
+              "Appellee,\n\nv.\n\nJOHN DOE, Appellant.\n\nNo. 1 CA-CR 19-0527\n"
+              "FILED 6-2-2020\n\n")
+
+    def test_az_capital_notice(self):
+        self.assertTrue(self.says(
+            "AZ", "NOTICE: NOT FOR OFFICIAL PUBLICATION.\n" + self.AZ_COA
+                  + "MEMORANDUM DECISION\n\nJudge Kent E. Cattani delivered the decision.\n"))
+
+    def test_az_published_mentioning_memorandum_decision(self):
+        self.assertFalse(self.says(
+            "AZ", self.AZ_COA + "OPINION\n\nJudge Smith delivered the opinion.\n"
+                  "A separate memorandum decision filed simultaneously with this "
+                  "opinion addresses his other claims.\n"))
