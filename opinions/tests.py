@@ -1177,3 +1177,39 @@ class MinnesotaUnpublishedHeaderTests(SimpleTestCase):
             _order_caption_name("Town of White Bear, Respondent, vs. Scott "
                                 "Stoddard, et al., Respondents Below,"),
             "Town of White Bear v. Scott Stoddard, et al.")
+
+
+class TextSaysNonprecedentialTests(SimpleTestCase):
+    """The court's own notice overrides CourtListener's precedential_status,
+    which reports MN unpublished opinions as "Published" (2026-10-24)."""
+
+    def says(self, state, text):
+        from opinions.parsing import text_says_nonprecedential
+        return text_says_nonprecedential(state, text)
+
+    MN_HEAD = ("STATE OF MINNESOTA\nIN COURT OF APPEALS\nA25-0112\n\n"
+               "Jane Doe, Appellant,\n\nvs.\n\nState of Minnesota, Respondent.\n\n"
+               "Filed June 2, 2025\nAffirmed\nSmith, Judge\n")
+
+    def test_mn_modern_notice(self):
+        self.assertTrue(self.says(
+            "MN", "This opinion is nonprecedential except as provided by\n"
+                  "Minn. R. Civ. App. P. 136.01, subd. 1(c).\n\n" + self.MN_HEAD))
+
+    def test_mn_old_notice(self):
+        self.assertTrue(self.says(
+            "MN", "This opinion will be unpublished and\nmay not be cited except "
+                  "as provided by\nMinn. Stat. § 480A.08, subd. 3 (2016).\n\n"
+                  + self.MN_HEAD))
+
+    def test_mn_published_is_not_flipped(self):
+        self.assertFalse(self.says("MN", self.MN_HEAD + "We affirm.\n"))
+
+    def test_notice_quoted_deep_in_body_is_ignored(self):
+        body = self.MN_HEAD + ("x " * 2000) + (
+            "\nThe order stated: This opinion is nonprecedential.\n")
+        self.assertFalse(self.says("MN", body))
+
+    def test_empty_and_unknown_state(self):
+        self.assertFalse(self.says("MN", ""))
+        self.assertFalse(self.says("ZZ", "This opinion is nonprecedential."))

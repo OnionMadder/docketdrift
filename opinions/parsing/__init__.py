@@ -48,4 +48,26 @@ def parse(state_code: str | None, raw_text: str) -> ParsedOpinion | None:
     return parser.parse(raw_text)
 
 
-__all__ = ["ParsedOpinion", "StateParser", "REGISTRY", "parse"]
+# The court prints its publication notice at the top of the document.
+NONPRECEDENTIAL_HEAD_CHARS = 3000
+
+
+def text_says_nonprecedential(state_code: str | None, raw_text: str) -> bool:
+    """True when the opinion's OWN header marks it nonprecedential.
+
+    Loaders must let this override CourtListener's ``precedential_status``:
+    CL reports MN unpublished opinions as "Published" (verified on the
+    live API 2026-10-24 for A25-0112, A24-1781, A24-1325), which left
+    ~190 of them flagged precedential. Only the HEAD is parsed, so a body
+    quoting the notice can't flip a published opinion, and each state
+    parser's own guards apply (AZ: COA only). Never returns True from
+    silence; absence of the notice is not evidence either way.
+    """
+    if not raw_text:
+        return False
+    result = parse(state_code, raw_text[:NONPRECEDENTIAL_HEAD_CHARS])
+    return bool(result is not None and result.is_precedential is False)
+
+
+__all__ = ["ParsedOpinion", "StateParser", "REGISTRY", "parse",
+           "text_says_nonprecedential"]

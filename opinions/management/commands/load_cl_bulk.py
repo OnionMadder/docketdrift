@@ -41,6 +41,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils.text import slugify
 
 from opinions.models import Court, Judge, Opinion, PanelVote, State
+from opinions.parsing import text_says_nonprecedential
 
 # CL bulk fields use backslash escape; raise the field-size cap for big plain_text bodies
 csv.field_size_limit(sys.maxsize)
@@ -552,6 +553,10 @@ class Command(BaseCommand):
         best_priority: dict[str, int] = {}
         pending_updates: list[Opinion] = []
         updated = scanned = 0
+        # pks whose CURRENTLY-chosen text carries the court's nonprecedential
+        # notice. Phase 2a took CL's precedential_status, which reports MN
+        # unpublished opinions as "Published"; the court's text wins.
+        nonprec_pks: set[int] = set()
 
         reader, fh = _open_csv(subset / "opinions.csv")
         try:
@@ -580,6 +585,10 @@ class Command(BaseCommand):
                 if dry_run:
                     continue
 
+                if text_says_nonprecedential(state.code, text):
+                    nonprec_pks.add(pk)
+                else:
+                    nonprec_pks.discard(pk)
                 pending_updates.append(
                     Opinion(pk=pk, raw_text=text[:5_000_000])
                 )
@@ -602,6 +611,14 @@ class Command(BaseCommand):
         if pending_updates and not dry_run:
             Opinion.objects.bulk_update(pending_updates, ["raw_text"])
             updated += len(pending_updates)
+
+        # One direction only: True -> False, on text evidence.
+        nonprec = sorted(nonprec_pks)
+        for i in range(0, len(nonprec), 500):
+            Opinion.objects.filter(pk__in=nonprec[i:i + 500],
+                                   is_precedential=True).update(is_precedential=False)
+        if nonprec:
+            self.stdout.write(f"  marked nonprecedential from text: {len(nonprec):,}")
 
         tag = " (stopped early on --max-runtime)" if stopped_early else ""
         self.stdout.write(self.style.SUCCESS(

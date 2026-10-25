@@ -26,6 +26,7 @@ from django.utils.dateparse import parse_date
 
 from opinions.courtlistener import CourtListenerClient, CourtListenerError
 from opinions.models import Court, Opinion
+from opinions.parsing import text_says_nonprecedential
 from opinions.utils import normalize_docket_number
 
 
@@ -269,7 +270,16 @@ class Command(BaseCommand):
                                 release_date=parsed_date,
                                 defaults={
                                     "title": case_name,
-                                    "is_precedential": precedential_status == "published",
+                                    # CL's status loses to the court's
+                                    # own notice: CL reports MN unpublished
+                                    # opinions as "Published", and the
+                                    # save hook skips already-parsed text,
+                                    # so an update would otherwise reset
+                                    # a corrected False back to True.
+                                    "is_precedential": (
+                                        precedential_status == "published"
+                                        and not text_says_nonprecedential(
+                                            court.state_id, raw_text)),
                                     "raw_text": raw_text,
                                     "source_url": absolute_url,
                                     "courtlistener_id": str(cluster_id),

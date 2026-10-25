@@ -15,8 +15,9 @@ SAFETY
 * Dry-run by default; ``--apply`` to commit.
 * ONE direction only: True -> False. Absence of the marker is weak evidence
   (the field defaults to True), so this never promotes anything.
-* Text evidence only, read from the HEAD of the opinion (first 3,000 chars),
-  where the court prints the notice -- a body quoting the phrase can't flip it.
+* Text evidence only: the state parser over the HEAD of the opinion
+  (``text_says_nonprecedential``, first 3,000 chars), so a body quoting the
+  notice can't flip it and each parser's own guards apply (AZ: COA only).
 * Cull-safe: ``--max-runtime`` + the shared ``resume with:  --min-id N``
   trailer (DOUBLE space).
 
@@ -27,15 +28,15 @@ Usage::
 """
 from __future__ import annotations
 
-import importlib
 import time
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connection
 
 from opinions.models import Court, Opinion
+from opinions.parsing import (
+    NONPRECEDENTIAL_HEAD_CHARS as HEAD_CHARS, REGISTRY, text_says_nonprecedential)
 
-HEAD_CHARS = 3000
 SCAN = 1000
 
 
@@ -50,11 +51,8 @@ class Command(BaseCommand):
 
     def handle(self, *args, state, apply, min_id, max_runtime, **options):
         code = state.upper()
-        try:
-            rx = importlib.import_module(
-                "opinions.parsing.%s" % code.lower()).NONPRECEDENTIAL_RE
-        except (ImportError, AttributeError):
-            raise CommandError("no NONPRECEDENTIAL_RE for state %s" % code)
+        if code not in REGISTRY:
+            raise CommandError("no parser registered for state %s" % code)
 
         if connection.vendor == "mysql":
             with connection.cursor() as cur:
@@ -90,7 +88,7 @@ class Command(BaseCommand):
             for pk, docket, head in rows:
                 scanned += 1
                 last_pk = pk
-                if head and rx.search(head):
+                if text_says_nonprecedential(code, head or ""):
                     hits.append(pk)
                     if len(examples) < 10:
                         examples.append(docket)
