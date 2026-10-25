@@ -84,9 +84,16 @@ ORDER_HDR_RE = re.compile(
 # role: stripping only ", Respondent" left a stray "Below" glued to the party
 # name ("Eric Joseph Vacko Below, Brittany Ann Vacko") on 38 MN titles,
 # found via a removal request 2026-10-24.
+# pypdf sometimes splits a role word once ("Appella nts"), so one optional
+# space is allowed between letters.
+def _split_tolerant(word: str) -> str:
+    return " ?".join(re.escape(ch) for ch in word)
+
+
 _CAPTION_ROLE_RE = re.compile(
-    r",\s*(?:Respondents?|Appellants?|Petitioners?|Relators?|"
-    r"Cross-Appellants?|Cross-Respondents?|Plaintiffs?|Defendants?)"
+    r",\s*(?:" + "|".join(_split_tolerant(w) + "s?" for w in (
+        "Respondent", "Appellant", "Petitioner", "Relator", "Cross-Appellant",
+        "Cross-Respondent", "Plaintiff", "Defendant")) + r")"
     r"(?:\s+Below)?\b\.?",
     re.IGNORECASE)
 
@@ -135,14 +142,15 @@ def _looks_like_judge_block(par: str) -> bool:
 # misquote, however small.
 _ABBREV_TAIL_RE = re.compile(
     r"(?:[A-Za-z]\.(?:[A-Za-z]\.)+"          # P.C., L.L.C., U.S.A.
+    r"|(?<![A-Za-z])[A-Z]\."                 # an initial: "T. G. G."
     r"|\b(?:Inc|Corp|Co|Ltd|LLC|LLP|PLLC|PA|Assn|Bros|Jr|Sr|No|al)\.)$",
     re.IGNORECASE,
 )
 
 
 def _strip_caption_tail(s: str) -> str:
-    """Trim a caption fragment's trailing punctuation, sparing abbreviations."""
-    s = s.strip().rstrip(",").strip()
+    """Trim a caption fragment's punctuation, sparing abbreviations."""
+    s = s.strip().strip(",").strip()
     if s.endswith(".") and not _ABBREV_TAIL_RE.search(s):
         s = s[:-1].strip().rstrip(",").strip()
     return s
@@ -179,6 +187,171 @@ def _order_caption_name(caption: str) -> str:
         if left and right:
             return f"{left} v. {right}"
     return _strip_caption_tail(_CAPTION_ROLE_RE.sub("", flat))
+
+
+# ---------- Supreme Court two-column caption -----------------------------
+#
+# A Supreme opinion prints its caption in a LEFT column while the right column
+# carries the author, separate writings, "Filed: <date>" and "Office of
+# Appellate Courts" -- interleaved line by line:
+#
+#     A15-2052
+#     Court of Appeals                                Hudson, J.
+#                              Dissenting, Gildea, C.J., and Anderson, J.
+#     Joseph W. Frederick,
+#                    Appellant,
+#     vs.                                  Filed:  February 7, 2018
+#                                          Office of Appellate Courts
+#     Kay L. Wallerich, et al.,
+#                    Respondents.
+#     ________________________
+#
+# The regular path ends the caption at "Filed", which sits MID-caption here, so
+# ~330 Supreme PDFs (2017-2026) were titled "State of Minnesota,", "Tyrone
+# James White, Appellant, vs.", a companion docket, or nothing (73). Read to
+# the rule line instead and strip the right column.
+_SUP_RULE_RE = re.compile(r"^\s*_{5,}\s*$", re.MULTILINE)
+_SUP_STOP_RE = re.compile(
+    r"S\s*Y\s*L\s*L\s*A\s*B\s*U\s*S|\bfor\s+(?:appellant|respondent|relator|petitioner)s?\b",
+    re.IGNORECASE)
+_COUNSEL_PARA_RE = re.compile(
+    r",\s*(?:Minnesota|MN|Wisconsin|Iowa|D\.\s*C\.)\s*(?:;|,\s*for\b)"
+    r"|\bfor\s+(?:appellant|respondent|relator|petitioner|amic)",
+    re.IGNORECASE)
+_SUP_RIGHT_COL_RES = (
+    re.compile(r"Filed:?\s+[A-Za-z\.]+\s+\d{1,2},?\s+\d{4}"),
+    re.compile(r"Office\s+o\s?f\s+(?:the\s+)?Appellate\s+Courts", re.IGNORECASE),
+    re.compile(r"\bPer\s+Curiam\b"),
+)
+# A separate-writing credit: "Dissenting, Gildea, C.J., and Anderson, J." /
+# "Took no part, Stras, J." / "Concurring in part, dissenting in part,". The
+# credited judges FOLLOW the label (and may wrap to the next line), and the
+# left-column party, if any, comes BEFORE it -- so a line keeps only the text
+# ahead of the label.
+_SUP_LABEL_RE = re.compile(
+    r"\b(?:Concurring|Dissenting|Took\s+no\s+part)\b", re.IGNORECASE)
+# Anything of the right column that survived means the layout was not what
+# this reader expects. Returning "" leaves the stored title alone, rather than
+# swapping one wrong title for another.
+_SUP_RESIDUE_RE = re.compile(
+    r"Concurring|Dissenting|Took\s+no\s+part|Office\s+o\s?f\s+(?:the\s+)?Appellate"
+    # (checked AFTER tail trimming, so "J." / "JJ." may have lost the period)
+    r"|Court\s+o\s?f\s+A\s?ppeals\s+[A-Z][a-z]+,|,\s*(?:C\.\s*)?J\.?(?=,|\s+v\.|\s|$)|\bJJ\b",
+    re.IGNORECASE)
+# Separate-writing credits WRAP onto the party's line ("Dissenting, McKeig," /
+# "State of Minnesota, Chutich, and Thissen, JJ."), where "Minnesota," and
+# "Chutich," are textually alike. The court's bench is a small closed set, so
+# strip a trailing run of JUSTICE surnames -- only when it ends in a judicial
+# title, so a party named "Anderson," is never touched.
+_MN_JUSTICES = (
+    "Gildea", "Anderson", "Hudson", "Lillehaug", "Chutich", "Thissen", "McKeig",
+    "Moore", "Hennesy", "Procaccini", "Gaïtas", "Gaitas", "Stras", "Wright",
+    "Dietzen", "Page", "Meyer", "Magnuson", "Blatz", "Hanson", "Gilbert",
+    "Stringer", "Lancaster", "Tomljanovich", "Keith", "Coyne", "Simonett",
+    "Kelley", "Yetka", "Wahl", "Popovich",
+)
+_JUSTICE_NAME = (r"(?:" + "|".join(_MN_JUSTICES) + r")(?:,\s*(?:III|II|Jr\.?))?")
+_SUP_TRAILING_JUDGE_RE = re.compile(
+    r"(?:(?:^|,?\s+)(?:and\s+)?" + _JUSTICE_NAME + r")+,?\s*"
+    r"(?:C\.\s*J\.?|J\.|JJ\.),?\s*$")
+# ...and a credit at the START of a line ("Anderson, J, Barbara Henry/...").
+_SUP_LEADING_JUDGE_RE = re.compile(
+    r"^\s*(?:(?:and\s+)?" + _JUSTICE_NAME + r",?\s*)+(?:C\.\s*J\.?|JJ\.?|J\.?)(?=[,\s]|$)[,\s]*")
+_COUNTY_LABEL = r"(?:St\.\s+)?[A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)?\s+County"
+_BELOW_LABEL = (r"(?:Court\s+o\s?f\s+A\s?ppeals|Tax\s+Court|Workers.{0,3}\s+Compensation"
+                r"(?:\s+Court\s+of\s+Appeals)?|Original\s+Jurisdiction(?:\s+Per\s+Curiam)?"
+                r"|Per\s+Curiam)")
+_SUP_LABEL_CREDIT_LINE_RE = re.compile(
+    r"^\s*(?:" + _BELOW_LABEL + r"|" + _COUNTY_LABEL + r")\b"
+    r".*,\s*(?:C\.\s*J\.?|J\.|JJ\.),?\s*$")
+_SUP_BARE_ROLE_RE = re.compile(
+    r"([^\s,])\s+((?:Cross-)?(?:Appellants?|Respondents?|Relators?|Petitioners?)[.,])")
+# Lower-court labels no party is ever named.
+_SUP_BELOW_LABEL_RE = re.compile(r"^\s*" + _BELOW_LABEL + r"[\s,]*$")
+# A county label can ALSO be a party ("Mower County,"), so it is dropped only
+# before the first party line.
+_SUP_COUNTY_LABEL_RE = re.compile(r"^\s*" + _COUNTY_LABEL + r"[\s,]*$")
+_DOCKET_LINE_RE = re.compile(r"^\s*(?:A|ADM)\d{2}-\d{3,4}\s*$")
+# pypdf letter-spacing: "A p p e l l a n t s ," -> "Appellants,"
+_LETTER_SPACED_RE = re.compile(r"\b(?:[A-Za-z] ){3,}[A-Za-z]\b")
+
+
+def _unspace_letters(s: str) -> str:
+    return _LETTER_SPACED_RE.sub(lambda m: m.group(0).replace(" ", ""), s)
+
+
+def _supreme_caption(raw_text: str, case_number: str) -> str:
+    """Case name from a Supreme opinion's two-column caption, or ""."""
+    start = raw_text.find(case_number)
+    if start < 0:
+        return ""
+    region = raw_text[start + len(case_number):start + len(case_number) + 3000]
+    m_end = _SUP_RULE_RE.search(region)
+    if m_end:
+        end = m_end.start()
+    else:
+        # No rule line: stop at the counsel block, cut back to the blank line
+        # before it -- otherwise the lawyers' names join the caption.
+        m_stop = _SUP_STOP_RE.search(region)
+        if not m_stop:
+            return ""
+        end = m_stop.start()
+        # Counsel can run several paragraphs ("..., Minnesota; and"): end at
+        # the FIRST paragraph that reads like counsel.
+        pos = 0
+        for gap in re.finditer(r"\n[ \t\xa0]*\n", region[:m_stop.start()]):
+            para = region[pos:gap.start()]
+            if pos and _COUNSEL_PARA_RE.search(para):
+                end = pos
+                break
+            pos = gap.end()
+        else:
+            if pos and _COUNSEL_PARA_RE.search(region[pos:m_stop.end()]):
+                end = pos
+    lines = []
+    for line in region[:end].splitlines():
+        line = _unspace_letters(line)
+        # pypdf's space-before-punctuation ("McKeig , J .") would hide the
+        # judge credit from every pattern below.
+        line = re.sub(r"\s+([,.])", r"\1", line)
+        for rx in _SUP_RIGHT_COL_RES:
+            line = rx.sub(" ", line)
+        if _SUP_LABEL_CREDIT_LINE_RE.match(line):
+            continue
+        m_label = _SUP_LABEL_RE.search(line)
+        if m_label:
+            line = line[:m_label.start()]
+        # The author shares a line with the left-column party ("State of
+        # Minnesota,      McKeig, J."): strip the credit, keep the party.
+        prev = None
+        while prev != line:
+            prev = line
+            # Keep the comma that separated the party from the credit.
+            line = _SUP_TRAILING_JUDGE_RE.sub(",", line)
+        line = _SUP_LEADING_JUDGE_RE.sub("", line)
+        if _DOCKET_LINE_RE.match(line) or _SUP_BELOW_LABEL_RE.match(line):
+            continue
+        if not lines and _SUP_COUNTY_LABEL_RE.match(line):
+            continue
+        line = " ".join(line.split()).strip()
+        if line.strip(" ,"):
+            lines.append(line)
+    joined = re.sub(r",(?:\s*,)+", ",", " ".join(lines))
+    # A role that lost its comma ("City of Circle Pines / Appellant,") --
+    # checked on the joined text, since the role sits on its own line.
+    joined = _SUP_BARE_ROLE_RE.sub(r"\1, \2", joined)
+    name = _order_caption_name(joined)
+    # Only a recognizable caption -- an empty or one-sided result means the
+    # layout was not what this reader expects; the caller falls back.
+    if not re.search(r"\sv\.\s|^In\s+(?:re|the)\b", name, re.IGNORECASE):
+        return ""
+    if _SUP_RESIDUE_RE.search(name) or not re.match(r"[A-Z0-9]", name):
+        return ""
+    # A side that is only a role word ("Respondent v. Omar Nur Hassan") means
+    # the party's line was lost.
+    if re.match(r"(?:Respondents?|Appellants?|Relators?|Petitioners?)\b", name):
+        return ""
+    return name if 4 <= len(name) <= 400 else ""
 
 
 # Footer marker that flips is_precedential to False. Regular opinions say "This
@@ -329,7 +502,13 @@ class MinnesotaParser(StateParser):
         # (regular opinions) or the "ORDER OPINION" header (order opinions).
         m_hdr = None if m_filed else ORDER_OPINION_HDR_RE.search(raw_text)
         boundary = m_filed.start() if m_filed else (m_hdr.start() if m_hdr else None)
-        if result.case_number and boundary is not None:
+        if result.case_number and re.search(
+                r"IN\s+SUPREME\s+COURT", raw_text[:1500], re.IGNORECASE):
+            name = _supreme_caption(raw_text, result.case_number)
+            if name:
+                result.case_name = name
+                result.confidence["case_name"] = 0.75
+        if result.case_number and boundary is not None and not result.case_name:
             after_num_idx = raw_text.find(result.case_number)
             if after_num_idx >= 0:
                 between = raw_text[after_num_idx + len(result.case_number):boundary]

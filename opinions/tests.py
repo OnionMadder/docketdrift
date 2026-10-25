@@ -1245,3 +1245,49 @@ class TextSaysNonprecedentialTests(SimpleTestCase):
             "The facts are attached as Appendix A and are Not Designated for Publication.",
         ):
             self.assertIsNone(rx.search(prose), prose)
+
+
+class MinnesotaSupremeCaptionTests(SimpleTestCase):
+    """The Supreme Court prints a TWO-COLUMN caption: author, separate
+    writings, "Filed:" and "Office of Appellate Courts" interleave with the
+    parties. ~330 Supreme PDFs were titled "State of Minnesota," or nothing
+    (2026-10-24). Fixtures are the real headers of the listed opinions."""
+
+    EXPECTED = {
+        # credit wraps onto the party line: "State of Minnesota, Chutich, and Thissen, JJ."
+        "A20-0366": "State of Minnesota v. Edgar Galvan-Contreras",
+        "A19-0889": "Enterprise Leasing Co. of Minnesota v. County of Hennepin",
+        # role with no comma on the party line
+        "A20-1637": "City of Circle Pines v. County of Anoka",
+        # no rule line: counsel must not join the caption
+        "A21-1549": "In re the Marriage of: Allison Catherine Buckner v. "
+                    "Bernard Joseph Robichaud, Jr.",
+        # justice credit at the START of a line, missing period ("Anderson, J,")
+        "A21-0004": "Barbara Henry/Cross-Appellant v. Independent School District "
+                    "#625, a/k/a Saint Paul Public Schools/Cross-Respondent",
+    }
+
+    def test_real_headers(self):
+        import json, pathlib
+        from opinions.parsing.mn import MinnesotaParser
+        heads = json.loads((pathlib.Path(__file__).parent
+                            / "test_data_mn_supreme_captions.json").read_text("utf-8"))
+        for docket, want in self.EXPECTED.items():
+            self.assertEqual(MinnesotaParser().parse(heads[docket]).case_name, want, docket)
+
+    def test_party_named_like_a_justice_is_kept(self):
+        from opinions.parsing.mn import _supreme_caption
+        text = ("STATE OF MINNESOTA\nIN SUPREME COURT\nA18-1491\n\n"
+                "Court of Appeals   Hudson, J.\n\nState of Minnesota,\n\n Respondent,\n\n"
+                "vs.   Filed:  June 3, 2020\n Office of Appellate Courts\n"
+                "Steven Jeffrey Anderson,\n\n Appellant.\n________________________\n")
+        self.assertEqual(_supreme_caption(text, "A18-1491"),
+                         "State of Minnesota v. Steven Jeffrey Anderson")
+
+    def test_leftover_right_column_returns_nothing(self):
+        from opinions.parsing.mn import _supreme_caption
+        text = ("A20-0001\n\nCourt of Appeals   Smith, J.\nDissenting, Jones,\n"
+                "Party One, Unknownname, JJ.\n\n Appellant,\n\nvs.\n\nParty Two,\n\n"
+                " Respondent.\n________\n")
+        # "Unknownname, JJ." is not a justice on the roster -> residue -> "".
+        self.assertEqual(_supreme_caption(text, "A20-0001"), "")
