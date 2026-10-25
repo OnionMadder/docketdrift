@@ -226,6 +226,51 @@ in indexed JSON-LD) was reverted — extractive holdings = "no generated text",
 the strong original posture, is correct. Migrations 0026 (holdings) + 0027
 (clustering) are on main and applied on prod.
 
+## 2026-10-24 — a removal request → 4,511 precedential flags + 1,415 MN titles
+
+Eric Vacko's de-index request on A16-2084 (declined; see `RemovalRequest`)
+put eyes on a page nobody had reason to read. Its title said "Vacko Below,"
+and it was marked precedential. Both were systemic:
+
+- **Precedential flags (`backfill_nonprecedential`, new; True→False only, on
+  header text).** MN 4,303: the parser only knew "is nonprecedential", not the
+  pre-2020 "will be unpublished and may not be cited", AND **CourtListener
+  reports MN unpublished opinions as "Published"** (live API, verified). Both
+  loaders now let `parsing.text_says_nonprecedential()` beat CL's status. AZ
+  and LA notices were case-insensitive and matched PROSE ("a separate
+  memorandum decision", "(not designated for publication)"): 38/44 AZ and
+  23/86 LA head matches were published opinions. Now CAPITALS / header-line
+  only. Applied: AZ 6, LA 202.
+- **MN Supreme two-column caption** (`_supreme_caption`): author, separate
+  writings, "Filed:" and "Office of Appellate Courts" interleave with the
+  parties, and the regular path ended the caption at "Filed" MID-caption.
+  Credits wrap onto party lines ("State of Minnesota, Chutich, and Thissen,
+  JJ."), so justices are stripped from a closed roster (`_MN_JUSTICES`) only
+  when the run ends in a title; a residue gate returns "" rather than a
+  different wrong title. **Add new justices to `_MN_JUSTICES`.** Evaluated on
+  all 366 Supreme PDF headers, every changed title read by hand.
+- Also: "Respondent Below" is one role; "et al." keeps its period;
+  consolidated captions lose their whole leading docket run.
+
+**How it was found, generalized** (do these again, per state): (#3) profile
+every field by court × year and flag 30-point year-over-year cliffs; (#4)
+rank title residue -- last tokens, tokens before commas, role words, odd
+punctuation shapes. MN took 8 minutes read-only and found all of the title
+classes. AZ/NH/LA profiles are NOT yet run. Scripts: `profile_state.py`,
+`cap_samples.py` in `/home/tmp/`.
+
+**Still open:** 13 one-off MN titles (3 empty, 5 half-captions, 3
+docket-only, 1 listing, 1 raw); MN case_number "A13-2176, A14-167,
+A14-245" (a LIST as the URL key); an LA opinion whose case_number is
+"NOT DESIGNATED FOR PUBLICATION"; MN Supreme 1998-2004 has 13-19% of rows
+under 500 chars (unread).
+
+**Traps met:** a Python heredoc through Bash turned `\b` into a literal
+BACKSPACE (`^H`) in a repair script -- the pattern silently matched
+nothing (CLAUDE.md already warns about `\\`; it applies to `\b` too). Use
+the Edit tool or `cat -v` the file. And `sed -i` with regex-escaped
+patterns on Windows silently no-ops -- grep the result.
+
 ## 2026-10-05 — scraper starvation, AZ roster for the court, official portraits
 
 ### ★ DO NOT run `precompute_explore_tags` right after a restart while a scraper is on the site
