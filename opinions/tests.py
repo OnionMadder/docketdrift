@@ -1170,3 +1170,10 @@ class MinnesotaUnpublishedHeaderTests(SimpleTestCase):
         from opinions.parsing.mn import _looks_like_role_label
         self.assertTrue(_looks_like_role_label("Respondents Below,"))
         self.assertFalse(_looks_like_role_label("Below Construction, Inc.,"))
+
+    def test_et_al_keeps_its_period(self):
+        from opinions.parsing.mn import _order_caption_name
+        self.assertEqual(
+            _order_caption_name("Town of White Bear, Respondent, vs. Scott "
+                                "Stoddard, et al., Respondents Below,"),
+            "Town of White Bear v. Scott Stoddard, et al.")

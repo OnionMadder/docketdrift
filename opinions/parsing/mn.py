@@ -135,7 +135,7 @@ def _looks_like_judge_block(par: str) -> bool:
 # misquote, however small.
 _ABBREV_TAIL_RE = re.compile(
     r"(?:[A-Za-z]\.(?:[A-Za-z]\.)+"          # P.C., L.L.C., U.S.A.
-    r"|\b(?:Inc|Corp|Co|Ltd|LLC|LLP|PLLC|PA|Assn|Bros|Jr|Sr|No)\.)$",
+    r"|\b(?:Inc|Corp|Co|Ltd|LLC|LLP|PLLC|PA|Assn|Bros|Jr|Sr|No|al)\.)$",
     re.IGNORECASE,
 )
 
