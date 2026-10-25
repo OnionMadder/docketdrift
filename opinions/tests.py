@@ -1125,3 +1125,48 @@ class InTextCiteLinkTests(SimpleTestCase):
         from opinions.templatetags.opinion_text import _normalize_cite
         self.assertEqual(_normalize_cite("639 So.2d 730"), _normalize_cite("639 So. 2d\n730"))
         self.assertNotEqual(_normalize_cite("39 So. 2d 730"), _normalize_cite("39 So. 2d 73"))
+
+
+class MinnesotaUnpublishedHeaderTests(SimpleTestCase):
+    """Pre-2020 unpublished MN opinions say "will be unpublished and may not
+    be cited", not "is nonprecedential". Missing that wording defaulted 4,072
+    archive-backfill opinions to precedential=True (2026-10-24)."""
+
+    OLD = (
+        " \n \nThis opinion will be unpublished and \nmay not be cited except as "
+        "provided by \nMinn. Stat. § 480A.08, subd. 3 (2016). \n \nSTATE OF "
+        "MINNESOTA \nIN COURT OF APPEALS \nA16-2084 \n \nPakou Lee-Barrios and "
+        "o/b/o Minor Child, petitioner, \nRespondent, \n \nvs. \n \nEric Joseph "
+        "Vacko, \nRespondent Below, \n \nBrittany Ann Vacko, \nAppellant. \n \n"
+        "Filed October 30, 2017  \nAffirmed \nKirk, Judge \n"
+    )
+
+    def parse(self, text):
+        from opinions.parsing.mn import MinnesotaParser
+        return MinnesotaParser().parse(text)
+
+    def test_old_unpublished_header_is_nonprecedential(self):
+        self.assertFalse(self.parse(self.OLD).is_precedential)
+
+    def test_new_footer_still_nonprecedential(self):
+        text = self.OLD.replace(
+            "This opinion will be unpublished and \nmay not be cited",
+            "This opinion is nonprecedential")
+        self.assertFalse(self.parse(text).is_precedential)
+
+    def test_published_stays_precedential(self):
+        text = self.OLD.replace(
+            "This opinion will be unpublished and \nmay not be cited except as "
+            "provided by \nMinn. Stat. § 480A.08, subd. 3 (2016). \n", "")
+        self.assertTrue(self.parse(text).is_precedential)
+
+    def test_respondent_below_is_one_role(self):
+        self.assertEqual(
+            self.parse(self.OLD).case_name,
+            "Pakou Lee-Barrios and o/b/o Minor Child v. "
+            "Eric Joseph Vacko, Brittany Ann Vacko")
+
+    def test_role_only_block_with_below(self):
+        from opinions.parsing.mn import _looks_like_role_label
+        self.assertTrue(_looks_like_role_label("Respondents Below,"))
+        self.assertFalse(_looks_like_role_label("Below Construction, Inc.,"))

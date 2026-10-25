@@ -80,9 +80,14 @@ ORDER_HDR_RE = re.compile(
 
 # Party-role words trailing each side of an order caption ("<Name>, Respondent,
 # vs. <Name>, Appellant.") -- stripped to leave just the party names.
+# "Respondent(s) Below" (a party below who is not a party to the appeal) is ONE
+# role: stripping only ", Respondent" left a stray "Below" glued to the party
+# name ("Eric Joseph Vacko Below, Brittany Ann Vacko") on 38 MN titles,
+# found via a removal request 2026-10-24.
 _CAPTION_ROLE_RE = re.compile(
     r",\s*(?:Respondents?|Appellants?|Petitioners?|Relators?|"
-    r"Cross-Appellants?|Cross-Respondents?|Plaintiffs?|Defendants?)\b\.?",
+    r"Cross-Appellants?|Cross-Respondents?|Plaintiffs?|Defendants?)"
+    r"(?:\s+Below)?\b\.?",
     re.IGNORECASE)
 
 
@@ -96,7 +101,7 @@ _JUDGE_BLOCK_RE = re.compile(
 _ROLE_ONLY_RE = re.compile(
     r"^\s*(?:appellants?|respondents?|petitioners?|relators?|"
     r"cross-appellants?|cross-respondents?|appellants?/cross-respondents?|"
-    r"respondents?/cross-appellants?|et\s+al\.?)\s*[,.]?\s*$",
+    r"respondents?/cross-appellants?|et\s+al\.?)(?:\s+below)?\s*[,.]?\s*$",
     re.IGNORECASE,
 )
 
@@ -180,9 +185,16 @@ def _order_caption_name(caption: str) -> str:
 # opinion ... is nonprecedential"; order opinions say "this order opinion is
 # nonprecedential" OR just "this order is nonprecedential" (per Minn. R. Civ.
 # App. P. 136.01, subd. 1(c)).
+#
+# BEFORE that wording, unpublished opinions opened "This opinion will be
+# unpublished and may not be cited except as provided by Minn. Stat.
+# § 480A.08, subd. 3." Matching only the newer "is nonprecedential" form
+# defaulted every older unpublished PDF to precedential=True: 4,072 MN
+# opinions from the 2017-2020 archive backfill (measured 2026-10-24).
 NONPRECEDENTIAL_RE = re.compile(
     r"This\s+(?:order(?:\s+opinion)?|opinion)\s+"
-    r"(?:will\s+be\s+unpublished\s+and\s+)?is\s+nonprecedential",
+    r"(?:(?:will\s+be\s+unpublished\s+and\s+)?is\s+nonprecedential"
+    r"|will\s+be\s+unpublished\s+and\s+may\s+not\s+be\s+cited)",
     re.IGNORECASE,
 )
 
