@@ -63,6 +63,27 @@ AZ_COA_RE = re.compile(
 NONPRECEDENTIAL_RE = re.compile(
     r"MEMORANDUM\s+DECISION|NOT\s+FOR\s+PUBLICATION")
 
+# A Supreme Court order on a petition for review ("ORDERED: Petition for Review
+# = DENIED. FURTHER ORDERED: The Court of Appeals' Opinion shall not be
+# published, pursuant to Rule 111(g)") is a ruling on an application, not an
+# opinion. CourtListener files it under the case's cluster as "Published", and
+# it inherits the court-of-appeals opinion's reporter cite: 159 stored rows
+# (1990-2015), 136 of them sharing a cite with the real opinion (2026-10-26).
+# These orders open with the word ORDERED / ORDER / "The following action was
+# taken" -- anchored to the very start and CASE-SENSITIVE so an opinion that
+# merely quotes an order cannot match -- and carry a petition/Rule 111(g) cue.
+SUPREME_ORDER_START_RE = re.compile(
+    r"\A\W*(?:ORDERED\b|ORDER\b|The following action was taken|FURTHER ORDERED\b)")
+SUPREME_ORDER_CUE_RE = re.compile(
+    r"(?i)petition\s+for\s+review|rule\s+111\(g\)|shall\s+not\s+be\s+published"
+    r"|improvident|special\s+action")
+
+
+def is_supreme_review_order(text: str) -> bool:
+    head = (text or "")[:1500]
+    return bool(SUPREME_ORDER_START_RE.search(head)
+                and SUPREME_ORDER_CUE_RE.search(head))
+
 
 # ---------- Docket numbers ----------------------------------------------
 
@@ -312,7 +333,10 @@ class ArizonaParser(StateParser):
         # --- Precedential ----------------------------------------------
         # Supreme opinions are always precedential; a COA memorandum decision
         # (or explicit "not for publication") is not.
-        if is_supreme:
+        if is_supreme_review_order(raw_text):
+            result.is_precedential = False
+            result.confidence["is_precedential"] = 0.9
+        elif is_supreme:
             result.is_precedential = True
             result.confidence["is_precedential"] = header_conf
         elif is_coa:

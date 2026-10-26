@@ -1348,3 +1348,33 @@ class LaDesignatedAppealTests(SimpleTestCase):
         from opinions.parsing.la import la_designated_appeal
         self.assertFalse(la_designated_appeal("2020KA0695", 900))
         self.assertFalse(la_designated_appeal("2020KA0695", None))
+
+
+class AzSupremeReviewOrderTests(SimpleTestCase):
+    def test_orders_match(self):
+        from opinions.parsing.az import is_supreme_review_order
+        for t in (
+            "ORDERED: Petition for Review = DENIED. FURTHER ORDERED: The Court of "
+            "Appeals\u2019 Opinion shall not be published, pursuant to Rule 111(g).",
+            "The following action was taken by the Supreme Court of the State of "
+            "Arizona on January 6, 2004, in regard to the above-referenced cause: "
+            "ORDERED: Petition for Review = DENIED.",
+            "ORDER After hearing oral argument ... the grant of review in this case "
+            "was improvident.",
+        ):
+            self.assertTrue(is_supreme_review_order(t), t[:40])
+
+    def test_opinions_do_not_match(self):
+        from opinions.parsing.az import is_supreme_review_order
+        self.assertFalse(is_supreme_review_order(
+            "IN THE SUPREME COURT OF THE STATE OF ARIZONA ... ORDERED: Petition for Review"))
+        self.assertFalse(is_supreme_review_order(
+            "JUSTICE BALES, opinion of the Court. We granted a petition for review "
+            "and the Court ORDERED supplemental briefing."))
+        self.assertFalse(is_supreme_review_order(""))
+
+    def test_parser_marks_order_nonprecedential(self):
+        from opinions.parsing import text_says_nonprecedential
+        self.assertTrue(text_says_nonprecedential(
+            "AZ", "ORDERED: Petition for Review = DENIED. FURTHER ORDERED: The Court "
+                  "of Appeals\u2019 Opinion shall not be published, pursuant to Rule 111(g)."))
