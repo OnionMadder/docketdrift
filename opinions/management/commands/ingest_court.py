@@ -30,6 +30,18 @@ from opinions.parsing import text_says_nonprecedential
 from opinions.utils import normalize_docket_number
 
 
+def _la_unknown_appeal(court, status, case_number, raw_text) -> bool:
+    """CL says "Unknown" for every LA circuit opinion from 2019; an APPEAL
+    with no "not designated for publication" notice is published under
+    La. Rule 2-16.3 (the caller still applies the notice check)."""
+    if court.state_id != "LA" or court.level != "APPEALS":
+        return False
+    if status not in ("", "unknown"):
+        return False
+    from opinions.parsing.la import la_designated_appeal
+    return la_designated_appeal(case_number, len(raw_text or ""))
+
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_LOOKBACK_DAYS = 7
@@ -277,7 +289,10 @@ class Command(BaseCommand):
                                     # so an update would otherwise reset
                                     # a corrected False back to True.
                                     "is_precedential": (
-                                        precedential_status == "published"
+                                        (precedential_status == "published"
+                                         or _la_unknown_appeal(
+                                             court, precedential_status,
+                                             case_number, raw_text))
                                         and not text_says_nonprecedential(
                                             court.state_id, raw_text)),
                                     "raw_text": raw_text,

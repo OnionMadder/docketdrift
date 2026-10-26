@@ -93,6 +93,31 @@ NONPRECEDENTIAL_RE = re.compile(
     r"|(?:Circuit|Appeals?|\d{4})[.,]?\s+Not\s+Designated\s+for\s+Publication")
 
 
+# Circuit dockets that are APPEALS (La. Rule 2-16.3 applies: an opinion is
+# published unless it carries the notice above). Writ dockets (KW, CW, KH, bare
+# C / K, KP, KM, CM, WCW, JWC) are rulings on applications, not designated
+# opinions, and stay out. CourtListener reports every LA circuit opinion from
+# 2019 on as "Unknown", which the loaders turned into is_precedential=False --
+# thousands of appeals read as unpublished with no evidence (2026-10-25).
+APPEAL_DOCKET_KINDS = frozenset(
+    {"CA", "KA", "CU", "CJ", "KJ", "CE", "WCA", "JAC", "JAK"})
+APPEAL_MIN_CHARS = 2500
+
+
+def la_appeal_docket(case_number: str) -> bool:
+    kinds = re.findall(r"[A-Za-z]+", case_number or "")
+    return bool(kinds) and all(k.upper() in APPEAL_DOCKET_KINDS for k in kinds)
+
+
+def la_designated_appeal(case_number: str, text_len: int) -> bool:
+    """True for a circuit APPEAL with full opinion text (by length).
+
+    The caller must still check ``NONPRECEDENTIAL_RE`` against the head; this
+    only says the document is the kind Rule 2-16.3 governs.
+    """
+    return la_appeal_docket(case_number) and (text_len or 0) >= APPEAL_MIN_CHARS
+
+
 # ---------- Docket numbers ----------------------------------------------
 
 # Supreme: "No. 2026-CD-00927" (also appears as bare "2026-CD-00927" in the

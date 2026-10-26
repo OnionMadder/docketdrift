@@ -1327,3 +1327,24 @@ class LaCircuitDocketShapeTests(SimpleTestCase):
         from opinions.management.commands.assign_la_circuits import detect_by_docket
         self.assertIsNone(detect_by_docket("84-CA-1008", datetime.date(1984, 11, 20)))
         self.assertIsNone(detect_by_docket("09-CA-1105", None))
+
+
+class LaDesignatedAppealTests(SimpleTestCase):
+    """promote_la_precedential / ingest_court: which LA dockets are appeals."""
+
+    def test_appeal_dockets(self):
+        from opinions.parsing.la import la_designated_appeal
+        for cn in ("2020KA0695", "2019 CA 1607", "CA-0021-0024", "WCA-0019-0773",
+                   "22-CA-106", "2019 CA 0001, 2019 CA 0002", "2021CU0100"):
+            self.assertTrue(la_designated_appeal(cn, 20000), cn)
+
+    def test_writs_never_promote(self):
+        from opinions.parsing.la import la_designated_appeal
+        for cn in ("2021KW0762", "2020 CW 0100", "22-C-106", "22-KH-568",
+                   "KW-0021-0100", "22-K-1", "", None):
+            self.assertFalse(la_designated_appeal(cn, 20000), cn)
+
+    def test_stub_text_never_promotes(self):
+        from opinions.parsing.la import la_designated_appeal
+        self.assertFalse(la_designated_appeal("2020KA0695", 900))
+        self.assertFalse(la_designated_appeal("2020KA0695", None))
