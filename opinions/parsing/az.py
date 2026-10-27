@@ -189,7 +189,8 @@ _OTHERWISE_RE = re.compile(
     re.IGNORECASE)
 
 
-_PARA_MARK_RE = re.compile(r"¶\s*(\d{1,3})(?!\d)")
+_PARA_START_RE = re.compile(r"¶\s*\d{1,3}(?=\s+[A-Z“\"(\[])")
+_DISPOSITION_HEADING_RE = re.compile(r"\bDisposition\s+¶\s*\d{1,3}")
 _FINAL_REGION_CHARS = 2500
 
 
@@ -198,7 +199,17 @@ def _final_paragraph_region(text: str) -> str:
     footnote block that Division Two appends after it. Empty when the text has
     no paragraph markers or the last one is too far from the end to be the
     conclusion."""
-    marks = list(_PARA_MARK_RE.finditer(text or ""))
+    text = text or ""
+    # Division Two prints an explicit "Disposition" heading before the
+    # conclusion; it is the best anchor when present.
+    disp = list(_DISPOSITION_HEADING_RE.finditer(text))
+    if disp:
+        start = disp[-1].start()
+        return text[start:start + _FINAL_REGION_CHARS]
+    # Otherwise the last REAL paragraph start. A pinpoint cite inside a
+    # footnote ("... 336 P.3d at 768, ¶ 9, ...") is also a "¶ N" but is
+    # followed by punctuation, never by a capitalized sentence.
+    marks = list(_PARA_START_RE.finditer(text))
     if not marks:
         return ""
     start = marks[-1].start()
