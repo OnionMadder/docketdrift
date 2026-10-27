@@ -160,7 +160,7 @@ TAIL_PASSIVE_RE = re.compile(
 )
 
 _CONJ_VERB_RE = re.compile(
-    r"\b(?:but|however,?|and|also|then)\s+(?:we\s+)?(?:also\s+)?"
+    r"(?:\b(?:but|however,?|and|also|then)|[,;])\s+(?:we\s+)?(?:also\s+)?"
     r"(affirm|reverse|vacate|remand|dismiss)(?:s|es)?\b",
     re.IGNORECASE,
 )
@@ -251,6 +251,8 @@ def _tail_disposition(tail: str, compound: bool = False) -> str | None:
                      for m in _CONJ_VERB_RE.finditer(tail)}
     has_affirm = "Affirmed" in op_verbs
     has_undo = bool(op_verbs & {"Reversed", "Vacated"})
+    if compound and has_affirm and "Dismissed" in op_verbs:
+        has_undo = True  # "dismiss X and affirm Y" is a split ruling
     if _OTHERWISE_RE.search(tail) or (has_affirm and has_undo):
         # A split we can't itemize precisely; "Affirmed in part" is directional
         # and honest, and buckets to mixed.
