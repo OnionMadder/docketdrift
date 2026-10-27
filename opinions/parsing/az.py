@@ -183,6 +183,22 @@ _OTHERWISE_RE = re.compile(
     re.IGNORECASE)
 
 
+_PARA_MARK_RE = re.compile(r"¶\s*(\d{1,3})(?!\d)")
+_FINAL_REGION_CHARS = 2500
+
+
+def _final_paragraph_region(text: str) -> str:
+    """The opinion's last numbered paragraph (the conclusion), without the
+    footnote block that Division Two appends after it. Empty when the text has
+    no paragraph markers or the last one is too far from the end to be the
+    conclusion."""
+    marks = list(_PARA_MARK_RE.finditer(text or ""))
+    if not marks:
+        return ""
+    start = marks[-1].start()
+    return text[start:start + _FINAL_REGION_CHARS]
+
+
 def _tail_disposition(tail: str) -> str | None:
     """Operative disposition from the tail region, or None.
 
@@ -364,6 +380,18 @@ class ArizonaParser(StateParser):
             if tail_disp:
                 result.disposition = tail_disp
                 result.confidence["disposition"] = 0.5
+            else:
+                # Division Two's text ends with the FOOTNOTES, so the last
+                # 1,800 chars can hold nothing but footnote text while the
+                # operative "we affirm" sits above them (49 Div Two opinions
+                # 2017-2019, 279 since 2000). Re-read from the final numbered
+                # paragraph instead.
+                region = _final_paragraph_region(raw_text)
+                if region:
+                    tail_disp = _tail_disposition(region)
+                    if tail_disp:
+                        result.disposition = tail_disp
+                        result.confidence["disposition"] = 0.45
 
         # --- Author ----------------------------------------------------
         if is_supreme:
