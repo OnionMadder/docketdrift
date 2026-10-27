@@ -159,6 +159,12 @@ TAIL_PASSIVE_RE = re.compile(
     re.IGNORECASE,
 )
 
+_CONJ_VERB_RE = re.compile(
+    r"\b(?:but|however,?|and|also|then)\s+(?:we\s+)?(?:also\s+)?"
+    r"(affirm|reverse|vacate|remand|dismiss)(?:s|es)?\b",
+    re.IGNORECASE,
+)
+
 _VERB_PAST = {
     "affirm": "Affirmed", "reverse": "Reversed", "vacate": "Vacated",
     "remand": "Remanded", "dismiss": "Dismissed", "quash": "Quashed",
@@ -199,7 +205,7 @@ def _final_paragraph_region(text: str) -> str:
     return text[start:start + _FINAL_REGION_CHARS]
 
 
-def _tail_disposition(tail: str) -> str | None:
+def _tail_disposition(tail: str, compound: bool = False) -> str | None:
     """Operative disposition from the tail region, or None.
 
     Precedence matters, because a subsidiary action in an earlier sentence
@@ -237,12 +243,25 @@ def _tail_disposition(tail: str) -> str | None:
     active = list(TAIL_ACTIVE_RE.finditer(tail))
     passive = list(TAIL_PASSIVE_RE.finditer(tail))
     op_verbs = {_VERB_PAST[m.group(1).lower()] for m in (active + passive)}
+    if compound:
+        # Final-paragraph mode (Division Two): the court splits its ruling in
+        # one sentence -- "we affirm X but vacate Y", "vacate ... and remand" --
+        # and the verb after the conjunction has no "we" of its own.
+        op_verbs |= {_VERB_PAST[m.group(1).lower()]
+                     for m in _CONJ_VERB_RE.finditer(tail)}
     has_affirm = "Affirmed" in op_verbs
     has_undo = bool(op_verbs & {"Reversed", "Vacated"})
     if _OTHERWISE_RE.search(tail) or (has_affirm and has_undo):
         # A split we can't itemize precisely; "Affirmed in part" is directional
         # and honest, and buckets to mixed.
         return "Affirmed in part"
+
+    if compound and "Remanded" in op_verbs and not has_affirm:
+        # "Vacated and remanded" / "Reversed and remanded": the court's own
+        # header compound, and it buckets with the undo verb, not "remanded".
+        for undo in ("Reversed", "Vacated"):
+            if undo in op_verbs:
+                return "%s and remanded" % undo
 
     # A single operative verb -- take the LAST (final disposition sentence),
     # preferring active phrasing over passive.
@@ -388,7 +407,7 @@ class ArizonaParser(StateParser):
                 # paragraph instead.
                 region = _final_paragraph_region(raw_text)
                 if region:
-                    tail_disp = _tail_disposition(region)
+                    tail_disp = _tail_disposition(region, compound=True)
                     if tail_disp:
                         result.disposition = tail_disp
                         result.confidence["disposition"] = 0.45
