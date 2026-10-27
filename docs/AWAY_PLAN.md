@@ -108,8 +108,11 @@ logs or TODO.md.
 
 ## B. Waiting for Onion
 
-- **Deploy authority while away:** may unattended sessions push and restart
-  after tests and in-process checks pass? (Asked 2026-10-16.)
+- ~~Deploy authority while away~~ **GRANTED by Onion:** unattended sessions
+  may push to main and restart gunicorn after tests, `manage.py check` (run
+  as its own command) and in-process verification pass, per the ground rules
+  above. **Still excluded:** outward actions (email, court contact, Search
+  Console/Bing, posting) and judge vote moves or merges.
 - AZ Division Two portraits: email the court, as with Division One's HR office.
 - MN/AZ 1989–2014 coverage trough: disclosure wording.
 - Composite `(court_id, disposition_bucket)` index: a 2.75GB migration that
