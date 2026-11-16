@@ -164,8 +164,13 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING(f"No courts for state {state_code!r}."))
             return
 
+        # Bounded by --min-id like the scan itself. Unbounded, the raw_text
+        # test reads every row of the state: 255s on LA for a banner, which
+        # alone pushed the derive tick toward NFSN's cull (2026-11-16).
         def _count():
-            base = Opinion.objects.filter(court_id__in=court_ids).exclude(raw_text="")
+            base = Opinion.objects.filter(
+                court_id__in=court_ids, pk__gt=int(min_id or 0)
+            ).exclude(raw_text="")
             if not force:
                 base = base.exclude(pk__in=StatuteCitation.objects.values("opinion_id"))
             return base.count()
