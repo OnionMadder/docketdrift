@@ -23,7 +23,15 @@
 #      emails directly on a non-zero tick exit -- backstop for "not firing".)
 set -u
 
-HEALTHZ_URL="http://10.0.175.75:8000/healthz"
+# gunicorn's internal address is NOT stable: NFSN moved it on restarts
+# (10.0.175.75 -> 10.2.221.159 by 2026-10-21 -> 10.1.157.78 on 11-06), and
+# this script hardcoded the first one, so the /healthz probe hit a dead
+# address every tick for weeks (found 2026-11-16). The address is read from
+# gunicorn's own "Listening at:" boot line, cached in HEALTHZ_ADDR_FILE, and
+# re-resolved only when the cached one fails -- a grep of the daemon log is
+# too expensive to run every tick.
+DAEMON_LOG="/home/logs/daemon_gunicorn.log"
+HEALTHZ_ADDR_FILE="/home/private/docketdrift/.gunicorn_addr"
 HEALTHZ_HOST="docketdrift.com"
 EMBED_LOG="/home/logs/embed_opinions.log"
 EMBED_STATE="/home/private/docketdrift/.embed_state"
@@ -42,10 +50,28 @@ stamp() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 # success body in its alert. --max-time 30 tolerates the brief DB-contention
 # spike when an embed pass is running; /healthz itself is only a SELECT 1,
 # so this is still tight enough to catch a real outage.
-: > /tmp/healthz.body
-code=$(curl -sS --max-time 30 -o /tmp/healthz.body -w "%{http_code}" -H "Host: $HEALTHZ_HOST" "$HEALTHZ_URL" 2>/dev/null || echo "000")
+probe() {
+    : > /tmp/healthz.body
+    curl -s --max-time 30 -o /tmp/healthz.body -w "%{http_code}" \
+        -H "Host: $HEALTHZ_HOST" "$1/healthz" 2>/dev/null
+}
+resolve_addr() {
+    grep -a "Listening at: http://" "$DAEMON_LOG" 2>/dev/null | tail -1 \
+        | sed -E 's#.*Listening at: (http://[0-9.]+:[0-9]+).*#\1#'
+}
+addr=$(cat "$HEALTHZ_ADDR_FILE" 2>/dev/null)
+[ -n "$addr" ] || addr=$(resolve_addr)
+code=$(probe "$addr")
 if [ "$code" != "200" ]; then
-    echo "[$(stamp)] HEARTBEAT FAIL: /healthz returned $code" >&2
+    fresh=$(resolve_addr)
+    if [ -n "$fresh" ] && [ "$fresh" != "$addr" ]; then
+        addr=$fresh
+        code=$(probe "$addr")
+    fi
+fi
+[ "$code" = "200" ] && echo "$addr" > "$HEALTHZ_ADDR_FILE"
+if [ "$code" != "200" ]; then
+    echo "[$(stamp)] HEARTBEAT FAIL: /healthz at ${addr:-<no address found in $DAEMON_LOG>} returned ${code:-000}" >&2
     if [ -s /tmp/healthz.body ]; then
         echo "  body: $(head -c 300 /tmp/healthz.body)" >&2
     fi
