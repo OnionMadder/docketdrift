@@ -52,9 +52,13 @@ fi
 
 # 1. Archive the REAL content, NULs stripped so the archive is usable
 #    even when the source is sparse. Compressed, because it is text.
-ARCHIVE="/home/logs/access-$STAMP.log.bz2"
+#    zstd, not bzip2: NFSN caps a process at 180s of CPU, and bzip2 on a
+#    2.5GB log blew through it (2026-11-16, "Cputime limit exceeded").
+#    zstd -3 does 200MB in ~0.5s of CPU at a similar ratio. Read with
+#    `zstdcat`.
+ARCHIVE="/home/logs/access-$STAMP.log.zst"
 echo "--- archiving real content to $ARCHIVE ---"
-tr -d '\000' < "$LOG" | bzip2 -c > "$ARCHIVE" || {
+tr -d '\000' < "$LOG" | zstd -3 -q -c > "$ARCHIVE" || {
     echo "ERROR: archive failed -- NOT rotating" >&2
     rm -f "$ARCHIVE"
     exit 1
@@ -97,7 +101,7 @@ else
 fi
 
 # 5. Bound archive growth.
-ls -1t /home/logs/access-*.log.bz2 2>/dev/null | tail -n +$(( KEEP_ARCHIVES + 1 )) \
+ls -1t /home/logs/access-*.log.bz2 /home/logs/access-*.log.zst 2>/dev/null | tail -n +$(( KEEP_ARCHIVES + 1 )) \
     | while read -r old; do
         echo "pruning old archive: $old"
         rm -f "$old"
