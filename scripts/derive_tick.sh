@@ -36,12 +36,18 @@ PY="$BASE/.venv/bin/python"
 cd "$BASE" || exit 1
 
 # Single-flight; 75 = a previous tick is still deriving, which is normal.
+# Under the NFSN scheduled-task runner a HELD lock has also surfaced as
+# "cannot open ... Permission denied" (lockf exit 73) rather than 75 -- seen
+# 2026-11-16 while a manual pass held it; from an ssh shell the same case is
+# 75. Treat 73 as busy too: if it were ever a real permission problem, no
+# pass would succeed and heartbeat's 48h stale-stamp alert fires.
 if [ -z "${DD_DERIVE_LOCKED:-}" ]; then
     DD_DERIVE_LOCKED=1
     export DD_DERIVE_LOCKED
     lockf -t 0 "$LOCK" "$0" "$@"
     rc=$?
     [ "$rc" -eq 75 ] && exit 0
+    [ "$rc" -eq 73 ] && exit 0
     exit "$rc"
 fi
 
