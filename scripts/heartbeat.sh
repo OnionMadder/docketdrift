@@ -111,4 +111,36 @@ fi
 # last ~hour and, like latency_check, alerts on transitions only.
 /bin/sh /home/private/docketdrift/scripts/error_rate_tick.sh || fail=1
 
+# --- (5) Derived citation layers ---------------------------------------------
+# Runs LAST so the checks above are never delayed. A no-op (~2s) unless new
+# opinions arrived; see the header of derive_tick.sh for why this moved out
+# of the weekly cron. Its own failure does not fail the heartbeat -- a held
+# cursor is retried next tick. What alerts is the STAMP going stale: no
+# successful pass for DERIVE_STALE_H hours. Transition-alerted like
+# latency_check (once on OK->STALE, re-alert every 24h, once on recovery),
+# so a stuck derive sends a few emails, not one every tick.
+DERIVE_LOG=/home/logs/derive_tick.log
+DERIVE_OK=/home/private/docketdrift/.derive_last_ok
+DERIVE_ALERT=/home/private/docketdrift/.derive_alert_state
+DERIVE_STALE_H=48
+/bin/sh /home/private/docketdrift/scripts/derive_tick.sh >> "$DERIVE_LOG" 2>&1
+now=$(date +%s)
+ok_ts=$(cat "$DERIVE_OK" 2>/dev/null)
+case "$ok_ts" in ''|*[!0-9]*) ok_ts=0 ;; esac
+age_h=$(( (now - ok_ts) / 3600 ))
+prev=$(awk '{print $1}' "$DERIVE_ALERT" 2>/dev/null)
+prev_ts=$(awk '{print $2}' "$DERIVE_ALERT" 2>/dev/null)
+case "$prev_ts" in ''|*[!0-9]*) prev_ts=0 ;; esac
+if [ "$age_h" -ge "$DERIVE_STALE_H" ]; then
+    if [ "$prev" != "STALE" ] || [ $(( now - prev_ts )) -ge 86400 ]; then
+        echo "[$(stamp)] HEARTBEAT FAIL: no successful derive pass in ${age_h}h (threshold ${DERIVE_STALE_H}h). New opinions are not getting statute/citation/holding/rule layers. tail $DERIVE_LOG" >&2
+        echo "STALE $now" > "$DERIVE_ALERT"
+        fail=1
+    fi
+elif [ "$prev" = "STALE" ]; then
+    echo "[$(stamp)] HEARTBEAT RECOVERED: derive passes succeeding again." >&2
+    echo "OK $now" > "$DERIVE_ALERT"
+    fail=1
+fi
+
 exit $fail
