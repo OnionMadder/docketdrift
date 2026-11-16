@@ -140,3 +140,7 @@ logs or TODO.md.
   verified and live after restart. One 500 on /rule/la.r.urca.2-12.4/ 21s
   after boot was errno 2013 (shared-DB drop under catch-up load); 200 on
   every retry.
+- 2026-11-16 (Onion back): the "confirm .derive_cursor moved past 489842"
+  check above had never passed -- the weekly cron was being culled inside
+  the derive phase every run. Derive moved to `scripts/derive_tick.sh` on the
+  heartbeat; 222 rows caught up, judge spans + IndexNow caught up. See TODO.

@@ -3,6 +3,19 @@
 Snapshot 2026-08-16. Prioritized. Each item says what it is, why it matters,
 and roughly how big. "Onion" items need the member panel or are editorial.
 
+**✅ FIXED 2026-11-16 — the weekly cron died silently every run from
+2026-10-17.** The derive phase added on 10-16 pushed `cron-ingest.sh` past
+NFSN's ~10-min cull, so `.derive_cursor` sat at 489842 for a month (203
+opinions with no statute/citation/holding/rule layers) and judge spans +
+IndexNow never ran (all 80 judges with new votes stale). Derive now lives in
+`scripts/derive_tick.sh`, called from `heartbeat.sh` every tick (3s no-op,
+53s warm pass, + ~4.4 min weekly for LA's cold map); heartbeat alerts if no
+pass succeeds for 48h. Also fixed: `extract_statutes`' banner count scanned
+the whole state (255s on LA). Caught up: 222 rows derived, spans refreshed,
+IndexNow pinged 750h. **Still unverified:** that the next weekly cron now
+completes -- check that judge spans move after it, since its log is only in
+the NFSN panel.
+
 **★ OPEN 2026-10-01 — Internet Archive loose-PDF cleanup (third attempt, throttled).**
 Item `minnesota-appellate-opinions-2017-2026` is FINE for users: the 1.63GB zip
 verifies (HTTP 200, Content-Length 1,630,920,906) + manifest.csv + README.md.

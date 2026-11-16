@@ -226,6 +226,28 @@ in indexed JSON-LD) was reverted — extractive holdings = "no generated text",
 the strong original posture, is correct. Migrations 0026 (holdings) + 0027
 (clustering) are on main and applied on prod.
 
+## 2026-11-16 — the weekly cron had been dying silently for a month
+
+Adding the derive phase to `cron-ingest.sh` (2026-10-16) pushed it past
+NFSN's ~10-minute scheduled-task cull. No step "failed": the process was
+killed mid-derive, so there was no "cursor HELD" line and nothing after it
+ran. Symptoms: `.derive_cursor` frozen at 489842, 203 new opinions with no
+citation layers, and EVERY judge with a new vote showing a stale span
+(`backfill_judge_spans` + IndexNow sit after derive). The tell was the
+map-cache files: AZ's written, LA's never.
+
+Derive now runs from `scripts/derive_tick.sh`, called at the end of
+`heartbeat.sh` (lockf single-flight; cursor advances only if every step
+succeeds; `.derive_last_ok` stamp; heartbeat alerts on transition after
+48h without a good pass). A warm pass is 53s; a no-op 3s.
+
+**Two lessons.** (1) A scheduled task's total wall time is a budget: adding
+a step to an existing task can kill everything after it, silently. Time the
+whole task, not the step. (2) Banner counts are not free:
+`extract_statutes` counted the WHOLE state (`exclude(raw_text="")` reads
+every row) before scanning a 100-row window -- 255s on LA, the bulk of a
+9.6-minute pass. Bound every count by the same `--min-id` as the scan.
+
 ## 2026-10-24 — a removal request → 4,511 precedential flags + 1,415 MN titles
 
 Eric Vacko's de-index request on A16-2084 (declined; see `RemovalRequest`)
