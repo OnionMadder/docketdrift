@@ -241,6 +241,16 @@ Derive now runs from `scripts/derive_tick.sh`, called at the end of
 succeeds; `.derive_last_ok` stamp; heartbeat alerts on transition after
 48h without a good pass). A warm pass is 53s; a no-op 3s.
 
+**Same day, a second dead monitor: gunicorn's internal address MOVES.**
+`heartbeat.sh` probed `/healthz` at a hardcoded `10.0.175.75`, which NFSN
+had retired by 2026-10-21 (then 10.2.221.159; 10.1.157.78 since 11-06), so
+the uptime check failed every tick for weeks. It now reads the address from
+gunicorn's last `Listening at:` line, cached in `.gunicorn_addr`. **Every
+`10.0.175.75` in this file is stale** -- get the live one with
+`grep "Listening at" /home/logs/daemon_gunicorn.log | tail -1`. Also:
+`rotate_access_log.sh` now uses zstd (bzip2 hit NFSN's 180s per-process CPU
+cap on a 2.5GB log); archives are `access-*.log.zst`, read with `zstdcat`.
+
 **Two lessons.** (1) A scheduled task's total wall time is a budget: adding
 a step to an existing task can kill everything after it, silently. Time the
 whole task, not the step. (2) Banner counts are not free:
